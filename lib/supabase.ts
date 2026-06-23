@@ -1,12 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL  ?? ''
+const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
-export const supabase = createClient(supabaseUrl, supabaseAnon)
+// Guard: createClient will be called at runtime when env vars are available
+export const supabase = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnon || 'placeholder')
 
 export const fmtGhc = (v: number | null | undefined) =>
-  'GH\u20b5 ' + (v ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  'GH₵ ' + (v ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export const fmtNum = (v: number | null | undefined) =>
   (v ?? 0).toLocaleString('en-GH')
@@ -28,7 +29,12 @@ export const countWorkingDays = (from: string, to: string): number => {
   return Math.max(1, count)
 }
 
-export const calcPerfPay = (monthlySal: number, dailyTarget: number, periodWd: number, bagsSold: number) => {
+export const calcPerfPay = (
+  monthlySal: number,
+  dailyTarget: number,
+  periodWd: number,
+  bagsSold: number
+) => {
   const dailySal     = monthlySal / 26
   const periodPay    = dailySal * periodWd
   const periodTarget = dailyTarget * periodWd
