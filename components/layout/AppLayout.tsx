@@ -17,8 +17,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         if (!session) { window.location.href = '/login'; return }
 
         const { data: profile } = await supabase
-          .from('profiles').select('full_name, role')
-          .eq('id', session.user.id).single()
+          .from('profiles')
+          .select('full_name, role, permissions')
+          .eq('id', session.user.id)
+          .single()
 
         if (profile) {
           setUserName(profile.full_name || session.user.email || 'User')
@@ -27,13 +29,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           // Auto-create missing profile
           const name = session.user.email?.split('@')[0] || 'User'
           await supabase.from('profiles').upsert({
-            id: session.user.id, full_name: name,
-            role: 'operator', is_active: true,
+            id:          session.user.id,
+            full_name:   name,
+            role:        'operator',
+            is_active:   true,
+            permissions: ['sales'],
           })
           setUserName(name)
           setUserRole('operator')
         }
-      } catch {
+      } catch (err) {
+        console.error('AppLayout error:', err)
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { window.location.href = '/login'; return }
         setUserName(session.user.email || 'User')

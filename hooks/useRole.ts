@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ALL_MODULES, ADMIN_ALWAYS } from '@/lib/modules'
+import { ALL_MODULES } from '@/lib/modules'
 
 export type UserRole = 'admin' | 'manager' | 'operator' | 'viewer' | null
 
@@ -10,43 +10,61 @@ export function useRole() {
   const [loading, setLoading]         = useState(true)
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchRole = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { setLoading(false); return }
 
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('profiles')
           .select('role, permissions')
           .eq('id', session.user.id)
           .single()
 
-        const r = (data?.role as UserRole) ?? 'operator'
+        if (error || !data) {
+          // Profile missing — auto-create and default to operator
+          await supabase.from('profiles').upsert({
+            id:          session.user.id,
+            full_name:   session.user.email?.split('@')[0] ?? 'User',
+            role:        'operator',
+            is_active:   true,
+            permissions: ['sales'],
+          })
+          setRole('operator')
+          setPermissions(['sales'])
+          setLoading(false)
+          return
+        }
+
+        const r = (data.role as UserRole) ?? 'operator'
         setRole(r)
 
         if (r === 'admin') {
-          // Admin gets all modules
           setPermissions(ALL_MODULES.map(m => m.key))
         } else {
-          // Use stored permissions, fallback to sales
-          const stored: string[] = data?.permissions ?? ['sales']
+          const stored: string[] = Array.isArray(data.permissions) && data.permissions.length > 0
+            ? data.permissions
+            : ['sales']
           setPermissions(stored)
         }
-      } catch {
+      } catch (err) {
+        console.error('useRole error:', err)
         setRole('operator')
         setPermissions(['sales'])
       } finally {
         setLoading(false)
       }
     }
-    fetch()
+    fetchRole()
   }, [])
 
-  const isAdmin = role === 'admin'
+  // isAdmin is only true once loading is complete AND role is confirmed admin
+  const isAdmin = !loading && role === 'admin'
 
-  const canAccess = (moduleKey: string) => {
-    if (isAdmin) return true
-    // Admin-only modules are never accessible to non-admins
+  const canAccess = (moduleKey: string): boolean => {
+    // While loading, deny access to prevent flash of content
+    if (loading) return false
+    if (role === 'admin') return true
     const mod = ALL_MODULES.find(m => m.key === moduleKey)
     if (mod?.adminOnly) return false
     return permissions.includes(moduleKey)
