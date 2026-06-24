@@ -1,26 +1,63 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/components/layout/Sidebar'
 import MobileNav from '@/components/layout/MobileNav'
 import MobileHeader from '@/components/layout/MobileHeader'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const [userName, setUserName] = useState('')
-  const [userRole, setUserRole] = useState('')
-  const [loading, setLoading] = useState(true)
-  const router = useRouter()
+  const [userName, setUserName] = useState('User')
+  const [userRole, setUserRole] = useState('operator')
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.push('/login'); return }
-      const { data } = await supabase
-        .from('profiles').select('full_name, role')
-        .eq('id', session.user.id).single()
-      if (data) { setUserName(data.full_name); setUserRole(data.role) }
-      setLoading(false)
-    })
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+
+        if (!session) {
+          window.location.href = '/login'
+          return
+        }
+
+        // Try to get profile — if missing, create it automatically
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, role')
+          .eq('id', session.user.id)
+          .single()
+
+        if (profile) {
+          setUserName(profile.full_name || session.user.email || 'User')
+          setUserRole(profile.role || 'operator')
+        } else {
+          // Profile doesn't exist yet — create it
+          const name = session.user.email?.split('@')[0] || 'User'
+          await supabase.from('profiles').upsert({
+            id:        session.user.id,
+            full_name: name,
+            role:      'operator',
+            is_active: true,
+          })
+          setUserName(name)
+          setUserRole('operator')
+        }
+      } catch (err) {
+        console.error('AppLayout init error:', err)
+        // Still show the app even if profile fetch fails
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          window.location.href = '/login'
+          return
+        }
+        setUserName(session.user.email || 'User')
+        setUserRole('operator')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    init()
   }, [])
 
   if (loading) return (
@@ -28,6 +65,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="text-center">
         <div className="text-4xl mb-3">💧</div>
         <div className="text-[#1F4E79] font-semibold">Loading AquaFlow...</div>
+        <div className="text-gray-400 text-sm mt-2">Please wait...</div>
       </div>
     </div>
   )

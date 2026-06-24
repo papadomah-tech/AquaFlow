@@ -2,21 +2,33 @@
 export const dynamic = 'force-dynamic'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPass] = useState('')
-  const [error, setError] = useState('')
+  const [email, setEmail]     = useState('')
+  const [password, setPass]   = useState('')
+  const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true); setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { setError(error.message); setLoading(false) }
-    else router.push('/dashboard')
+    setLoading(true)
+    setError('')
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    if (data?.session) {
+      // Full page redirect — ensures session cookie is set properly
+      window.location.href = '/dashboard'
+    } else {
+      setError('Login failed. Please try again.')
+      setLoading(false)
+    }
   }
 
   return (
@@ -30,16 +42,20 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="form-label">Email Address</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            <input type="email" value={email}
+              onChange={e => setEmail(e.target.value)}
               className="form-input" placeholder="you@example.com" required />
           </div>
           <div>
             <label className="form-label">Password</label>
-            <input type="password" value={password} onChange={e => setPass(e.target.value)}
-              className="form-input" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" required />
+            <input type="password" value={password}
+              onChange={e => setPass(e.target.value)}
+              className="form-input" placeholder="Enter password" required />
           </div>
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{error}</div>
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+              {error}
+            </div>
           )}
           <button type="submit" disabled={loading}
             className="btn btn-primary w-full justify-center py-2.5 text-base">
