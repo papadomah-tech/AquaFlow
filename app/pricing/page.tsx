@@ -2,11 +2,12 @@
 export const dynamic = 'force-dynamic'
 import { useState, useEffect } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc } from '@/lib/supabase'
 
 const DEFAULT = { roll_cost_per_kg: 45, pkg_bulk_qty: 1000, pkg_bulk_cost: 640, water_cost_per_liter: 0.0318, liters_per_bag: 0.5, labor_per_bag: 0.50, utility_per_bag: 0.20, machine_per_bag: 0.10, transport_per_bag: 0.10, other_per_bag: 0.05, margin_pct: 20, bags_per_kg: 20 }
 
-export default function PricingPage() {
+function PricingPageInner() {
   const [inputs, setInputs] = useState(DEFAULT)
   const [laborEnabled, setLaborEnabled] = useState({ labor: true, utility: true, machine: true, transport: true, other: true })
   const [avgSalePrice, setAvgSalePrice] = useState(0)
@@ -132,5 +133,13 @@ export default function PricingPage() {
         </div>
       </div>
     </AppLayout>
+  )
+}
+
+export default function PricingPage() {
+  return (
+    <ModuleGuard moduleKey="pricing" moduleLabel="Pricing">
+      <PricingPageInner />
+    </ModuleGuard>
   )
 }

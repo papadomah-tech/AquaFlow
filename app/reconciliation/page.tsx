@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, today, monthStart } from '@/lib/supabase'
 
-export default function ReconciliationPage() {
+function ReconciliationPageInner() {
   const [filter, setFilter] = useState({ from: monthStart(), to: today() })
   const [data, setData] = useState<any>(null)
   const [deposits, setDeposits] = useState<any[]>([])
@@ -142,5 +143,13 @@ export default function ReconciliationPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function ReconciliationPage() {
+  return (
+    <ModuleGuard moduleKey="reconciliation" moduleLabel="Cash & Bank">
+      <ReconciliationPageInner />
+    </ModuleGuard>
   )
 }

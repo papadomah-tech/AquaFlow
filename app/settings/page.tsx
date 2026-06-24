@@ -5,33 +5,48 @@ import AppLayout from '@/components/layout/AppLayout'
 import AccessDenied from '@/components/ui/AccessDenied'
 import { supabase } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
+import { ALL_MODULES, DEFAULT_PERMISSIONS } from '@/lib/modules'
+
+interface ProfileRow {
+  id: string
+  full_name: string
+  role: string
+  is_active: boolean
+  permissions: string[]
+}
 
 export default function SettingsPage() {
-  const { role, loading: roleLoading, isAdmin } = useRole()
-  const [profiles, setProfiles] = useState<any[]>([])
-  const [loading, setLoading]   = useState(true)
+  const { isAdmin, loading: roleLoading } = useRole()
+  const [profiles, setProfiles]   = useState<ProfileRow[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [editUser, setEditUser]   = useState<ProfileRow | null>(null)
+  const [saving, setSaving]       = useState(false)
+  const [saved, setSaved]         = useState(false)
 
   const load = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('full_name')
-    setProfiles(data ?? [])
+    const { data } = await supabase
+      .from('profiles').select('*').order('full_name')
+    setProfiles((data ?? []).map((p: any) => ({
+      ...p,
+      permissions: p.permissions ?? DEFAULT_PERMISSIONS,
+    })))
     setLoading(false)
   }
 
   useEffect(() => { if (isAdmin) load() }, [isAdmin])
 
-  // Wait for role to load
   if (roleLoading) return (
     <AppLayout>
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-gray-400">Checking permissions...</div>
+      <div className="flex items-center justify-center min-h-[60vh] text-gray-400">
+        Checking permissions...
       </div>
     </AppLayout>
   )
 
-  // Block non-admins
-  if (!isAdmin) return (
-    <AccessDenied message="Only administrators can access User Settings." />
-  )
+  if (!isAdmin) return <AccessDenied message="Only administrators can access Settings." />
+
+  const ROLES = ['admin','manager','operator','viewer']
+  const NON_ADMIN_MODULES = ALL_MODULES.filter(m => !m.adminOnly)
 
   const updateRole = async (id: string, role: string) => {
     await supabase.from('profiles').update({ role }).eq('id', id)
@@ -43,13 +58,35 @@ export default function SettingsPage() {
     load()
   }
 
-  const ROLES = ['admin','manager','operator','viewer']
-  const ROLE_DESC: Record<string,string> = {
-    admin:    'Full access - manage users, delete records, all modules',
-    manager:  'View and edit all data except user management',
-    operator: 'Enter data (sales, production, expenses)',
-    viewer:   'Read-only access to all modules'
+  const openPermissions = (p: ProfileRow) => {
+    setEditUser({ ...p, permissions: p.permissions ?? DEFAULT_PERMISSIONS })
+    setSaved(false)
   }
+
+  const togglePermission = (key: string) => {
+    if (!editUser) return
+    const has = editUser.permissions.includes(key)
+    setEditUser({
+      ...editUser,
+      permissions: has
+        ? editUser.permissions.filter(k => k !== key)
+        : [...editUser.permissions, key]
+    })
+  }
+
+  const savePermissions = async () => {
+    if (!editUser) return
+    setSaving(true)
+    await supabase.from('profiles')
+      .update({ permissions: editUser.permissions })
+      .eq('id', editUser.id)
+    setSaving(false)
+    setSaved(true)
+    load()
+  }
+
+  const selectAll  = () => setEditUser(u => u ? { ...u, permissions: NON_ADMIN_MODULES.map(m => m.key) } : u)
+  const selectNone = () => setEditUser(u => u ? { ...u, permissions: [] } : u)
 
   return (
     <AppLayout>
@@ -58,42 +95,31 @@ export default function SettingsPage() {
         <span className="badge badge-blue">Admin Only</span>
       </div>
 
+      {/* Users & Permissions table */}
       <div className="card mb-4">
-        <div className="font-semibold text-[#1F4E79] mb-3">User Roles</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {ROLES.map(r => (
-            <div key={r} className="bg-gray-50 rounded-lg p-3">
-              <div className="font-semibold capitalize text-[#1F4E79] mb-1">{r}</div>
-              <div className="text-xs text-gray-500">{ROLE_DESC[r]}</div>
-            </div>
-          ))}
+        <div className="font-semibold text-[#1F4E79] mb-1">Users & Module Access</div>
+        <div className="text-xs text-gray-400 mb-4">
+          Click <strong>Permissions</strong> on any user to control which modules they can access.
+          Admin users always have access to everything.
         </div>
-      </div>
 
-      <div className="card mb-4">
-        <div className="font-semibold text-[#1F4E79] mb-2">Add New Users</div>
-        <div className="text-sm text-gray-600">
-          To create accounts: <strong>Supabase Dashboard</strong> &rarr;
-          <strong> Authentication</strong> &rarr; <strong>Users</strong> &rarr;
-          <strong> Create new user</strong> &rarr; enter email and password &rarr;
-          tick Auto Confirm &rarr; then set their role below.
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="font-semibold text-[#1F4E79] mb-3">All Users</div>
         {loading ? (
-          <div className="text-center py-6 text-gray-400">Loading...</div>
+          <div className="text-center py-8 text-gray-400">Loading...</div>
         ) : (
           <table className="data-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Modules Assigned</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
             </thead>
             <tbody>
-              {profiles.map((p: any) => (
+              {profiles.map(p => (
                 <tr key={p.id}>
                   <td className="font-medium">{p.full_name}</td>
-                  <td className="text-xs text-gray-500">{p.id.slice(0,8)}...</td>
                   <td>
                     <select value={p.role}
                       onChange={e => updateRole(p.id, e.target.value)}
@@ -102,16 +128,44 @@ export default function SettingsPage() {
                     </select>
                   </td>
                   <td>
+                    {p.role === 'admin' ? (
+                      <span className="badge badge-blue">All modules</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {(p.permissions ?? []).length === 0 ? (
+                          <span className="badge badge-red">No access</span>
+                        ) : (
+                          (p.permissions ?? []).map(k => {
+                            const mod = ALL_MODULES.find(m => m.key === k)
+                            return mod ? (
+                              <span key={k} className="badge badge-blue text-[10px]">
+                                {mod.icon} {mod.label}
+                              </span>
+                            ) : null
+                          })
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td>
                     <span className={'badge ' + (p.is_active ? 'badge-green' : 'badge-gray')}>
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td>
-                    <button
-                      onClick={() => toggleActive(p.id, p.is_active)}
-                      className={'btn btn-sm ' + (p.is_active ? 'btn-warning' : 'btn-success')}>
-                      {p.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
+                    <div className="flex gap-1">
+                      {p.role !== 'admin' && (
+                        <button onClick={() => openPermissions(p)}
+                          className="btn btn-sm btn-primary">
+                          🔑 Permissions
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleActive(p.id, p.is_active)}
+                        className={'btn btn-sm ' + (p.is_active ? 'btn-warning' : 'btn-success')}>
+                        {p.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -119,6 +173,99 @@ export default function SettingsPage() {
           </table>
         )}
       </div>
+
+      {/* How to add users */}
+      <div className="card">
+        <div className="font-semibold text-[#1F4E79] mb-2">Add New Users</div>
+        <div className="text-sm text-gray-600">
+          Go to <strong>Supabase Dashboard</strong> &rarr; <strong>Authentication</strong>
+          &rarr; <strong>Users</strong> &rarr; <strong>Create new user</strong>
+          &rarr; enter email and password &rarr; tick <strong>Auto Confirm</strong>.
+          The user will appear here automatically. Then assign their module permissions.
+        </div>
+      </div>
+
+      {/* Permissions Modal */}
+      {editUser && (
+        <div className="modal-overlay" onClick={() => setEditUser(null)}>
+          <div className="modal-box-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="font-bold text-[#1F4E79]">
+                  🔑 Module Permissions — {editUser.full_name}
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5 capitalize">
+                  Role: {editUser.role} &nbsp;|&nbsp;
+                  {editUser.permissions.length} module{editUser.permissions.length !== 1 ? 's' : ''} assigned
+                </p>
+              </div>
+              <button onClick={() => setEditUser(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+
+            <div className="modal-body">
+              {/* Quick actions */}
+              <div className="flex gap-2 mb-4">
+                <button onClick={selectAll}  className="btn btn-sm btn-secondary">✅ Select All</button>
+                <button onClick={selectNone} className="btn btn-sm btn-secondary">☐ Clear All</button>
+              </div>
+
+              {/* Module checkboxes */}
+              <div className="grid grid-cols-1 gap-2">
+                {NON_ADMIN_MODULES.map(mod => {
+                  const checked = editUser.permissions.includes(mod.key)
+                  return (
+                    <label key={mod.key}
+                      className={'flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all '
+                        + (checked
+                          ? 'border-[#2E75B6] bg-blue-50'
+                          : 'border-gray-200 bg-white hover:border-gray-300')}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePermission(mod.key)}
+                        className="w-5 h-5 accent-[#1F4E79] cursor-pointer"
+                      />
+                      <span className="text-xl">{mod.icon}</span>
+                      <div className="flex-1">
+                        <div className={'font-semibold text-sm '
+                          + (checked ? 'text-[#1F4E79]' : 'text-gray-700')}>
+                          {mod.label}
+                        </div>
+                        <div className="text-xs text-gray-400">{mod.description}</div>
+                      </div>
+                      {checked && (
+                        <span className="badge badge-green text-[10px]">Access granted</span>
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+
+              {saved && (
+                <div className="mt-4 bg-green-50 border border-green-200 text-green-700
+                                text-sm rounded-lg p-3 text-center">
+                  ✅ Permissions saved successfully!
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <div className="flex items-center gap-2 text-sm text-gray-500 mr-auto">
+                <span className="text-lg">🔑</span>
+                {editUser.permissions.length} of {NON_ADMIN_MODULES.length} modules selected
+              </div>
+              <button onClick={() => setEditUser(null)} className="btn btn-secondary">
+                Close
+              </button>
+              <button onClick={savePermissions} disabled={saving}
+                className="btn btn-primary">
+                {saving ? 'Saving...' : '💾 Save Permissions'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

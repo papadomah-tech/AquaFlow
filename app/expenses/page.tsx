@@ -2,11 +2,12 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, today, monthStart } from '@/lib/supabase'
 
 const CATS = ['Operator Fee','Salary','Raw Materials','Transport','Utilities','Maintenance','Equipment','Stock Loss','Other']
 
-export default function ExpensesPage() {
+function ExpensesPageInner() {
   const [expenses, setExpenses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -110,5 +111,13 @@ export default function ExpensesPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function ExpensesPage() {
+  return (
+    <ModuleGuard moduleKey="expenses" moduleLabel="Expenses">
+      <ExpensesPageInner />
+    </ModuleGuard>
   )
 }

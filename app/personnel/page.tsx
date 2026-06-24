@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart, countWorkingDays, calcPerfPay } from '@/lib/supabase'
 
-export default function PersonnelPage() {
+function PersonnelPageInner() {
   const [tab, setTab] = useState<'employees'|'perf'|'losses'|'salary'>('employees')
   const [employees, setEmployees] = useState<any[]>([])
   const [losses, setLosses] = useState<any[]>([])
@@ -286,5 +287,13 @@ export default function PersonnelPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function PersonnelPage() {
+  return (
+    <ModuleGuard moduleKey="personnel" moduleLabel="Personnel">
+      <PersonnelPageInner />
+    </ModuleGuard>
   )
 }

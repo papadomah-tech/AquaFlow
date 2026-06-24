@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 
-export default function SalesPage() {
+function SalesPageInner() {
   const [sales, setSales] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [employees, setEmployees] = useState<any[]>([])
@@ -177,5 +178,13 @@ export default function SalesPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function SalesPage() {
+  return (
+    <ModuleGuard moduleKey="sales" moduleLabel="Sales">
+      <SalesPageInner />
+    </ModuleGuard>
   )
 }

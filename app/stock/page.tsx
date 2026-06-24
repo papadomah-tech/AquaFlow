@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtNum, fmtGhc, today } from '@/lib/supabase'
 
-export default function StockPage() {
+function StockPageInner() {
   const [tab, setTab] = useState<'ledger'|'stocktake'|'history'>('ledger')
   const [ledger, setLedger] = useState<any[]>([])
   const [stock, setStock] = useState(0)
@@ -213,5 +214,13 @@ export default function StockPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function StockPage() {
+  return (
+    <ModuleGuard moduleKey="stock" moduleLabel="Stock">
+      <StockPageInner />
+    </ModuleGuard>
   )
 }

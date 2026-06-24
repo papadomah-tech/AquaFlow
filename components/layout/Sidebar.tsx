@@ -1,29 +1,16 @@
 'use client'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
-
-const NAV_ALL = [
-  { href: '/dashboard',      icon: '📊', label: 'Dashboard',    adminOnly: true  },
-  { href: '/raw-materials',  icon: '🧱', label: 'Raw Materials', adminOnly: false },
-  { href: '/production',     icon: '🏭', label: 'Production',    adminOnly: false },
-  { href: '/stock',          icon: '📦', label: 'Stock',         adminOnly: false },
-  { href: '/pricing',        icon: '💰', label: 'Pricing',       adminOnly: false },
-  { href: '/sales',          icon: '💼', label: 'Sales',         adminOnly: false },
-  { href: '/expenses',       icon: '💸', label: 'Expenses',      adminOnly: false },
-  { href: '/reconciliation', icon: '🏦', label: 'Cash & Bank',   adminOnly: false },
-  { href: '/personnel',      icon: '👥', label: 'Personnel',     adminOnly: false },
-  { href: '/reports',        icon: '📈', label: 'Reports',       adminOnly: false },
-  { href: '/settings',       icon: '⚙️', label: 'Settings',      adminOnly: true  },
-]
+import { ALL_MODULES } from '@/lib/modules'
 
 export default function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
-  const pathname  = usePathname()
-  const router    = useRouter()
-  const { isAdmin } = useRole()
+  const pathname = usePathname()
+  const { canAccess, isAdmin } = useRole()
 
-  const NAV = NAV_ALL.filter(n => !n.adminOnly || isAdmin)
+  // Show only modules the user can access
+  const NAV = ALL_MODULES.filter(m => canAccess(m.key))
 
   const signOut = async () => {
     await supabase.auth.signOut()

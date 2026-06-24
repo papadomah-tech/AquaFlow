@@ -4,27 +4,14 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
-
-const NAV_ALL = [
-  { href: '/dashboard',      icon: '📊', label: 'Dashboard',    adminOnly: true  },
-  { href: '/raw-materials',  icon: '🧱', label: 'Raw Materials', adminOnly: false },
-  { href: '/production',     icon: '🏭', label: 'Production',    adminOnly: false },
-  { href: '/stock',          icon: '📦', label: 'Stock',         adminOnly: false },
-  { href: '/pricing',        icon: '💰', label: 'Pricing',       adminOnly: false },
-  { href: '/sales',          icon: '💼', label: 'Sales',         adminOnly: false },
-  { href: '/expenses',       icon: '💸', label: 'Expenses',      adminOnly: false },
-  { href: '/reconciliation', icon: '🏦', label: 'Cash & Bank',   adminOnly: false },
-  { href: '/personnel',      icon: '👥', label: 'Personnel',     adminOnly: false },
-  { href: '/reports',        icon: '📈', label: 'Reports',       adminOnly: false },
-  { href: '/settings',       icon: '⚙️', label: 'Settings',      adminOnly: true  },
-]
+import { ALL_MODULES } from '@/lib/modules'
 
 export default function MobileHeader({ userName }: { userName: string }) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
-  const { isAdmin } = useRole()
+  const { canAccess } = useRole()
 
-  const NAV = NAV_ALL.filter(n => !n.adminOnly || isAdmin)
+  const NAV   = ALL_MODULES.filter(m => canAccess(m.key))
   const label = NAV.find(n => pathname.startsWith(n.href))?.label ?? 'AquaFlow'
 
   const signOut = async () => {

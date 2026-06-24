@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, monthStart, today } from '@/lib/supabase'
 
-export default function ReportsPage() {
+function ReportsPageInner() {
   const [tab, setTab] = useState<'pl'|'salesperson'>('pl')
   const [filter, setFilter] = useState({ from: monthStart(), to: today() })
   const [plData, setPlData] = useState<any>(null)
@@ -156,5 +157,13 @@ export default function ReportsPage() {
         </>
       )}
     </AppLayout>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <ModuleGuard moduleKey="reports" moduleLabel="Reports">
+      <ReportsPageInner />
+    </ModuleGuard>
   )
 }

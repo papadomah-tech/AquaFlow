@@ -2,9 +2,10 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today } from '@/lib/supabase'
 
-export default function RawMaterialsPage() {
+function RawMaterialsPageInner() {
   const [tab, setTab] = useState<'stock'|'rolls'|'purchases'>('stock')
   const [materials, setMaterials] = useState<any[]>([])
   const [rolls, setRolls] = useState<any[]>([])
@@ -237,5 +238,13 @@ export default function RawMaterialsPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function RawMaterialsPage() {
+  return (
+    <ModuleGuard moduleKey="raw-materials" moduleLabel="Raw Materials">
+      <RawMaterialsPageInner />
+    </ModuleGuard>
   )
 }

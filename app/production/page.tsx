@@ -2,11 +2,12 @@
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
+import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtNum, today, monthStart } from '@/lib/supabase'
 
 const OP_FEE = 25
 
-export default function ProductionPage() {
+function ProductionPageInner() {
   const [batches, setBatches] = useState<any[]>([])
   const [rolls, setRolls] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -128,5 +129,13 @@ export default function ProductionPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+export default function ProductionPage() {
+  return (
+    <ModuleGuard moduleKey="production" moduleLabel="Production">
+      <ProductionPageInner />
+    </ModuleGuard>
   )
 }
