@@ -14,49 +14,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const init = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { window.location.href = '/login'; return }
 
-        if (!session) {
-          window.location.href = '/login'
-          return
-        }
-
-        // Try to get profile — if missing, create it automatically
         const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, role')
-          .eq('id', session.user.id)
-          .single()
+          .from('profiles').select('full_name, role')
+          .eq('id', session.user.id).single()
 
         if (profile) {
           setUserName(profile.full_name || session.user.email || 'User')
           setUserRole(profile.role || 'operator')
         } else {
-          // Profile doesn't exist yet — create it
+          // Auto-create missing profile
           const name = session.user.email?.split('@')[0] || 'User'
           await supabase.from('profiles').upsert({
-            id:        session.user.id,
-            full_name: name,
-            role:      'operator',
-            is_active: true,
+            id: session.user.id, full_name: name,
+            role: 'operator', is_active: true,
           })
           setUserName(name)
           setUserRole('operator')
         }
-      } catch (err) {
-        console.error('AppLayout init error:', err)
-        // Still show the app even if profile fetch fails
+      } catch {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          window.location.href = '/login'
-          return
-        }
+        if (!session) { window.location.href = '/login'; return }
         setUserName(session.user.email || 'User')
         setUserRole('operator')
       } finally {
         setLoading(false)
       }
     }
-
     init()
   }, [])
 

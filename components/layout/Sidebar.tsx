@@ -2,25 +2,33 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useRole } from '@/hooks/useRole'
 
-const NAV = [
-  { href: '/dashboard',      icon: '📊', label: 'Dashboard' },
-  { href: '/raw-materials',  icon: '🧱', label: 'Raw Materials' },
-  { href: '/production',     icon: '🏭', label: 'Production' },
-  { href: '/stock',          icon: '📦', label: 'Stock' },
-  { href: '/pricing',        icon: '💰', label: 'Pricing' },
-  { href: '/sales',          icon: '💼', label: 'Sales' },
-  { href: '/expenses',       icon: '💸', label: 'Expenses' },
-  { href: '/reconciliation', icon: '🏦', label: 'Cash & Bank' },
-  { href: '/personnel',      icon: '👥', label: 'Personnel' },
-  { href: '/reports',        icon: '📈', label: 'Reports' },
-  { href: '/settings',       icon: '⚙️',  label: 'Settings' },
+const NAV_ALL = [
+  { href: '/dashboard',      icon: '📊', label: 'Dashboard',    adminOnly: true  },
+  { href: '/raw-materials',  icon: '🧱', label: 'Raw Materials', adminOnly: false },
+  { href: '/production',     icon: '🏭', label: 'Production',    adminOnly: false },
+  { href: '/stock',          icon: '📦', label: 'Stock',         adminOnly: false },
+  { href: '/pricing',        icon: '💰', label: 'Pricing',       adminOnly: false },
+  { href: '/sales',          icon: '💼', label: 'Sales',         adminOnly: false },
+  { href: '/expenses',       icon: '💸', label: 'Expenses',      adminOnly: false },
+  { href: '/reconciliation', icon: '🏦', label: 'Cash & Bank',   adminOnly: false },
+  { href: '/personnel',      icon: '👥', label: 'Personnel',     adminOnly: false },
+  { href: '/reports',        icon: '📈', label: 'Reports',       adminOnly: false },
+  { href: '/settings',       icon: '⚙️', label: 'Settings',      adminOnly: true  },
 ]
 
 export default function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
-  const pathname = usePathname()
-  const router = useRouter()
-  const signOut = async () => { await supabase.auth.signOut(); router.push('/login') }
+  const pathname  = usePathname()
+  const router    = useRouter()
+  const { isAdmin } = useRole()
+
+  const NAV = NAV_ALL.filter(n => !n.adminOnly || isAdmin)
+
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-[220px] bg-[#1F4E79] flex-col z-40 hidden md:flex shadow-xl">
@@ -36,22 +44,33 @@ export default function Sidebar({ userName, userRole }: { userName: string; user
       <div className="px-4 py-3 border-b border-white/10">
         <div className="text-white/70 text-xs">Signed in as</div>
         <div className="text-white text-sm font-medium truncate">{userName}</div>
-        <span className="inline-block mt-1 text-xs bg-white/20 text-white/90 px-2 py-0.5 rounded-full capitalize">{userRole}</span>
+        <span className="inline-block mt-1 text-xs bg-white/20 text-white/90 px-2 py-0.5 rounded-full capitalize">
+          {userRole}
+        </span>
       </div>
       <nav className="flex-1 overflow-y-auto py-2">
-        {NAV.map(({ href, icon, label }) => {
+        {NAV.map(({ href, icon, label, adminOnly }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <Link key={href} href={href}
               className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors
-                ${active ? 'bg-white/20 text-white font-semibold border-r-4 border-white' : 'text-blue-200 hover:bg-white/10 hover:text-white'}`}>
-              <span className="w-5">{icon}</span>{label}
+                ${active
+                  ? 'bg-white/20 text-white font-semibold border-r-4 border-white'
+                  : 'text-blue-200 hover:bg-white/10 hover:text-white'}`}>
+              <span className="w-5">{icon}</span>
+              <span>{label}</span>
+              {adminOnly && (
+                <span className="ml-auto text-[9px] bg-white/20 text-white/70 px-1 rounded">
+                  admin
+                </span>
+              )}
             </Link>
           )
         })}
       </nav>
       <div className="p-4 border-t border-white/10">
-        <button onClick={signOut} className="text-blue-200 hover:text-white text-sm flex items-center gap-2">
+        <button onClick={signOut}
+          className="text-blue-200 hover:text-white text-sm flex items-center gap-2">
           🚪 Sign Out
         </button>
       </div>

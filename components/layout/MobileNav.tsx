@@ -1,19 +1,23 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-
-const MOBILE_NAV = [
-  { href: '/dashboard',  icon: '📊', label: 'Home' },
-  { href: '/sales',      icon: '💼', label: 'Sales' },
-  { href: '/production', icon: '🏭', label: 'Prod.' },
-  { href: '/stock',      icon: '📦', label: 'Stock' },
-  { href: '/personnel',  icon: '👥', label: 'People' },
-]
+import { useRole } from '@/hooks/useRole'
 
 export default function MobileNav() {
-  const pathname = usePathname()
+  const pathname  = usePathname()
+  const { isAdmin } = useRole()
+
+  const MOBILE_NAV = [
+    ...(isAdmin ? [{ href: '/dashboard', icon: '📊', label: 'Home' }] : []),
+    { href: '/sales',      icon: '💼', label: 'Sales'  },
+    { href: '/production', icon: '🏭', label: 'Prod.'  },
+    { href: '/stock',      icon: '📦', label: 'Stock'  },
+    { href: '/personnel',  icon: '👥', label: 'People' },
+  ]
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 md:hidden shadow-lg">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50
+                    md:hidden shadow-lg">
       <div className="flex">
         {MOBILE_NAV.map(({ href, icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')

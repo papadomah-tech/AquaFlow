@@ -1,2 +1,3 @@
 import { redirect } from 'next/navigation'
-export default function Home() { redirect('/dashboard') }
+// Default landing — middleware/AppLayout handles role-based redirect
+export default function Home() { redirect('/sales') }
