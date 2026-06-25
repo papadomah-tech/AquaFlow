@@ -19,6 +19,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'reconciliation', label: 'Cash & Bank',    icon: '🏦', href: '/reconciliation', adminOnly: false, description: 'Bank reconciliation, deposits' },
   { key: 'personnel',      label: 'Personnel',      icon: '👥', href: '/personnel',      adminOnly: false, description: 'Employees, performance pay, losses' },
   { key: 'reports',        label: 'Reports',        icon: '📈', href: '/reports',        adminOnly: false, description: 'P&L, salesperson reports, financial analysis' },
+  { key: 'import',         label: 'Import Data',    icon: '📥', href: '/import',         adminOnly: true,  description: 'Import customers, employees, expenses from CSV' },
   { key: 'settings',       label: 'Settings',       icon: '⚙️', href: '/settings',       adminOnly: true,  description: 'User management and permissions (admin only)' },
 ]
 
