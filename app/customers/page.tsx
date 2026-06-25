@@ -110,10 +110,17 @@ function CustomersPageInner() {
       <div className="card">
         <div className="overflow-x-auto">
           <table className="data-table">
+            <colgroup>
+              <col style={{width:'36px'}} />
+              <col />
+              <col style={{width:'130px'}} />
+              <col style={{width:'160px'}} />
+              <col style={{width:'170px'}} />
+              <col style={{width:'90px'}} />
+            </colgroup>
             <thead>
               <tr>
-                <th className="w-8">#</th><th>Name</th><th className="w-32">Phone</th>
-                <th className="w-40">Email</th><th>Address</th><th className="w-24">Actions</th>
+                <th className="center">#</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -125,15 +132,15 @@ function CustomersPageInner() {
                   </td></tr>
                 : customers.map((c, i) => (
                   <tr key={c.id}>
-                    <td className="text-gray-400 text-xs text-center">{i + 1}</td>
+                    <td className="muted center">{i + 1}</td>
                     <td className="font-medium">{c.name}</td>
                     <td className="text-xs text-gray-500">
                       {c.phone
                         ? <a href={'tel:' + c.phone} className="text-blue-600 hover:underline">{c.phone}</a>
                         : '—'}
                     </td>
-                    <td className="text-xs text-gray-500">{c.email || '—'}</td>
-                    <td className="text-xs text-gray-500 max-w-[150px] truncate">{c.address || '—'}</td>
+                    <td className="muted">{c.email || '—'}</td>
+                    <td className="muted">{c.address || '—'}</td>
                     <td>
                       <div className="flex gap-1">
                         <button onClick={() => openEdit(c)} className="btn btn-sm btn-secondary">Edit</button>

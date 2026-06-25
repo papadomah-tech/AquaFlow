@@ -131,18 +131,29 @@ function ReportsPageInner() {
           {tab === 'salesperson' && (
             <div className="card">
               <table className="data-table">
-                <thead><tr><th>Salesperson</th><th className="w-24">Role</th><th className="text-right w-20">Inv.</th><th className="text-right w-20">Bags</th><th className="text-right w-28">Revenue</th><th className="text-right w-28">Collected</th><th className="text-right w-28">Outstanding</th><th className="text-right w-24">Coll.%</th></tr></thead>
+                <colgroup>
+                <col /><col style={{width:'90px'}} />
+                <col style={{width:'55px'}} /><col style={{width:'75px'}} />
+                <col style={{width:'105px'}} /><col style={{width:'105px'}} />
+                <col style={{width:'105px'}} /><col style={{width:'80px'}} />
+              </colgroup>
+              <thead><tr>
+                <th>Salesperson</th><th>Role</th>
+                <th className="right">Inv.</th><th className="right">Bags</th>
+                <th className="right">Revenue</th><th className="right">Collected</th>
+                <th className="right">Outstanding</th><th className="right">Coll.%</th>
+              </tr></thead>
                 <tbody>
                   {spData.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No data</td></tr>
                   : spData.map((s: any) => (
                     <tr key={s.id}>
                       <td className="font-medium">{s.full_name}</td>
-                      <td className="text-xs text-gray-500">{s.role}</td>
-                      <td className="text-right tabular-nums">{s.invoices}</td>
-                      <td className="text-right tabular-nums">{fmtNum(s.bags)}</td>
-                      <td className="text-right font-medium tabular-nums">{fmtGhc(s.revenue)}</td>
-                      <td className="text-right text-green-700 tabular-nums">{fmtGhc(s.collected)}</td>
-                      <td className="text-right text-red-600 tabular-nums">{fmtGhc(s.outstanding)}</td>
+                      <td className="muted">{s.role}</td>
+                      <td className="num">{s.invoices}</td>
+                      <td className="num">{fmtNum(s.bags)}</td>
+                      <td className="num">{fmtGhc(s.revenue)}</td>
+                      <td className="num-green">{fmtGhc(s.collected)}</td>
+                      <td className="num-red">{fmtGhc(s.outstanding)}</td>
                       <td className="text-right">
                         <span className={'badge ' + (parseFloat(s.collRate) >= 90 ? 'badge-green' : parseFloat(s.collRate) >= 70 ? 'badge-yellow' : 'badge-red')}>
                           {s.collRate}%

@@ -113,23 +113,22 @@ export default function DashboardPage() {
             </div>
             <div className="overflow-x-auto">
               <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="w-24">Date</th><th>Customer</th>
-                    <th className="text-right w-16">Bags</th>
-                    <th className="text-right w-28">Total</th>
-                    <th className="w-20">Status</th>
-                  </tr>
+                <colgroup>
+                  <col style={{width:"90px"}} /><col />
+                  <col style={{width:"65px"}} /><col style={{width:"110px"}} />
+                  <col style={{width:"75px"}} />
+                </colgroup>
+                <thead><tr><th>Date</th><th>Customer</th><th className="right">Bags</th><th className="right">Total</th><th>Status</th></tr>
                 </thead>
                 <tbody>
                   {recent.length === 0
                     ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">No sales in this period</td></tr>
                     : recent.map((s: any) => (
                     <tr key={s.id}>
-                      <td className="text-gray-500 text-xs whitespace-nowrap">{s.sale_date}</td>
+                      <td className="muted">{s.sale_date}</td>
                       <td className="font-medium">{s.customer_name}</td>
-                      <td className="text-right tabular-nums">{fmtNum(s.bags_sold)}</td>
-                      <td className="text-right font-medium tabular-nums">{fmtGhc(s.total_amount)}</td>
+                      <td className="num">{fmtNum(s.bags_sold)}</td>
+                      <td className="num">{fmtGhc(s.total_amount)}</td>
                       <td>
                         <span className={'badge ' + (
                           s.payment_status === 'paid' ? 'badge-green' :

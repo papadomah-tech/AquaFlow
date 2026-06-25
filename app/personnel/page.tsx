@@ -102,16 +102,30 @@ function PersonnelPageInner() {
       {tab === 'employees' && (
         <div className="card">
           <table className="data-table">
-            <thead><tr><th>Name</th><th className="w-28">Role</th><th className="w-28">Phone</th><th className="text-right w-28">Monthly Sal.</th><th className="text-right w-28">Daily Target</th><th className="w-20">Status</th><th className="w-28">Actions</th></tr></thead>
+            <colgroup>
+            <col /><col style={{width:'110px'}} /><col style={{width:'110px'}} />
+            <col style={{width:'110px'}} /><col style={{width:'110px'}} />
+            <col style={{width:'75px'}} /><col style={{width:'110px'}} />
+          </colgroup>
+          <colgroup>
+            <col /><col style={{width:'110px'}} /><col style={{width:'110px'}} />
+            <col style={{width:'110px'}} /><col style={{width:'100px'}} />
+            <col style={{width:'75px'}} /><col style={{width:'110px'}} />
+          </colgroup>
+          <thead><tr>
+            <th>Name</th><th>Role</th><th>Phone</th>
+            <th className="right">Monthly Sal.</th><th className="right">Daily Target</th>
+            <th>Status</th><th>Actions</th>
+          </tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">Loading...</td></tr>
               : employees.map((e: any) => (
                 <tr key={e.id}>
                   <td className="font-medium">{e.full_name}</td>
-                  <td className="text-gray-500 text-xs">{e.role}</td>
+                  <td className="muted">{e.role}</td>
                   <td className="text-xs text-gray-500">{e.phone||'-'}</td>
-                  <td className="text-right tabular-nums">{fmtGhc(e.salary)}</td>
-                  <td className="text-right">{e.sales_target_daily} bags/day</td>
+                  <td className="num">{fmtGhc(e.salary)}</td>
+                  <td className="num">{e.sales_target_daily}/day</td>
                   <td><span className={'badge '+(e.status==='active'?'badge-green':'badge-gray')}>{e.status}</span></td>
                   <td><div className="flex gap-1">
                     <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
@@ -182,16 +196,29 @@ function PersonnelPageInner() {
       {tab === 'losses' && (
         <div className="card">
           <table className="data-table">
-            <thead><tr><th className="w-24">Date</th><th className="w-32">Employee</th><th className="w-32">Type</th><th>Description</th><th className="text-right w-28">Amount</th><th className="w-20">Status</th></tr></thead>
+            <colgroup>
+            <col style={{width:'90px'}} /><col style={{width:'130px'}} />
+            <col style={{width:'120px'}} /><col />
+            <col style={{width:'105px'}} /><col style={{width:'75px'}} />
+          </colgroup>
+          <colgroup>
+            <col style={{width:'90px'}} /><col style={{width:'130px'}} />
+            <col style={{width:'120px'}} /><col />
+            <col style={{width:'105px'}} /><col style={{width:'75px'}} />
+          </colgroup>
+          <thead><tr>
+            <th>Date</th><th>Employee</th><th>Type</th>
+            <th>Description</th><th className="right">Amount</th><th>Status</th>
+          </tr></thead>
             <tbody>
               {losses.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">No losses recorded</td></tr>
               : losses.map((l: any) => (
                 <tr key={l.id}>
-                  <td className="text-xs text-gray-500 whitespace-nowrap">{l.loss_date}</td>
-                  <td className="font-medium">{l.employees?.full_name}</td>
+                  <td className="muted">{l.loss_date}</td>
+                  <td className="text-sm font-medium">{l.employees?.full_name}</td>
                   <td><span className="badge badge-red">{l.loss_type}</span></td>
                   <td className="text-xs">{l.description}</td>
-                  <td className="text-right font-medium text-red-600 tabular-nums">{fmtGhc(l.loss_amount)}</td>
+                  <td className="num-red">{fmtGhc(l.loss_amount)}</td>
                   <td><span className={'badge ' + (l.posted ? 'badge-green' : 'badge-yellow')}>{l.posted ? 'Posted' : 'Pending'}</span></td>
                 </tr>
               ))}
@@ -204,7 +231,15 @@ function PersonnelPageInner() {
       {tab === 'salary' && (
         <div className="card">
           <table className="data-table">
-            <thead><tr><th>Date</th><th>Employee</th><th>Type</th><th>Period</th><th className="text-right">Amount</th><th>Notes</th></tr></thead>
+            <colgroup>
+            <col style={{width:'90px'}} /><col style={{width:'140px'}} />
+            <col style={{width:'110px'}} /><col style={{width:'180px'}} />
+            <col style={{width:'105px'}} /><col />
+          </colgroup>
+          <thead><tr>
+            <th>Date</th><th>Employee</th><th>Type</th>
+            <th>Period</th><th className="right">Amount</th><th>Notes</th>
+          </tr></thead>
             <tbody>
               {salaryPay.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">No salary payments</td></tr>
               : salaryPay.map((p: any) => (

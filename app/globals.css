@@ -9,12 +9,29 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #F5F7FA; }
 
 .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 p-4; }
 .stat-card { @apply bg-white rounded-xl p-4 shadow-sm border-l-4; }
-.data-table { @apply w-full text-sm border-collapse; }
-.data-table th { @apply text-left text-xs font-semibold text-gray-500 uppercase tracking-wider py-2.5 px-3 bg-gray-50 border-b border-gray-200; }
-.data-table td { @apply py-2 px-3 border-b border-gray-100 text-gray-800; }
-.data-table td.nowrap { white-space: nowrap; }
-.data-table th { white-space: nowrap; }
+.data-table { @apply w-full text-sm; border-collapse: collapse; table-layout: fixed; }
+.data-table th {
+  @apply text-left text-xs font-semibold text-gray-500 uppercase tracking-wider
+         py-2.5 px-3 bg-gray-50 border-b border-gray-200;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.data-table td {
+  @apply py-2.5 px-3 border-b border-gray-100 text-gray-800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-table td.wrap { white-space: normal; }
 .data-table tr:hover td { @apply bg-blue-50/50; }
+.data-table th.right, .data-table td.right { text-align: right; }
+.data-table th.center, .data-table td.center { text-align: center; }
+/* Numeric cells */
+.data-table td.num { @apply tabular-nums text-right font-medium; }
+.data-table td.num-green { @apply tabular-nums text-right font-medium text-green-700; }
+.data-table td.num-red   { @apply tabular-nums text-right font-medium text-red-600; }
+.data-table td.num-blue  { @apply tabular-nums text-right font-medium text-[#1F4E79]; }
+.data-table td.muted { @apply text-xs text-gray-500; }
 
 .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer border-0 disabled:opacity-50; }
 .btn-primary   { @apply bg-[#1F4E79] text-white hover:bg-[#2E75B6]; }
