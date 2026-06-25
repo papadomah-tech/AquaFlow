@@ -16,7 +16,7 @@ import sqlite3, json, sys, os
 from datetime import datetime
 
 # ── CONFIGURE THESE ──────────────────────────────────────────────────────────
-SQLITE_PATH  = r"C:\AquaFlow\data\aquaflow.db"  # path to your .db file
+SQLITE_PATH  = r"C:\AquaFlow\src"  # path to your .db file
 SUPABASE_URL = "https://qacfupjeejsahurhsgzs.supabase.co/rest/v1/"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhY2Z1cGplZWpzYWh1cmhzZ3pzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjE2OTQ4NCwiZXhwIjoyMDk3NzQ1NDg0fQ.LNccNnSnvutVkH25TZIqbRhHkZ2_Ln3bSWUW3myNmVI"      # use SERVICE ROLE key, not anon
 # ─────────────────────────────────────────────────────────────────────────────
