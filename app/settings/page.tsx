@@ -155,11 +155,11 @@ export default function SettingsPage() {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Role</th>
-                  <th>Linked Employee</th>
+                  <th className="w-28">Role</th>
+                  <th className="w-36">Linked Employee</th>
                   <th>Modules</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th className="w-20">Status</th>
+                  <th className="w-48">Actions</th>
                 </tr>
               </thead>
               <tbody>

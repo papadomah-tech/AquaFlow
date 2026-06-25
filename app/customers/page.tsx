@@ -112,8 +112,8 @@ function CustomersPageInner() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>#</th><th>Name</th><th>Phone</th>
-                <th>Email</th><th>Address</th><th>Actions</th>
+                <th className="w-8">#</th><th>Name</th><th className="w-32">Phone</th>
+                <th className="w-40">Email</th><th>Address</th><th className="w-24">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -125,7 +125,7 @@ function CustomersPageInner() {
                   </td></tr>
                 : customers.map((c, i) => (
                   <tr key={c.id}>
-                    <td className="text-gray-400 text-xs">{i + 1}</td>
+                    <td className="text-gray-400 text-xs text-center">{i + 1}</td>
                     <td className="font-medium">{c.name}</td>
                     <td className="text-xs text-gray-500">
                       {c.phone

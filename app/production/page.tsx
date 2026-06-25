@@ -78,17 +78,17 @@ function ProductionPageInner() {
       <div className="card">
         <div className="overflow-x-auto">
           <table className="data-table">
-            <thead><tr><th>Batch #</th><th>Date</th><th>Roll Film</th><th className="text-right">Bags</th><th className="text-right">Op. Fee</th><th>Notes</th><th>Actions</th></tr></thead>
+            <thead><tr><th className="w-40">Batch #</th><th className="w-24">Date</th><th className="w-36">Roll Film</th><th className="text-right w-24">Bags</th><th className="text-right w-28">Op. Fee</th><th>Notes</th><th className="w-20">Actions</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">Loading...</td></tr>
               : batches.length===0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No batches found</td></tr>
               : batches.map((b:any) => (
                 <tr key={b.id}>
-                  <td className="font-mono text-xs">{b.batch_number}</td>
-                  <td className="text-gray-500 text-xs">{b.batch_date}</td>
+                  <td className="font-mono text-xs whitespace-nowrap">{b.batch_number}</td>
+                  <td className="text-gray-500 text-xs whitespace-nowrap">{b.batch_date}</td>
                   <td className="text-xs">{b.roll_ref||'-'}</td>
-                  <td className="text-right font-bold text-green-700">{fmtNum(b.bags_produced)}</td>
-                  <td className="text-right text-orange-600">GHc {((b.bags_produced/100)*OP_FEE).toFixed(2)}</td>
+                  <td className="text-right font-bold text-green-700 tabular-nums">{fmtNum(b.bags_produced)}</td>
+                  <td className="text-right text-orange-600 tabular-nums whitespace-nowrap">GHc {((b.bags_produced/100)*OP_FEE).toFixed(2)}</td>
                   <td className="text-xs text-gray-500">{b.notes||'-'}</td>
                   <td><div className="flex gap-1">
                     <button onClick={()=>{setEditBatch(b);setForm({batch_date:b.batch_date,roll_film_id:String(b.roll_film_id??''),bags_produced:String(b.bags_produced),bags_consumed:String(b.bags_consumed),notes:b.notes??''});setShowForm(true)}} className="btn btn-sm btn-secondary">Edit</button>

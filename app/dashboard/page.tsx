@@ -115,10 +115,10 @@ export default function DashboardPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Date</th><th>Customer</th>
-                    <th className="text-right">Bags</th>
-                    <th className="text-right">Total</th>
-                    <th>Status</th>
+                    <th className="w-24">Date</th><th>Customer</th>
+                    <th className="text-right w-16">Bags</th>
+                    <th className="text-right w-28">Total</th>
+                    <th className="w-20">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -126,10 +126,10 @@ export default function DashboardPage() {
                     ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">No sales in this period</td></tr>
                     : recent.map((s: any) => (
                     <tr key={s.id}>
-                      <td className="text-gray-500 text-xs">{s.sale_date}</td>
+                      <td className="text-gray-500 text-xs whitespace-nowrap">{s.sale_date}</td>
                       <td className="font-medium">{s.customer_name}</td>
-                      <td className="text-right">{fmtNum(s.bags_sold)}</td>
-                      <td className="text-right font-medium">{fmtGhc(s.total_amount)}</td>
+                      <td className="text-right tabular-nums">{fmtNum(s.bags_sold)}</td>
+                      <td className="text-right font-medium tabular-nums">{fmtGhc(s.total_amount)}</td>
                       <td>
                         <span className={'badge ' + (
                           s.payment_status === 'paid' ? 'badge-green' :

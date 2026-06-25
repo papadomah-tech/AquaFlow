@@ -63,16 +63,16 @@ function ExpensesPageInner() {
       <div className="card">
         <div className="overflow-x-auto">
           <table className="data-table">
-            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th className="text-right">Amount</th><th>Paid To</th><th>Actions</th></tr></thead>
+            <thead><tr><th className="w-24">Date</th><th className="w-32">Category</th><th>Description</th><th className="text-right w-28">Amount</th><th className="w-32">Paid To</th><th className="w-20">Actions</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading...</td></tr>
               : expenses.length===0 ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">No expenses found</td></tr>
               : expenses.map((e:any) => (
                 <tr key={e.id}>
-                  <td className="text-gray-500 text-xs">{e.expense_date}</td>
+                  <td className="text-gray-500 text-xs whitespace-nowrap">{e.expense_date}</td>
                   <td><span className="badge badge-blue">{e.category}</span></td>
                   <td>{e.description}</td>
-                  <td className="text-right font-medium text-red-600">{fmtGhc(e.amount)}</td>
+                  <td className="text-right font-medium text-red-600 tabular-nums">{fmtGhc(e.amount)}</td>
                   <td className="text-gray-500 text-xs">{e.paid_to||'-'}</td>
                   <td><div className="flex gap-1">
                     <button onClick={()=>{setEditItem(e);setForm({expense_date:e.expense_date,category:e.category,description:e.description,amount:String(e.amount),paid_to:e.paid_to??''});setShowForm(true)}} className="btn btn-sm btn-secondary">Edit</button>

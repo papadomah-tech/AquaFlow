@@ -99,16 +99,16 @@ function ReconciliationPageInner() {
           <div className="card">
             <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Bank Deposits in Period</div>
             <table className="data-table">
-              <thead><tr><th>Date</th><th>Bank</th><th>Reference</th><th>Deposited By</th><th className="text-right">Amount</th><th>Actions</th></tr></thead>
+              <thead><tr><th className="w-24">Date</th><th>Bank / Account</th><th className="w-28">Reference</th><th className="w-28">Deposited By</th><th className="text-right w-28">Amount</th><th className="w-16">Actions</th></tr></thead>
               <tbody>
                 {deposits.length === 0 ? <tr><td colSpan={6} className="text-center py-6 text-gray-400">No deposits in this period</td></tr>
                 : deposits.map((d: any) => (
                   <tr key={d.id}>
-                    <td className="text-xs text-gray-500">{d.deposit_date}</td>
+                    <td className="text-xs text-gray-500 whitespace-nowrap">{d.deposit_date}</td>
                     <td className="font-medium">{d.bank_name}</td>
                     <td className="text-xs text-gray-500">{d.reference||'-'}</td>
                     <td className="text-xs text-gray-500">{d.deposited_by||'-'}</td>
-                    <td className="text-right font-bold text-blue-700">{fmtGhc(d.amount)}</td>
+                    <td className="text-right font-bold text-blue-700 tabular-nums">{fmtGhc(d.amount)}</td>
                     <td><button onClick={()=>delDeposit(d)} className="btn btn-sm btn-danger">Del</button></td>
                   </tr>
                 ))}

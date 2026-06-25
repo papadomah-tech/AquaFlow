@@ -98,15 +98,15 @@ function RawMaterialsPageInner() {
           {tab === 'stock' && (
             <div className="card">
               <table className="data-table">
-                <thead><tr><th>Material</th><th>Unit</th><th className="text-right">Current Stock</th><th className="text-right">Low Stock Alert</th><th>Status</th></tr></thead>
+                <thead><tr><th>Material</th><th className="w-20">Unit</th><th className="text-right w-32">Current Stock</th><th className="text-right w-32">Low Stock Alert</th><th className="w-20">Status</th></tr></thead>
                 <tbody>
                   {materials.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">No materials yet</td></tr>
                   : materials.map((m: any) => (
                     <tr key={m.id}>
                       <td className="font-medium">{m.name}</td>
                       <td className="text-gray-500">{m.unit}</td>
-                      <td className="text-right font-bold">{fmtNum(m.current_stock)}</td>
-                      <td className="text-right text-gray-500">{fmtNum(m.low_stock_threshold)}</td>
+                      <td className="text-right font-bold tabular-nums">{fmtNum(m.current_stock)}</td>
+                      <td className="text-right text-gray-500 tabular-nums">{fmtNum(m.low_stock_threshold)}</td>
                       <td><span className={'badge ' + (m.current_stock <= m.low_stock_threshold ? 'badge-red' : 'badge-green')}>{m.current_stock <= m.low_stock_threshold ? 'LOW' : 'OK'}</span></td>
                     </tr>
                   ))}
@@ -119,7 +119,7 @@ function RawMaterialsPageInner() {
           {tab === 'rolls' && (
             <div className="card">
               <table className="data-table">
-                <thead><tr><th>Label</th><th>Date</th><th>Supplier</th><th className="text-right">Weight (Kg)</th><th className="text-right">Cost</th><th className="text-right">Expected</th><th className="text-right">Produced</th><th className="text-right">Remaining</th><th className="text-right">Util %</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead><tr><th className="w-36">Label</th><th className="w-24">Date</th><th className="w-28">Supplier</th><th className="text-right w-24">Wt (Kg)</th><th className="text-right w-24">Cost</th><th className="text-right w-24">Expected</th><th className="text-right w-24">Produced</th><th className="text-right w-24">Remaining</th><th className="text-right w-16">Util%</th><th className="w-24">Status</th><th className="w-24">Actions</th></tr></thead>
                 <tbody>
                   {rolls.length === 0 ? <tr><td colSpan={11} className="text-center py-8 text-gray-400">No rolls registered</td></tr>
                   : rolls.map((r: any) => {
@@ -127,14 +127,14 @@ function RawMaterialsPageInner() {
                     const util = r.bags_expected > 0 ? (r.bags_produced / r.bags_expected * 100).toFixed(1) : '0.0'
                     return (
                       <tr key={r.id}>
-                        <td className="font-mono text-xs font-medium">{r.label}</td>
+                        <td className="font-mono text-xs font-medium whitespace-nowrap">{r.label}</td>
                         <td className="text-xs text-gray-500">{r.purchase_date}</td>
                         <td className="text-xs text-gray-500">{r.supplier || '-'}</td>
-                        <td className="text-right">{r.weight_kg}</td>
-                        <td className="text-right">{fmtGhc(r.cost)}</td>
-                        <td className="text-right">{fmtNum(r.bags_expected)}</td>
-                        <td className="text-right text-green-700 font-medium">{fmtNum(r.bags_produced)}</td>
-                        <td className="text-right">{fmtNum(remaining)}</td>
+                        <td className="text-right tabular-nums">{r.weight_kg}</td>
+                        <td className="text-right tabular-nums">{fmtGhc(r.cost)}</td>
+                        <td className="text-right tabular-nums">{fmtNum(r.bags_expected)}</td>
+                        <td className="text-right text-green-700 font-medium tabular-nums">{fmtNum(r.bags_produced)}</td>
+                        <td className="text-right tabular-nums">{fmtNum(remaining)}</td>
                         <td className="text-right">{util}%</td>
                         <td><span className={'badge ' + statusBadge(r.status)}>{r.status}</span></td>
                         <td>

@@ -242,15 +242,15 @@ function SalesPageInner() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Date</th>
+                <th className="w-24">Date</th>
                 <th>Customer</th>
-                {isAdmin && <th>Rep</th>}
-                <th className="text-right">Bags</th>
-                <th className="text-right">Total</th>
-                <th className="text-right">Paid</th>
-                <th className="text-right">Balance</th>
-                <th>Status</th>
-                <th>Actions</th>
+                {isAdmin && <th className="w-28">Rep</th>}
+                <th className="text-right w-20">Bags</th>
+                <th className="text-right w-28">Total</th>
+                <th className="text-right w-24">Paid</th>
+                <th className="text-right w-24">Balance</th>
+                <th className="w-20">Status</th>
+                <th className="w-20">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -260,12 +260,12 @@ function SalesPageInner() {
                 ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">No sales found</td></tr>
                 : sales.map((s: any) => (
                 <tr key={s.id}>
-                  <td className="text-gray-500 text-xs">{s.sale_date}</td>
+                  <td className="text-gray-500 text-xs whitespace-nowrap">{s.sale_date}</td>
                   <td className="font-medium">{s.customers?.name}</td>
                   {isAdmin && <td className="text-xs text-gray-500">{s.employees?.full_name ?? '-'}</td>}
-                  <td className="text-right">{fmtNum(s.bags_sold)}</td>
-                  <td className="text-right font-medium">{fmtGhc(s.total_amount)}</td>
-                  <td className="text-right text-green-700">{fmtGhc(s.amount_paid)}</td>
+                  <td className="text-right tabular-nums">{fmtNum(s.bags_sold)}</td>
+                  <td className="text-right font-medium tabular-nums">{fmtGhc(s.total_amount)}</td>
+                  <td className="text-right text-green-700 tabular-nums">{fmtGhc(s.amount_paid)}</td>
                   <td className="text-right text-red-600">{fmtGhc(s.outstanding_balance)}</td>
                   <td>
                     <span className={'badge ' + (

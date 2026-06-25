@@ -3,13 +3,13 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtNum, fmtGhc, today } from '@/lib/supabase'
+import { supabase, fmtNum, today } from '@/lib/supabase'
 
 function StockPageInner() {
-  const [tab, setTab] = useState<'ledger'|'stocktake'|'history'>('ledger')
-  const [ledger, setLedger] = useState<any[]>([])
-  const [stock, setStock] = useState(0)
-  const [takes, setTakes] = useState<any[]>([])
+  const [tab, setTab]         = useState<'ledger'|'stocktake'>('ledger')
+  const [ledger, setLedger]   = useState<any[]>([])
+  const [stock, setStock]     = useState(0)
+  const [takes, setTakes]     = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showTake, setShowTake] = useState(false)
   const [physical, setPhysical] = useState('')
@@ -21,179 +21,349 @@ function StockPageInner() {
   const loadAll = useCallback(async () => {
     setLoading(true)
     const [{ data: fi }, { data: st }] = await Promise.all([
-      supabase.from('finished_inventory').select('*').order('transaction_date', { ascending: false }).limit(200),
-      supabase.from('stock_takes').select('*,stock_take_items(*)').order('take_date', { ascending: false }),
+      supabase.from('finished_inventory')
+        .select('*').order('transaction_date', { ascending: false }).limit(200),
+      supabase.from('stock_takes')
+        .select('*,stock_take_items(*)').order('take_date', { ascending: false }),
     ])
     const rows = fi ?? []
-    const currentStock = rows.reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
-    setLedger(rows); setStock(currentStock); setTakes(st ?? [])
+    setLedger(rows)
+    setStock(rows.reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0))
+    setTakes(st ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
   useEffect(() => {
-    supabase.from('employees').select('id,full_name').eq('status','active').order('full_name').then(({ data }) => setEmployees(data ?? []))
+    supabase.from('employees').select('id,full_name')
+      .eq('status','active').order('full_name')
+      .then(({ data }) => setEmployees(data ?? []))
   }, [])
 
-  const variance = physical ? parseInt(physical) - stock : null
-  const varColor = variance === null ? '' : variance < 0 ? 'text-red-600' : variance > 0 ? 'text-orange-600' : 'text-green-600'
+  const variance = physical !== '' ? parseInt(physical||'0') - stock : null
+  const varColor = variance === null ? 'text-gray-500'
+    : variance < 0 ? 'text-red-600'
+    : variance > 0 ? 'text-orange-600'
+    : 'text-green-600'
 
   const saveStockTake = async () => {
     if (!physical) return
     const counted  = parseInt(physical)
-    const variance = counted - stock
-    if (!confirm(`Confirm stock take?\n\nSystem: ${stock.toLocaleString()} bags\nPhysical: ${counted.toLocaleString()} bags\nVariance: ${variance >= 0 ? '+' : ''}${variance.toLocaleString()} bags\n\nSystem stock will be adjusted to match physical count.`)) return
+    const diff     = counted - stock
+    if (!confirm(
+      `Confirm stock take?\n\nSystem: ${stock.toLocaleString()} bags\n` +
+      `Physical: ${counted.toLocaleString()} bags\n` +
+      `Variance: ${diff >= 0 ? '+' : ''}${diff.toLocaleString()} bags\n\n` +
+      `System stock will be adjusted to match physical count.`
+    )) return
 
-    const { data: st } = await supabase.from('stock_takes').insert({ take_date: takeDate, taken_by: takenBy ? parseInt(takenBy) : null, notes: takeNotes || `System ${stock} → Physical ${counted}`, status: 'draft' }).select().single()
+    const { data: st } = await supabase.from('stock_takes').insert({
+      take_date: takeDate,
+      taken_by:  takenBy ? parseInt(takenBy) : null,
+      notes:     takeNotes || `System ${stock} → Physical ${counted}`,
+      status:    'draft',
+    }).select().single()
     if (!st) return
 
-    await supabase.from('stock_take_items').insert({ stock_take_id: st.id, item_type: 'finished', item_name: 'Sachet Water Bags', unit: 'bags', system_qty: stock, counted_qty: counted, variance })
+    await supabase.from('stock_take_items').insert({
+      stock_take_id: st.id, item_type: 'finished',
+      item_name: 'Sachet Water Bags', unit: 'bags',
+      system_qty: stock, counted_qty: counted, variance: diff,
+    })
 
-    if (variance !== 0) {
-      await supabase.from('finished_inventory').insert({ bags_in: Math.max(0, variance), bags_out: Math.max(0, -variance), transaction_date: takeDate, reference_type: 'adjustment', notes: `Stock Take #${st.id}: System ${stock} → Physical ${counted} (variance ${variance >= 0 ? '+' : ''}${variance})` })
+    if (diff !== 0) {
+      await supabase.from('finished_inventory').insert({
+        bags_in:          Math.max(0, diff),
+        bags_out:         Math.max(0, -diff),
+        transaction_date: takeDate,
+        reference_type:   'adjustment',
+        notes: `Stock Take #${st.id}: System ${stock} → Physical ${counted} (${diff >= 0 ? '+' : ''}${diff})`,
+      })
     }
 
-    setShowTake(false); setPhysical(''); setTakeNotes('')
+    setShowTake(false); setPhysical(''); setTakeNotes(''); setTakenBy('')
     loadAll()
   }
 
-  const refType = (t: string) => {
-    const m: Record<string, [string, string]> = {
-      production: ['badge-green', 'Production'], sale: ['badge-red', 'Sale'],
-      adjustment: ['badge-blue', 'Adjustment'], protocol: ['badge-yellow', 'Protocol'],
-      loss: ['badge-gray', 'Loss']
-    }
-    return m[t] ?? ['badge-gray', t]
+  const BADGE: Record<string,[string,string]> = {
+    production: ['badge-green',  'Production'],
+    sale:       ['badge-red',    'Sale'      ],
+    adjustment: ['badge-blue',   'Adjustment'],
+    protocol:   ['badge-yellow', 'Protocol'  ],
+    loss:       ['badge-gray',   'Loss'      ],
   }
+
+  // ── Running balance for ledger ─────────────────────────────────────────────
+  const withBalance = (() => {
+    let running = 0
+    const sorted = [...ledger].reverse()
+    const out = sorted.map(r => {
+      running += (r.bags_in||0) - (r.bags_out||0)
+      return { ...r, balance: running }
+    })
+    return out.reverse()
+  })()
 
   return (
     <AppLayout>
+      {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="page-header">
-        <h1 className="page-title">Stock</h1>
-        <button onClick={() => setShowTake(true)} className="btn btn-primary">📋 Stock Take</button>
+        <h1 className="page-title">📦 Stock</h1>
+        <button onClick={() => setShowTake(true)} className="btn btn-primary">
+          📋 Stock Take
+        </button>
       </div>
 
-      {/* Current stock banner */}
-      <div className="card mb-4 flex items-center gap-6">
-        <div>
-          <div className="text-xs text-gray-500 font-medium">Current Bags in Stock</div>
-          <div className="text-4xl font-bold text-[#1F4E79]">{fmtNum(stock)}</div>
-          <div className="text-xs text-gray-400 mt-0.5">bags</div>
+      {/* ── Summary card ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="stat-card col-span-2 md:col-span-1" style={{ borderLeftColor: '#1F4E79' }}>
+          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+            Current Stock
+          </div>
+          <div className="text-3xl font-bold text-[#1F4E79] mt-1">{fmtNum(stock)}</div>
+          <div className="text-xs text-gray-400 mt-0.5">bags on hand</div>
         </div>
-        <div className="h-16 w-px bg-gray-200" />
-        <div className="text-sm text-gray-500">
-          Based on {ledger.length} ledger entries.<br/>
-          Last entry: {ledger[0]?.transaction_date ?? '-'}
+        <div className="stat-card" style={{ borderLeftColor: '#1B5E20' }}>
+          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+            Total IN
+          </div>
+          <div className="text-xl font-bold text-green-700 mt-1">
+            +{fmtNum(ledger.reduce((a,r) => a + (r.bags_in||0), 0))}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">bags produced</div>
+        </div>
+        <div className="stat-card" style={{ borderLeftColor: '#C00000' }}>
+          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+            Total OUT
+          </div>
+          <div className="text-xl font-bold text-red-600 mt-1">
+            -{fmtNum(ledger.reduce((a,r) => a + (r.bags_out||0), 0))}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">bags dispatched</div>
+        </div>
+        <div className="stat-card" style={{ borderLeftColor: '#2E75B6' }}>
+          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+            Ledger Entries
+          </div>
+          <div className="text-xl font-bold text-[#2E75B6] mt-1">{ledger.length}</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            Last: {ledger[0]?.transaction_date ?? '—'}
+          </div>
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(['ledger','stocktake','history'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} className={'btn btn-sm ' + (tab === t ? 'btn-primary' : 'btn-secondary')}>
-            {t === 'ledger' ? 'Ledger' : t === 'stocktake' ? 'Stock Take History' : 'All Movements'}
+      {/* ── Tab bar ───────────────────────────────────────────────────────── */}
+      <div className="flex border-b border-gray-200 mb-4">
+        {([
+          ['ledger',    '📒 Ledger'            ],
+          ['stocktake', '📋 Stock Take History' ],
+        ] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors
+              ${tab === key
+                ? 'border-[#1F4E79] text-[#1F4E79]'
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label}
           </button>
         ))}
       </div>
 
-      {loading ? <div className="text-center py-12 text-gray-400">Loading...</div> : (
+      {/* ── Content ───────────────────────────────────────────────────────── */}
+      {loading ? (
+        <div className="text-center py-16 text-gray-400">Loading...</div>
+      ) : (
         <>
+          {/* LEDGER TAB */}
           {tab === 'ledger' && (
-            <div className="card">
+            <div className="card p-0 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="data-table">
-                  <thead><tr><th>Date</th><th>Type</th><th className="text-right">Bags In</th><th className="text-right">Bags Out</th><th>Notes</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th className="w-28">Date</th>
+                      <th className="w-32">Type</th>
+                      <th className="text-right w-28">Bags In</th>
+                      <th className="text-right w-28">Bags Out</th>
+                      <th className="text-right w-28">Balance</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {ledger.map((r: any) => {
-                      const [badge, label] = refType(r.reference_type)
+                    {withBalance.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-gray-400">
+                          No stock movements yet. Record a production batch to get started.
+                        </td>
+                      </tr>
+                    ) : withBalance.map((r: any) => {
+                      const [badge, label] = BADGE[r.reference_type] ?? ['badge-gray', r.reference_type || '—']
                       return (
                         <tr key={r.id}>
-                          <td className="text-gray-500 text-xs">{r.transaction_date}</td>
-                          <td><span className={'badge ' + badge}>{label}</span></td>
-                          <td className="text-right text-green-700 font-medium">{r.bags_in > 0 ? '+' + fmtNum(r.bags_in) : '-'}</td>
-                          <td className="text-right text-red-600 font-medium">{r.bags_out > 0 ? '-' + fmtNum(r.bags_out) : '-'}</td>
-                          <td className="text-xs text-gray-500 max-w-xs truncate">{r.notes ?? '-'}</td>
+                          <td className="text-gray-500 text-xs whitespace-nowrap">
+                            {r.transaction_date}
+                          </td>
+                          <td>
+                            <span className={'badge ' + badge}>{label}</span>
+                          </td>
+                          <td className="text-right font-medium text-green-700 tabular-nums">
+                            {r.bags_in > 0 ? '+' + fmtNum(r.bags_in) : '—'}
+                          </td>
+                          <td className="text-right font-medium text-red-600 tabular-nums">
+                            {r.bags_out > 0 ? '−' + fmtNum(r.bags_out) : '—'}
+                          </td>
+                          <td className="text-right font-bold text-[#1F4E79] tabular-nums">
+                            {fmtNum(r.balance)}
+                          </td>
+                          <td className="text-xs text-gray-500 max-w-xs truncate">
+                            {r.notes ?? '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  {/* Footer total row */}
+                  {withBalance.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-[#1F4E79]">
+                        <td colSpan={4} className="py-2.5 px-3 text-white text-xs font-semibold uppercase tracking-wide">
+                          Closing Balance
+                        </td>
+                        <td className="text-right py-2.5 px-3 font-bold text-white tabular-nums text-sm">
+                          {fmtNum(stock)} bags
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* STOCK TAKE HISTORY TAB */}
+          {tab === 'stocktake' && (
+            <div className="card p-0 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th className="w-10">#</th>
+                      <th className="w-28">Date</th>
+                      <th className="w-24">Status</th>
+                      <th className="text-right w-28">System Qty</th>
+                      <th className="text-right w-28">Physical Count</th>
+                      <th className="text-right w-28">Variance</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {takes.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-12 text-gray-400">
+                          No stock takes yet. Click "📋 Stock Take" to begin.
+                        </td>
+                      </tr>
+                    ) : takes.map((t: any, i: number) => {
+                      const item = t.stock_take_items?.[0]
+                      const v    = item?.variance ?? 0
+                      return (
+                        <tr key={t.id}>
+                          <td className="text-gray-400 text-xs">{takes.length - i}</td>
+                          <td className="text-xs text-gray-500 whitespace-nowrap">{t.take_date}</td>
+                          <td>
+                            <span className={'badge ' + (t.status === 'finalised' ? 'badge-green' : 'badge-yellow')}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="text-right tabular-nums">{fmtNum(item?.system_qty)}</td>
+                          <td className="text-right font-medium tabular-nums">{fmtNum(item?.counted_qty)}</td>
+                          <td className={`text-right font-bold tabular-nums ${v < 0 ? 'text-red-600' : v > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            {v >= 0 ? '+' : ''}{fmtNum(v)}
+                          </td>
+                          <td className="text-xs text-gray-500 max-w-xs truncate">{t.notes ?? '—'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
-
-          {tab === 'stocktake' && (
-            <div className="card">
-              {takes.length === 0 ? <div className="text-center py-12 text-gray-400">No stock takes yet. Click "Stock Take" to start.</div> : (
-                <table className="data-table">
-                  <thead><tr><th>Date</th><th>Status</th><th className="text-right">System</th><th className="text-right">Physical</th><th className="text-right">Variance</th><th>Notes</th></tr></thead>
-                  <tbody>
-                    {takes.map((t: any) => {
-                      const item = t.stock_take_items?.[0]
-                      return (
-                        <tr key={t.id}>
-                          <td className="text-xs text-gray-500">{t.take_date}</td>
-                          <td><span className={'badge ' + (t.status === 'finalised' ? 'badge-green' : 'badge-yellow')}>{t.status}</span></td>
-                          <td className="text-right">{fmtNum(item?.system_qty)}</td>
-                          <td className="text-right font-medium">{fmtNum(item?.counted_qty)}</td>
-                          <td className={'text-right font-medium ' + (item?.variance < 0 ? 'text-red-600' : item?.variance > 0 ? 'text-orange-600' : 'text-green-600')}>
-                            {item?.variance >= 0 ? '+' : ''}{fmtNum(item?.variance)}
-                          </td>
-                          <td className="text-xs text-gray-500">{t.notes}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
             </div>
           )}
         </>
       )}
 
-      {/* Stock Take Modal */}
+      {/* ── STOCK TAKE MODAL ──────────────────────────────────────────────── */}
       {showTake && (
         <div className="modal-overlay" onClick={() => setShowTake(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="font-bold text-[#1F4E79]">Physical Stock Take</h2>
-              <button onClick={() => setShowTake(false)} className="text-gray-400 text-xl">X</button>
+              <h2 className="font-bold text-[#1F4E79]">📋 Physical Stock Take</h2>
+              <button onClick={() => setShowTake(false)} className="text-gray-400 text-xl">✕</button>
             </div>
             <div className="modal-body space-y-4">
-              {/* System position */}
-              <div className="bg-blue-50 rounded-xl p-4">
-                <div className="text-xs text-gray-500 mb-1">Current System Stock</div>
-                <div className="text-4xl font-bold text-[#1F4E79]">{fmtNum(stock)}</div>
-                <div className="text-xs text-gray-400">bags (system closing balance)</div>
+
+              {/* System stock banner */}
+              <div className="bg-[#DEEAF1] rounded-xl p-4 flex items-center gap-4">
+                <div>
+                  <div className="text-xs text-gray-500 font-medium">System Stock</div>
+                  <div className="text-3xl font-bold text-[#1F4E79]">{fmtNum(stock)}</div>
+                  <div className="text-xs text-gray-400">bags (current system balance)</div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={takeDate} onChange={e => setTakeDate(e.target.value)} className="form-input" />
+                  <input type="date" value={takeDate}
+                    onChange={e => setTakeDate(e.target.value)}
+                    className="form-input" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Counted By</label>
-                  <select value={takenBy} onChange={e => setTakenBy(e.target.value)} className="form-select">
-                    <option value="">Select...</option>
-                    {employees.map((e: any) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                  <select value={takenBy}
+                    onChange={e => setTakenBy(e.target.value)}
+                    className="form-select">
+                    <option value="">Select employee...</option>
+                    {employees.map((e: any) => (
+                      <option key={e.id} value={e.id}>{e.full_name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label text-base">Physical Bags Counted *</label>
-                <input type="number" value={physical} onChange={e => setPhysical(e.target.value)} autoFocus
-                  className="form-input text-2xl font-bold text-center py-4" placeholder="Enter count..." />
+                <label className="form-label text-base font-bold">
+                  Physical Bags Counted *
+                </label>
+                <input type="number" value={physical}
+                  onChange={e => setPhysical(e.target.value)}
+                  autoFocus min="0"
+                  className="form-input text-2xl font-bold text-center py-4"
+                  placeholder="0" />
               </div>
 
               {variance !== null && (
-                <div className={'rounded-xl p-4 ' + (variance === 0 ? 'bg-green-50' : variance < 0 ? 'bg-red-50' : 'bg-orange-50')}>
+                <div className={`rounded-xl p-4 border-2 ${
+                  variance === 0 ? 'bg-green-50 border-green-300'
+                  : variance < 0 ? 'bg-red-50 border-red-300'
+                  : 'bg-orange-50 border-orange-300'}`}>
                   <div className="grid grid-cols-3 gap-3 text-center">
-                    <div><div className="text-xs text-gray-500">System</div><div className="font-bold text-[#1F4E79]">{fmtNum(stock)}</div></div>
-                    <div><div className="text-xs text-gray-500">Physical</div><div className="font-bold text-green-700">{fmtNum(parseInt(physical))}</div></div>
-                    <div><div className="text-xs text-gray-500">Variance</div><div className={'font-bold ' + varColor}>{variance >= 0 ? '+' : ''}{fmtNum(variance)}</div></div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">System</div>
+                      <div className="font-bold text-[#1F4E79]">{fmtNum(stock)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Physical</div>
+                      <div className="font-bold text-green-700">{fmtNum(parseInt(physical||'0'))}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Variance</div>
+                      <div className={'font-bold ' + varColor}>
+                        {variance >= 0 ? '+' : ''}{fmtNum(variance)}
+                      </div>
+                    </div>
                   </div>
-                  <div className={'text-center text-sm font-medium mt-3 ' + varColor}>
+                  <div className={'text-center text-sm font-semibold mt-3 ' + varColor}>
                     {variance === 0 ? '✅ Balanced — counts match perfectly'
                      : variance < 0 ? `❌ Shortage of ${Math.abs(variance).toLocaleString()} bags`
                      : `⚠️ Surplus of ${variance.toLocaleString()} bags`}
@@ -203,12 +373,19 @@ function StockPageInner() {
 
               <div className="form-group">
                 <label className="form-label">Notes</label>
-                <textarea value={takeNotes} onChange={e => setTakeNotes(e.target.value)} rows={2} className="form-input" />
+                <textarea value={takeNotes} rows={2}
+                  onChange={e => setTakeNotes(e.target.value)}
+                  className="form-input" placeholder="Optional remarks..." />
               </div>
             </div>
             <div className="modal-footer">
-              <button onClick={() => setShowTake(false)} className="btn btn-secondary">Cancel</button>
-              <button onClick={saveStockTake} disabled={!physical} className="btn btn-primary">Save & Adjust Stock</button>
+              <button onClick={() => setShowTake(false)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button onClick={saveStockTake} disabled={!physical}
+                className="btn btn-primary">
+                💾 Save & Adjust Stock
+              </button>
             </div>
           </div>
         </div>
