@@ -24,7 +24,7 @@ export default function LoginPage() {
 
     if (data?.session) {
       // Full page redirect — ensures session cookie is set properly
-      window.location.href = '/dashboard'
+      window.location.href = '/sales'
     } else {
       setError('Login failed. Please try again.')
       setLoading(false)
