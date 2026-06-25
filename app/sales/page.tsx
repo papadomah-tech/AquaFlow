@@ -5,6 +5,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
+import CustomerSelect from '@/components/ui/CustomerSelect'
 
 function SalesPageInner() {
   const { isAdmin, employeeId, loading: roleLoading } = useRole()
@@ -298,16 +299,12 @@ function SalesPageInner() {
                     onChange={e => setForm(f => ({...f, sale_date: e.target.value}))}
                     className="form-input" />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Customer</label>
-                  <select value={form.customer_id}
-                    onChange={e => setForm(f => ({...f, customer_id: e.target.value}))}
-                    className="form-select">
-                    <option value="">Select...</option>
-                    {customers.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                <div className="form-group col-span-2">
+                  <label className="form-label">Customer *</label>
+                  <CustomerSelect
+                    value={form.customer_id}
+                    onChange={(id) => setForm(f => ({...f, customer_id: id}))}
+                  />
                 </div>
 
                 {/* Admin sees rep selector; non-admin sees their own name */}
