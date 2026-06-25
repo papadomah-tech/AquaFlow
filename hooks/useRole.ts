@@ -4,9 +4,21 @@ import { ALL_MODULES } from '@/lib/modules'
 
 export type UserRole = 'admin' | 'manager' | 'operator' | 'viewer' | null
 
-export function useRole() {
+interface RoleState {
+  role:        UserRole
+  loading:     boolean
+  isAdmin:     boolean
+  permissions: string[]
+  employeeId:  number | null   // linked employee record (if any)
+  userId:      string | null   // auth user id
+  canAccess:   (moduleKey: string) => boolean
+}
+
+export function useRole(): RoleState {
   const [role, setRole]               = useState<UserRole>(null)
   const [permissions, setPermissions] = useState<string[]>([])
+  const [employeeId, setEmployeeId]   = useState<number | null>(null)
+  const [userId, setUserId]           = useState<string | null>(null)
   const [loading, setLoading]         = useState(true)
 
   useEffect(() => {
@@ -15,20 +27,20 @@ export function useRole() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { setLoading(false); return }
 
-        const { data, error } = await supabase
+        setUserId(session.user.id)
+
+        // Fetch profile
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('role, permissions')
           .eq('id', session.user.id)
           .single()
 
-        if (error || !data) {
-          // Profile missing — auto-create and default to operator
+        if (error || !profile) {
+          const name = session.user.email?.split('@')[0] ?? 'User'
           await supabase.from('profiles').upsert({
-            id:          session.user.id,
-            full_name:   session.user.email?.split('@')[0] ?? 'User',
-            role:        'operator',
-            is_active:   true,
-            permissions: ['sales'],
+            id: session.user.id, full_name: name,
+            role: 'operator', is_active: true, permissions: ['sales'],
           })
           setRole('operator')
           setPermissions(['sales'])
@@ -36,17 +48,21 @@ export function useRole() {
           return
         }
 
-        const r = (data.role as UserRole) ?? 'operator'
+        const r = (profile.role as UserRole) ?? 'operator'
         setRole(r)
+        setPermissions(r === 'admin'
+          ? ALL_MODULES.map(m => m.key)
+          : (Array.isArray(profile.permissions) && profile.permissions.length > 0
+              ? profile.permissions : ['sales']))
 
-        if (r === 'admin') {
-          setPermissions(ALL_MODULES.map(m => m.key))
-        } else {
-          const stored: string[] = Array.isArray(data.permissions) && data.permissions.length > 0
-            ? data.permissions
-            : ['sales']
-          setPermissions(stored)
-        }
+        // Fetch linked employee record (for sales filtering)
+        const { data: emp } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('auth_user_id', session.user.id)
+          .single()
+        if (emp) setEmployeeId(emp.id)
+
       } catch (err) {
         console.error('useRole error:', err)
         setRole('operator')
@@ -58,11 +74,9 @@ export function useRole() {
     fetchRole()
   }, [])
 
-  // isAdmin is only true once loading is complete AND role is confirmed admin
   const isAdmin = !loading && role === 'admin'
 
   const canAccess = (moduleKey: string): boolean => {
-    // While loading, deny access to prevent flash of content
     if (loading) return false
     if (role === 'admin') return true
     const mod = ALL_MODULES.find(m => m.key === moduleKey)
@@ -70,5 +84,5 @@ export function useRole() {
     return permissions.includes(moduleKey)
   }
 
-  return { role, loading, isAdmin, permissions, canAccess }
+  return { role, loading, isAdmin, permissions, employeeId, userId, canAccess }
 }
