@@ -2,13 +2,18 @@
   "name": "AquaFlow Manager",
   "short_name": "AquaFlow",
   "description": "Sachet Water Factory Management - VeeBee Ventures",
-  "start_url": "/dashboard",
+  "start_url": "/sales",
   "display": "standalone",
   "background_color": "#F5F7FA",
   "theme_color": "#1F4E79",
   "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["business", "productivity"],
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
