@@ -98,13 +98,32 @@ function SalesPageInner() {
       }
     }
 
+    // Resolve Walk-in Customer to the DB record
+    let customerId: number
+    if (form.customer_id === 'walk-in') {
+      // Get or create the Walk-in Customer record
+      const { data: existing } = await supabase
+        .from('customers').select('id').eq('name', 'Walk-in Customer').single()
+      if (existing) {
+        customerId = existing.id
+      } else {
+        const { data: created } = await supabase
+          .from('customers')
+          .insert({ name: 'Walk-in Customer', phone: '', address: 'Random / Cash customer' })
+          .select().single()
+        customerId = created?.id ?? 1
+      }
+    } else {
+      customerId = parseInt(form.customer_id)
+    }
+
     // Non-admin: force salesperson_id to their own employee id
     const spId = isAdmin
       ? (form.salesperson_id ? parseInt(form.salesperson_id) : null)
       : (employeeId ?? null)
 
     const payload: any = {
-      sale_date: form.sale_date, customer_id: parseInt(form.customer_id),
+      sale_date: form.sale_date, customer_id: customerId,
       salesperson_id: spId, bags_sold: bags, unit_price: price,
       total_amount: total, amount_paid: paid, outstanding_balance: bal,
       payment_status: status, protocol_bags: proto, notes: form.notes,
@@ -385,7 +404,7 @@ function SalesPageInner() {
             <div className="modal-footer">
               <button onClick={() => setShowForm(false)} className="btn btn-secondary">Cancel</button>
               <button onClick={saveSale}
-                disabled={!form.customer_id || !form.bags_sold}
+                disabled={(!form.customer_id && form.customer_id !== 'walk-in') || !form.bags_sold}
                 className="btn btn-primary">
                 Save Sale
               </button>

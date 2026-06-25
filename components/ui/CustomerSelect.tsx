@@ -91,8 +91,12 @@ export default function CustomerSelect({ value, onChange, disabled }: Props) {
         onClick={() => { if (!disabled) { setOpen(o => !o); setShowAddForm(false) } }}
         className={'form-input flex items-center justify-between cursor-pointer select-none '
           + (disabled ? 'opacity-50 cursor-not-allowed' : '')}>
-        <span className={selected ? 'text-gray-800' : 'text-gray-400'}>
-          {selected ? selected.name : 'Select or add customer...'}
+        <span className={selected || value === 'walk-in' ? 'text-gray-800' : 'text-gray-400'}>
+          {value === 'walk-in'
+            ? '🛒 Walk-in Customer'
+            : selected
+            ? selected.name
+            : 'Select or add customer...'}
         </span>
         <span className="text-gray-400 text-xs ml-2">▼</span>
       </div>
@@ -114,9 +118,19 @@ export default function CustomerSelect({ value, onChange, disabled }: Props) {
 
           {/* Customer list */}
           <div className="max-h-48 overflow-y-auto">
-            {customers.length === 0 ? (
+            {/* Walk-in Customer always pinned at top */}
+            {(!search || 'walk-in'.includes(search.toLowerCase()) || 'random'.includes(search.toLowerCase()) || 'cash'.includes(search.toLowerCase())) && (
+              <div
+                onClick={() => { onChange('walk-in'); setOpen(false); setSearch('') }}
+                className={'px-4 py-2.5 cursor-pointer hover:bg-orange-50 transition-colors border-b border-gray-100 '
+                  + (value === 'walk-in' ? 'bg-orange-50 text-orange-700 font-semibold' : 'text-orange-600')}>
+                <div className="text-sm font-medium">🛒 Walk-in Customer</div>
+                <div className="text-xs text-orange-400">Random / Cash customer — no record needed</div>
+              </div>
+            )}
+            {customers.length === 0 && search && !('walk-in'.includes(search.toLowerCase())) ? (
               <div className="px-4 py-3 text-sm text-gray-400 text-center">
-                {search ? 'No customers match "' + search + '"' : 'No customers yet'}
+                No customers match "{search}"
               </div>
             ) : (
               customers.map(c => (
