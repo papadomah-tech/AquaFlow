@@ -93,7 +93,7 @@ export default function CustomerSelect({ value, onChange, disabled }: Props) {
           + (disabled ? 'opacity-50 cursor-not-allowed' : '')}>
         <span className={selected || value === 'walk-in' ? 'text-gray-800' : 'text-gray-400'}>
           {value === 'walk-in'
-            ? '🛒 Walk-in Customer'
+            ? 'Walk-in Customer'
             : selected
             ? selected.name
             : 'Select or add customer...'}
@@ -124,7 +124,7 @@ export default function CustomerSelect({ value, onChange, disabled }: Props) {
                 onClick={() => { onChange('walk-in'); setOpen(false); setSearch('') }}
                 className={'px-4 py-2.5 cursor-pointer hover:bg-orange-50 transition-colors border-b border-gray-100 '
                   + (value === 'walk-in' ? 'bg-orange-50 text-orange-700 font-semibold' : 'text-orange-600')}>
-                <div className="text-sm font-medium">🛒 Walk-in Customer</div>
+                <div className="text-sm font-medium">Walk-in Customer</div>
                 <div className="text-xs text-orange-400">Random / Cash customer — no record needed</div>
               </div>
             )}
