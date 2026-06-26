@@ -53,11 +53,32 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #F5F7FA; }
 .badge-blue   { @apply bg-blue-100 text-blue-800; }
 .badge-gray   { @apply bg-gray-100 text-gray-600; }
 
-.modal-overlay { @apply fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4; }
-.modal-box     { @apply bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto; }
-.modal-box-lg  { @apply bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto; }
-.modal-header  { @apply flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10; }
-.modal-body    { @apply p-5; }
-.modal-footer  { @apply flex gap-3 justify-end p-5 border-t border-gray-100 sticky bottom-0 bg-white; }
+.modal-overlay {
+  @apply fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4;
+  /* On mobile: push modal above the bottom nav bar (64px) */
+  padding-bottom: max(1rem, calc(env(safe-area-inset-bottom, 0px) + 68px));
+  align-items: flex-end;
+}
+@media (min-width: 768px) {
+  .modal-overlay { align-items: center; padding-bottom: 1rem; }
+}
+.modal-box {
+  @apply bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-y-auto;
+  /* Mobile: leave room for bottom nav; cap at 85% of viewport height */
+  max-height: calc(100dvh - 80px - env(safe-area-inset-bottom, 0px) - 68px);
+}
+@media (min-width: 768px) {
+  .modal-box { max-height: 90vh; }
+}
+.modal-box-lg {
+  @apply bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-y-auto;
+  max-height: calc(100dvh - 80px - env(safe-area-inset-bottom, 0px) - 68px);
+}
+@media (min-width: 768px) {
+  .modal-box-lg { max-height: 90vh; }
+}
+.modal-header { @apply flex items-center justify-between p-4 border-b border-gray-100 sticky top-0 bg-white z-10; }
+.modal-body   { @apply p-4; }
+.modal-footer { @apply flex gap-3 justify-end p-4 border-t border-gray-100 sticky bottom-0 bg-white; }
 .page-header   { @apply flex items-center justify-between mb-4 flex-wrap gap-2; }
 .page-title    { @apply text-xl font-bold text-[#1F4E79]; }
