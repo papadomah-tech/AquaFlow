@@ -67,7 +67,9 @@ export default function SettingsPage() {
   if (!isAdmin) return <AccessDenied message="Only administrators can access Settings." />
 
   const ROLES          = ['admin','manager','operator','viewer']
-  const NON_ADMIN_MODS = ALL_MODULES.filter(m => !m.adminOnly)
+  // Show all modules in permissions modal except pure system ones
+  const SYSTEM_ONLY = ['settings', 'import']
+  const NON_ADMIN_MODS = ALL_MODULES.filter(m => !SYSTEM_ONLY.includes(m.key))
 
   const updateRole = async (id: string, role: string) => {
     await supabase.from('profiles').update({ role }).eq('id', id)

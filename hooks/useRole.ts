@@ -71,8 +71,10 @@ export function useRole() {
   const canAccess = (moduleKey: string): boolean => {
     if (loading) return false
     if (role === 'admin') return true
-    const mod = ALL_MODULES.find(m => m.key === moduleKey)
-    if (mod?.adminOnly) return false
+    // settings and import are system-only — never grantable
+    if (['settings', 'import'].includes(moduleKey)) return false
+    // all other modules (including fund-account, sales-account, dashboard)
+    // are accessible if explicitly in permissions
     return permissions.includes(moduleKey)
   }
 
