@@ -3,38 +3,27 @@ import { supabase } from '@/lib/supabase'
 import { ALL_MODULES } from '@/lib/modules'
 
 export type UserRole = 'admin' | 'manager' | 'operator' | 'viewer' | null
+export type EmployeeType = 'rider' | 'staff' | 'factory_manager' | null
 
-interface RoleState {
-  role:        UserRole
-  loading:     boolean
-  isAdmin:     boolean
-  permissions: string[]
-  employeeId:  number | null   // linked employee record (if any)
-  userId:      string | null   // auth user id
-  canAccess:   (moduleKey: string) => boolean
-}
-
-export function useRole(): RoleState {
-  const [role, setRole]               = useState<UserRole>(null)
-  const [permissions, setPermissions] = useState<string[]>([])
-  const [employeeId, setEmployeeId]   = useState<number | null>(null)
-  const [userId, setUserId]           = useState<string | null>(null)
-  const [loading, setLoading]         = useState(true)
+export function useRole() {
+  const [role, setRole]                   = useState<UserRole>(null)
+  const [permissions, setPermissions]     = useState<string[]>([])
+  const [employeeId, setEmployeeId]       = useState<number | null>(null)
+  const [employeeType, setEmployeeType]   = useState<EmployeeType>(null)
+  const [employeeName, setEmployeeName]   = useState<string>('')
+  const [userId, setUserId]               = useState<string | null>(null)
+  const [loading, setLoading]             = useState(true)
 
   useEffect(() => {
     const fetchRole = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { setLoading(false); return }
-
         setUserId(session.user.id)
 
-        // Fetch profile
         const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('role, permissions')
-          .eq('id', session.user.id)
-          .single()
+          .from('profiles').select('role, permissions')
+          .eq('id', session.user.id).single()
 
         if (error || !profile) {
           const name = session.user.email?.split('@')[0] ?? 'User'
@@ -42,10 +31,8 @@ export function useRole(): RoleState {
             id: session.user.id, full_name: name,
             role: 'operator', is_active: true, permissions: ['sales'],
           })
-          setRole('operator')
-          setPermissions(['sales'])
-          setLoading(false)
-          return
+          setRole('operator'); setPermissions(['sales'])
+          setLoading(false); return
         }
 
         const r = (profile.role as UserRole) ?? 'operator'
@@ -55,18 +42,21 @@ export function useRole(): RoleState {
           : (Array.isArray(profile.permissions) && profile.permissions.length > 0
               ? profile.permissions : ['sales']))
 
-        // Fetch linked employee record (for sales filtering)
+        // Fetch linked employee + their type
         const { data: emp } = await supabase
           .from('employees')
-          .select('id')
+          .select('id, full_name, employee_type')
           .eq('auth_user_id', session.user.id)
           .single()
-        if (emp) setEmployeeId(emp.id)
 
+        if (emp) {
+          setEmployeeId(emp.id)
+          setEmployeeName(emp.full_name)
+          setEmployeeType((emp.employee_type as EmployeeType) ?? 'staff')
+        }
       } catch (err) {
         console.error('useRole error:', err)
-        setRole('operator')
-        setPermissions(['sales'])
+        setRole('operator'); setPermissions(['sales'])
       } finally {
         setLoading(false)
       }
@@ -74,7 +64,9 @@ export function useRole(): RoleState {
     fetchRole()
   }, [])
 
-  const isAdmin = !loading && role === 'admin'
+  const isAdmin          = !loading && role === 'admin'
+  const isRider          = !loading && employeeType === 'rider'
+  const isFactoryManager = !loading && (role === 'admin' || employeeType === 'factory_manager')
 
   const canAccess = (moduleKey: string): boolean => {
     if (loading) return false
@@ -84,5 +76,10 @@ export function useRole(): RoleState {
     return permissions.includes(moduleKey)
   }
 
-  return { role, loading, isAdmin, permissions, employeeId, userId, canAccess }
+  return {
+    role, loading, isAdmin,
+    isRider, isFactoryManager,
+    permissions, employeeId, employeeName, employeeType,
+    userId, canAccess,
+  }
 }

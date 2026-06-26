@@ -17,7 +17,7 @@ function PersonnelPageInner() {
   const [period, setPeriod] = useState({ from: monthStart(), to: today() })
   const [perfData, setPerfData] = useState<any[]>([])
 
-  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today() })
+  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff' })
   const [lossForm, setLossForm] = useState({ employee_id:'', loss_date:today(), loss_type:'Bag Shortage', description:'', quantity:'', unit_cost:'', notes:'' })
 
   const loadAll = useCallback(async () => {
@@ -64,7 +64,7 @@ function PersonnelPageInner() {
   }
 
   const saveEmployee = async () => {
-    const payload = { ...empForm, salary: parseFloat(empForm.salary), sales_target_daily: parseInt(empForm.sales_target_daily), working_days: parseInt(empForm.working_days) }
+    const payload = { ...empForm, salary: parseFloat(empForm.salary), sales_target_daily: parseInt(empForm.sales_target_daily), working_days: parseInt(empForm.working_days) } as any
     if (editEmp) await supabase.from('employees').update(payload).eq('id', editEmp.id)
     else await supabase.from('employees').insert(payload)
     setShowEmpForm(false); loadAll()
@@ -85,7 +85,7 @@ function PersonnelPageInner() {
       <div className="page-header">
         <h1 className="page-title">Personnel</h1>
         <div className="flex gap-2">
-          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today()}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
+          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff'}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
           <button onClick={() => { setShowLossForm(true) }} className="btn btn-warning">+ Record Loss</button>
         </div>
       </div>
@@ -128,7 +128,7 @@ function PersonnelPageInner() {
                   <td className="num">{e.sales_target_daily}/day</td>
                   <td><span className={'badge '+(e.status==='active'?'badge-green':'badge-gray')}>{e.status}</span></td>
                   <td><div className="flex gap-1">
-                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
+                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff'});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
                     <button onClick={async()=>{if(confirm('Toggle status?'))await supabase.from('employees').update({status:e.status==='active'?'inactive':'active'}).eq('id',e.id);loadAll()}} className="btn btn-sm btn-warning">{e.status==='active'?'Deactivate':'Activate'}</button>
                   </div></td>
                 </tr>
@@ -268,7 +268,16 @@ function PersonnelPageInner() {
             <div className="modal-body">
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group col-span-2"><label className="form-label">Full Name *</label><input value={empForm.full_name} onChange={e=>setEmpForm(f=>({...f,full_name:e.target.value}))} className="form-input" /></div>
-                <div className="form-group"><label className="form-label">Role *</label><input value={empForm.role} onChange={e=>setEmpForm(f=>({...f,role:e.target.value}))} className="form-input" placeholder="Sales Officer, Driver..." /></div>
+                <div className="form-group"><label className="form-label">Role / Job Title *</label><input value={empForm.role} onChange={e=>setEmpForm(f=>({...f,role:e.target.value}))} className="form-input" placeholder="Sales Officer, Driver, Rider..." /></div>
+                <div className="form-group">
+                  <label className="form-label">Employee Type</label>
+                  <select value={empForm.employee_type} onChange={e=>setEmpForm(f=>({...f,employee_type:e.target.value}))} className="form-select">
+                    <option value="staff">Staff (General)</option>
+                    <option value="rider">🛵 Rider / Sales Rep (sells to customers)</option>
+                    <option value="factory_manager">🏭 Factory Manager (dispatches to riders)</option>
+                  </select>
+                  <div className="text-xs text-gray-400 mt-1">This controls what they see in the Sales module</div>
+                </div>
                 <div className="form-group"><label className="form-label">Phone</label><input value={empForm.phone} onChange={e=>setEmpForm(f=>({...f,phone:e.target.value}))} className="form-input" /></div>
                 <div className="form-group"><label className="form-label">Monthly Salary (GHc)</label><input type="number" value={empForm.salary} onChange={e=>setEmpForm(f=>({...f,salary:e.target.value}))} className="form-input" /></div>
                 <div className="form-group"><label className="form-label">Daily Bag Target</label><input type="number" value={empForm.sales_target_daily} onChange={e=>setEmpForm(f=>({...f,sales_target_daily:e.target.value}))} className="form-input" /></div>
