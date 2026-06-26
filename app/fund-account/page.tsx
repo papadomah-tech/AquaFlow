@@ -7,7 +7,7 @@ import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 export default function FundAccountPage() {
-  const { isAdmin, canAccess, loading: roleLoading } = useRole()
+  const { isAdmin, canAccess, userId, employeeName, loading: roleLoading } = useRole()
 
   const [data, setData]         = useState<any>(null)
   const [deposits, setDeposits] = useState<any[]>([])
@@ -36,6 +36,29 @@ export default function FundAccountPage() {
     if (!canAccess('fund-account')) return
     setLoading(true)
 
+    // Non-admin users only see their own deposits/payments
+    // Admin sees everything
+    const buildDepQuery = () => {
+      let q = supabase.from('bank_deposits').select('*')
+        .gte('deposit_date', dateFrom).order('deposit_date', { ascending: false })
+      if (!isAdmin && userId) q = q.eq('created_by', userId)
+      return q
+    }
+
+    const buildPayQuery = () => {
+      let q = supabase.from('rider_payments').select('*,employees(id,full_name,role)')
+        .gte('payment_date', dateFrom).order('payment_date', { ascending: false })
+      if (!isAdmin && userId) q = q.eq('recorded_by', userId)
+      return q
+    }
+
+    const buildExpQuery = () => {
+      let q = supabase.from('expenses').select('*')
+        .gte('expense_date', dateFrom).order('expense_date', { ascending: false })
+      if (!isAdmin && userId) q = q.eq('created_by', userId)
+      return q
+    }
+
     const [
       { data: deps },
       { data: riderPays },
@@ -43,21 +66,14 @@ export default function FundAccountPage() {
       { data: bulkSales },
       { data: retailSales },
     ] = await Promise.all([
-      // Bank deposits
-      supabase.from('bank_deposits').select('*')
-        .gte('deposit_date', dateFrom).order('deposit_date', { ascending: false }),
+      buildDepQuery(),
+      buildPayQuery(),
+      buildExpQuery(),
 
-      // Rider payments back to factory
-      supabase.from('rider_payments').select('*,employees(id,full_name,role)')
-        .gte('payment_date', dateFrom).order('payment_date', { ascending: false }),
-
-      // Expenses paid out
-      supabase.from('expenses').select('*')
-        .gte('expense_date', dateFrom).order('expense_date', { ascending: false }),
-
-      // Bulk dispatch revenue (what riders owe)
-      supabase.from('sales').select('total_amount,amount_paid,outstanding_balance,buyer_employee_id,employees!buyer_employee_id(full_name)')
-        .eq('sale_type','bulk'),
+      // Bulk dispatch revenue — admin sees all, others see their own dispatches
+      isAdmin
+        ? supabase.from('sales').select('total_amount,amount_paid,outstanding_balance,buyer_employee_id,employees!buyer_employee_id(full_name)').eq('sale_type','bulk')
+        : supabase.from('sales').select('total_amount,amount_paid,outstanding_balance,buyer_employee_id,employees!buyer_employee_id(full_name)').eq('sale_type','bulk').eq('created_by', userId ?? ''),
 
       // Retail revenue
       supabase.from('sales').select('total_amount,amount_paid,outstanding_balance')
@@ -88,7 +104,8 @@ export default function FundAccountPage() {
       totalBulkRev, totalBulkColl, totalBulkOuts,
     })
     setLoading(false)
-  }, [isAdmin, canAccess, period])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, userId, period, dateFrom])
 
   useEffect(() => { load() }, [load])
 
@@ -105,13 +122,16 @@ export default function FundAccountPage() {
       await supabase.from('bank_deposits').insert({
         deposit_date: form.date, bank_name: form.bank_name || 'Company Account',
         amount: parseFloat(form.amount), reference: form.reference || null,
-        deposited_by: form.deposited_by || null, notes: form.notes || null,
+        deposited_by: form.deposited_by || employeeName || null,
+        notes: form.notes || null,
+        created_by: userId,
       })
     } else {
       await supabase.from('rider_payments').insert({
         employee_id: parseInt(form.employee_id), payment_date: form.date,
         amount: parseFloat(form.amount), reference: form.reference || null,
         notes: form.notes || null,
+        recorded_by: userId,
       })
     }
     setSaving(false)
@@ -138,6 +158,16 @@ export default function FundAccountPage() {
           </button>
         </div>
       </div>
+
+      {/* Non-admin sees only their own records */}
+      {!isAdmin && (
+        <div className="card mb-4 bg-blue-50 border border-blue-200">
+          <div className="text-sm text-blue-700">
+            📋 Showing your deposits and payments only.
+            Contact the administrator to view all company records.
+          </div>
+        </div>
+      )}
 
       {loading ? <div className="text-center py-12 text-gray-400">Loading...</div> : data && (
         <>
