@@ -370,7 +370,7 @@ function AdminDashboard() {
 
 // ── Route: show rider or admin dashboard ─────────────────────────────────────
 export default function DashboardPage() {
-  const { role, loading, isAdmin, isRider, isFactoryManager, employeeId, employeeName } = useRole()
+  const { role, loading, isAdmin, isRider, isFactoryManager, canAccess, employeeId, employeeName } = useRole()
 
   if (loading) return (
     <AppLayout>
@@ -385,11 +385,12 @@ export default function DashboardPage() {
     return <RiderDashboard employeeId={employeeId} employeeName={employeeName} />
   }
 
-  // Admin / Factory Manager get the full admin dashboard
-  if (isAdmin || isFactoryManager) {
+  // Admin / Factory Manager / anyone with dashboard permission
+  if (isAdmin || isFactoryManager || canAccess('dashboard')) {
+    // If also a rider, show rider dashboard
+    if (isRider && employeeId) return <RiderDashboard employeeId={employeeId} employeeName={employeeName} />
     return <AdminDashboard />
   }
 
-  // Other roles — access denied
-  return <AccessDenied message="Dashboard is only accessible to Admins, Factory Managers and Riders." />
+  return <AccessDenied message="You do not have access to the Dashboard." />
 }

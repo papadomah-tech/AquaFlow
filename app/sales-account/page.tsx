@@ -7,7 +7,7 @@ import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 function SalesAccountInner() {
-  const { isAdmin, isRider, isFactoryManager,
+  const { isAdmin, isRider, isFactoryManager, canAccess,
           employeeId, employeeName } = useRole()
 
   // Admin can view any employee; others see themselves
@@ -21,7 +21,7 @@ function SalesAccountInner() {
 
   // For admin — load all riders/reps
   useEffect(() => {
-    if (isAdmin || isFactoryManager) {
+    if (isAdmin || isFactoryManager || (!isRider && canAccess('sales-account'))) {
       supabase.from('employees').select('id,full_name,role,employee_type')
         .eq('status','active').order('full_name')
         .then(({ data: emps }) => {
@@ -105,7 +105,7 @@ function SalesAccountInner() {
   const bagColor = data?.bagsOnHand > 20 ? '#1B5E20'
     : data?.bagsOnHand > 0 ? '#BF4D00' : '#C00000'
 
-  const empName = (isAdmin || isFactoryManager)
+  const empName = (isAdmin || isFactoryManager || (!isRider && canAccess('sales-account')))
     ? (employees.find((e:any) => e.id === viewId)?.full_name ?? '—')
     : employeeName
 
@@ -129,7 +129,7 @@ function SalesAccountInner() {
       </div>
 
       {/* Admin employee selector */}
-      {(isAdmin || isFactoryManager) && employees.length > 0 && (
+      {(isAdmin || isFactoryManager || (!isRider && canAccess('sales-account'))) && employees.length > 0 && (
         <div className="card mb-4 flex items-center gap-3">
           <label className="form-label mb-0 whitespace-nowrap">View account for:</label>
           <select value={viewId ?? ''} onChange={e => setSelectedEmpId(parseInt(e.target.value))}

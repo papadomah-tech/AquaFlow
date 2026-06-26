@@ -7,7 +7,7 @@ import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 export default function FundAccountPage() {
-  const { isAdmin, loading: roleLoading } = useRole()
+  const { isAdmin, canAccess, loading: roleLoading } = useRole()
 
   const [data, setData]         = useState<any>(null)
   const [deposits, setDeposits] = useState<any[]>([])
@@ -33,7 +33,7 @@ export default function FundAccountPage() {
   }, [])
 
   const load = useCallback(async () => {
-    if (!isAdmin) return
+    if (!canAccess('fund-account')) return
     setLoading(true)
 
     const [
@@ -88,7 +88,7 @@ export default function FundAccountPage() {
       totalBulkRev, totalBulkColl, totalBulkOuts,
     })
     setLoading(false)
-  }, [isAdmin, period])
+  }, [isAdmin, canAccess, period])
 
   useEffect(() => { load() }, [load])
 
@@ -97,7 +97,7 @@ export default function FundAccountPage() {
       <div className="flex items-center justify-center min-h-[60vh] text-gray-400">Loading...</div>
     </AppLayout>
   )
-  if (!isAdmin) return <AccessDenied message="The Fund Account is only accessible to Administrators." />
+  if (!canAccess('fund-account')) return <AccessDenied message="You do not have access to the Fund Account." />
 
   const saveDeposit = async () => {
     setSaving(true)
