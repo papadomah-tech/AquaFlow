@@ -19,7 +19,8 @@ export default function MobileNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200
-                    z-50 md:hidden shadow-lg">
+                    z-50 md:hidden shadow-lg"
+      style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}>
       <div className="flex">
         {NAV.map(({ href, icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')

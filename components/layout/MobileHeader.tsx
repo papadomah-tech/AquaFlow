@@ -35,7 +35,7 @@ export default function MobileHeader({ userName }: { userName: string }) {
       {open && (
         <div className="fixed inset-0 z-50 md:hidden" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
-          <div className="absolute left-0 top-0 bottom-0 w-72 bg-[#1F4E79] flex flex-col"
+          <div className="absolute left-0 top-0 bottom-0 w-72 bg-[#1F4E79] flex flex-col overflow-hidden"
                onClick={e => e.stopPropagation()}>
             <div className="px-4 py-5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -47,7 +47,7 @@ export default function MobileHeader({ userName }: { userName: string }) {
               </div>
               <button onClick={() => setOpen(false)} className="text-white/70 text-xl">✕</button>
             </div>
-            <nav className="flex-1 overflow-y-auto py-3">
+            <nav className="flex-1 overflow-y-auto py-3 pb-2">
               {NAV.map(({ href, icon, label, adminOnly }) => (
                 <Link key={href} href={href} onClick={() => setOpen(false)}
                   className={`flex items-center gap-3 px-5 py-3 text-sm
@@ -64,7 +64,7 @@ export default function MobileHeader({ userName }: { userName: string }) {
                 </Link>
               ))}
             </nav>
-            <div className="p-4 border-t border-white/10">
+            <div className="p-4 pb-6 border-t border-white/10" style={{paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 1.5rem) + 72px)"}}>
               <button onClick={signOut} className="text-blue-200 text-sm flex items-center gap-2">
                 🚪 Sign Out
               </button>
