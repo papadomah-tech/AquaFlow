@@ -35,6 +35,13 @@ export default function SettingsPage() {
   const [linkSaving, setLinkSaving]   = useState(false)
   const [linkSaved, setLinkSaved]     = useState(false)
 
+  // Create user form
+  const [newUser, setNewUser]       = useState({ full_name:'', email:'', password:'', role:'operator' })
+  const [creating, setCreating]     = useState(false)
+  const [createError, setCreateError]   = useState('')
+  const [createSuccess, setCreateSuccess] = useState('')
+  const [showPwd, setShowPwd]       = useState(false)
+
   const load = async () => {
     const [{ data: p }, { data: e }] = await Promise.all([
       supabase.from('profiles').select('*').order('full_name'),
@@ -100,7 +107,33 @@ export default function SettingsPage() {
     load()
   }
 
-  // ── Employee linking ──────────────────────────────────────────────────────
+  // ── Create user ───────────────────────────────────────────────────────────
+  const createUser = async () => {
+    setCreating(true); setCreateError(''); setCreateSuccess('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token ?? ''
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify(newUser),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setCreateError(json.error ?? 'Failed to create user.')
+      } else {
+        setCreateSuccess(newUser.email)
+        setNewUser({ full_name:'', email:'', password:'', role:'operator' })
+        load()
+      }
+    } catch (e: any) {
+      setCreateError(e.message ?? 'Network error')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  // ── Employee linking ───────────────────────────────────────────────────────
   const openLink = (p: ProfileRow) => {
     setLinkUser(p)
     setLinkSaved(false)
@@ -246,15 +279,84 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Add user instructions */}
+      {/* ── CREATE USER CARD ─────────────────────────────────────────────── */}
       <div className="card">
-        <div className="font-semibold text-[#1F4E79] mb-2">Add New Users</div>
-        <div className="text-sm text-gray-600">
-          Go to <strong>Supabase Dashboard</strong> &rarr;
-          <strong> Authentication</strong> &rarr; <strong>Users</strong> &rarr;
-          <strong> Create new user</strong> &rarr; enter email and password &rarr;
-          tick <strong>Auto Confirm</strong>. The user will appear here automatically.
-          Then assign their module permissions and link them to their employee record.
+        <div className="font-semibold text-[#1F4E79] mb-3">
+          ➕ Create New User Account
+        </div>
+        {createSuccess && (
+          <div className="mb-3 bg-green-50 border border-green-200 text-green-700
+                          text-sm rounded-lg p-3 flex items-center gap-2">
+            ✅ User <strong>{createSuccess}</strong> created successfully.
+            They can now log in at aqua-flow-sable.vercel.app
+          </div>
+        )}
+        {createError && (
+          <div className="mb-3 bg-red-50 border border-red-200 text-red-700
+                          text-sm rounded-lg p-3">
+            ❌ {createError}
+          </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="form-group">
+            <label className="form-label">Full Name *</label>
+            <input
+              value={newUser.full_name}
+              onChange={e => setNewUser(u => ({...u, full_name: e.target.value}))}
+              className="form-input"
+              placeholder="e.g. Kwame Asante" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Email Address *</label>
+            <input type="email"
+              value={newUser.email}
+              onChange={e => setNewUser(u => ({...u, email: e.target.value}))}
+              className="form-input"
+              placeholder="e.g. kwame@example.com" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password *
+              <span className="text-gray-400 font-normal ml-1">(min 6 characters)</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPwd ? 'text' : 'password'}
+                value={newUser.password}
+                onChange={e => setNewUser(u => ({...u, password: e.target.value}))}
+                className="form-input pr-16"
+                placeholder="Set a strong password" />
+              <button type="button"
+                onClick={() => setShowPwd(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2
+                           text-xs text-gray-400 hover:text-gray-700">
+                {showPwd ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Initial Role</label>
+            <select
+              value={newUser.role}
+              onChange={e => setNewUser(u => ({...u, role: e.target.value}))}
+              className="form-select">
+              <option value="operator">Operator — data entry</option>
+              <option value="viewer">Viewer — read only</option>
+              <option value="manager">Manager — edit all</option>
+              <option value="admin">Admin — full access</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <button
+            onClick={createUser}
+            disabled={creating || !newUser.email || !newUser.password || !newUser.full_name}
+            className="btn btn-primary">
+            {creating ? '⏳ Creating...' : '➕ Create User'}
+          </button>
+          <div className="text-xs text-gray-400">
+            The user can log in immediately after creation. Assign their module
+            permissions and link them to an employee record using the buttons above.
+          </div>
         </div>
       </div>
 
