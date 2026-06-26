@@ -8,7 +8,7 @@ export interface AppModule {
 }
 
 export const ALL_MODULES: AppModule[] = [
-  { key: 'dashboard',      label: 'Dashboard',      icon: '📊', href: '/dashboard',      adminOnly: true,  description: 'Business overview, revenue stats, recent sales' },
+  { key: 'dashboard',      label: 'Dashboard',      icon: '📊', href: '/dashboard',      adminOnly: false, description: 'Business overview, revenue stats, recent sales' },
   { key: 'raw-materials',  label: 'Raw Materials',  icon: '🧱', href: '/raw-materials',  adminOnly: false, description: 'Stock levels, roll film inventory, purchases' },
   { key: 'production',     label: 'Production',     icon: '🏭', href: '/production',     adminOnly: false, description: 'Production batches, batch history, operator fees' },
   { key: 'stock',          label: 'Stock',          icon: '📦', href: '/stock',          adminOnly: false, description: 'Finished goods ledger, stock take, movements' },

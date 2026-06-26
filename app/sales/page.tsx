@@ -33,6 +33,7 @@ function SalesPageInner() {
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading]     = useState(true)
   const [activeTab, setActiveTab] = useState<'retail'|'bulk'>('retail')
+  const [riderBags, setRiderBags]   = useState<number | null>(null)  // bags on hand for rider
   const [showForm, setShowForm]   = useState(false)
   const [formType, setFormType]   = useState<'retail'|'bulk'>('retail')
   const [editSale, setEditSale]   = useState<any>(null)
@@ -90,6 +91,23 @@ function SalesPageInner() {
 
   useEffect(() => { load() }, [load])
 
+  // Fetch rider's available bags (bulk received minus retail sold)
+  useEffect(() => {
+    if (!isRider || !employeeId) return
+    const fetchRiderBags = async () => {
+      const [{ data: bulkIn }, { data: retailOut }] = await Promise.all([
+        supabase.from('sales').select('bags_sold')
+          .eq('sale_type', 'bulk').eq('buyer_employee_id', employeeId),
+        supabase.from('sales').select('bags_sold')
+          .eq('sale_type', 'retail').eq('salesperson_id', employeeId),
+      ])
+      const received = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+      const sold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+      setRiderBags(received - sold)
+    }
+    fetchRiderBags()
+  }, [isRider, employeeId])
+
   useEffect(() => {
     // Riders (potential bulk buyers)
     supabase.from('employees').select('id,full_name,employee_type,team_role')
@@ -116,10 +134,29 @@ function SalesPageInner() {
     const status = paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
 
     if (!editSale) {
-      const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
-      const stock = (fi ?? []).reduce((a: number, r: any) => a + r.bags_in - r.bags_out, 0)
-      if (bags + proto > stock) {
-        alert('Insufficient stock! Available: ' + stock + ' bags'); return
+      // For riders: check their personal bag balance
+      if (isRider && employeeId) {
+        const [{ data: bulkIn }, { data: retailOut }] = await Promise.all([
+          supabase.from('sales').select('bags_sold')
+            .eq('sale_type','bulk').eq('buyer_employee_id', employeeId),
+          supabase.from('sales').select('bags_sold')
+            .eq('sale_type','retail').eq('salesperson_id', employeeId),
+        ])
+        const received = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+        const sold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+        const available = received - sold
+        setRiderBags(available)
+        if (bags + proto > available) {
+          alert(`Insufficient bags!\n\nYou have ${available} bag(s) available.\nYou are trying to sell ${bags + proto} bag(s).\n\nContact your manager for a bulk top-up.`)
+          return
+        }
+      } else {
+        // For admin/manager: check factory stock
+        const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
+        const stock = (fi ?? []).reduce((a: number, r: any) => a + r.bags_in - r.bags_out, 0)
+        if (bags + proto > stock) {
+          alert('Insufficient stock! Available: ' + stock + ' bags'); return
+        }
       }
     }
 
@@ -274,11 +311,17 @@ function SalesPageInner() {
             </button>
           )}
           <button onClick={() => {
+            if (isRider && riderBags !== null && riderBags <= 0) {
+              alert('You have no bags available to sell.\nContact your manager for a bulk dispatch first.')
+              return
+            }
             setFormType('retail')
             setRetailForm(blankRetail())
             setEditSale(null)
             setShowForm(true)
-          }} className="btn btn-primary">
+          }}
+          disabled={isRider && riderBags !== null && riderBags <= 0}
+          className="btn btn-primary">
             + Retail Sale
           </button>
         </div>
@@ -346,6 +389,30 @@ function SalesPageInner() {
           </div>
         ))}
       </div>
+
+      {/* ── Rider bag balance warning ─────────────────────────────────── */}
+      {isRider && riderBags !== null && (
+        <div className={'card mb-4 border-l-4 flex items-center gap-4 '
+          + (riderBags > 20 ? 'border-green-500 bg-green-50'
+          : riderBags > 0  ? 'border-orange-400 bg-orange-50'
+          : 'border-red-500 bg-red-50')}>
+          <div className={'text-4xl font-bold tabular-nums '
+            + (riderBags > 20 ? 'text-green-700' : riderBags > 0 ? 'text-orange-600' : 'text-red-700')}>
+            {fmtNum(riderBags)}
+          </div>
+          <div>
+            <div className={'font-semibold '
+              + (riderBags > 20 ? 'text-green-700' : riderBags > 0 ? 'text-orange-600' : 'text-red-700')}>
+              {riderBags > 20 ? '✅ Bags Available' : riderBags > 0 ? '⚠️ Running Low' : '❌ No Bags Available'}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {riderBags > 0
+                ? `You have ${riderBags} bag${riderBags !== 1 ? 's' : ''} on hand to sell`
+                : 'Contact your manager for a bulk dispatch before recording sales'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Table ────────────────────────────────────────────────────── */}
       <div className="card p-0 overflow-hidden">
