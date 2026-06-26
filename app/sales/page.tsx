@@ -263,7 +263,7 @@ function SalesPageInner() {
         </div>
         <div className="flex gap-2">
           {/* Riders can only do retail */}
-          {!isRider && isFactoryManager && (
+          {!isRider && (isAdmin || isFactoryManager) && (
             <button onClick={() => {
               setFormType('bulk')
               setBulkForm(blankBulk())
@@ -294,7 +294,7 @@ function SalesPageInner() {
           🛍️ Retail Sales
           <span className="ml-2 text-xs text-gray-400">(to customers)</span>
         </button>
-        {!isRider && (
+        {!isRider && (isAdmin || isFactoryManager) && (
           <button onClick={() => setActiveTab('bulk')}
             className={'px-5 py-2.5 text-sm font-medium border-b-2 transition-colors '
               + (activeTab === 'bulk'
@@ -488,7 +488,7 @@ function SalesPageInner() {
                   onChange={id => setRetailForm(f => ({...f, customer_id:id}))} />
               </div>
               {/* Admin/Manager can assign a rep; riders always self */}
-              {!isRider && (
+              {!isRider && (isAdmin || isFactoryManager) && (
                 <div className="form-group">
                   <label className="form-label">Sales Rep</label>
                   <select value={retailForm.salesperson_id}
