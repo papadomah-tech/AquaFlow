@@ -496,6 +496,61 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
+      <div className="card border-2 border-red-200 mt-6">
+        <div className="font-semibold text-red-700 mb-1">⚠️ Danger Zone</div>
+        <div className="text-sm text-gray-500 mb-3">
+          These actions are permanent and cannot be undone.
+          Only the system administrator should use these.
+        </div>
+        <button
+          onClick={async () => {
+            const confirm1 = window.confirm(
+              '⚠️ FACTORY RESET\n\n' +
+              'This will permanently delete ALL data:\n' +
+              '• All sales and payments\n' +
+              '• All production batches\n' +
+              '• All expenses and deposits\n' +
+              '• All customers and employees\n' +
+              '• All stock records\n\n' +
+              'User accounts will be kept.\n\n' +
+              'Are you absolutely sure?'
+            )
+            if (!confirm1) return
+            const input = window.prompt(
+              'Type RESET to confirm factory reset:'
+            )
+            if (input?.trim().toUpperCase() !== 'RESET') {
+              alert('Reset cancelled — you did not type RESET.')
+              return
+            }
+            // Delete in reverse dependency order
+            const tables = [
+              'stock_adjustments','stock_take_items','stock_takes',
+              'finished_inventory','employee_losses','salary_payments',
+              'attendance','payments','sales','bank_deposits',
+              'rider_payments','expenses','raw_material_usage',
+              'raw_material_purchases','production_batches','roll_films',
+              'customers','employees','raw_materials',
+            ]
+            let errors: string[] = []
+            for (const t of tables) {
+              const { error } = await (supabase.from(t as any) as any).delete().gte('id', 0)
+              if (error) errors.push(t + ': ' + error.message)
+            }
+            if (errors.length > 0) {
+              alert('Some tables had errors:\n' + errors.join('\n'))
+            } else {
+              alert('✅ Factory reset complete. All data has been cleared.')
+              window.location.href = '/dashboard'
+            }
+          }}
+          className="btn btn-danger">
+          🗑️ Factory Reset — Clear All Data
+        </button>
+      </div>
+
     </AppLayout>
   )
 }

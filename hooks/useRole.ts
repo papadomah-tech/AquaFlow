@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ALL_MODULES } from '@/lib/modules'
 
@@ -68,15 +68,14 @@ export function useRole() {
   const isRider          = !loading && employeeType === 'rider'
   const isFactoryManager = !loading && (role === 'admin' || employeeType === 'factory_manager')
 
-  const canAccess = (moduleKey: string): boolean => {
+  // useCallback gives canAccess a stable reference so it doesn't
+  // trigger infinite re-renders when used in useEffect dependency arrays
+  const canAccess = useCallback((moduleKey: string): boolean => {
     if (loading) return false
     if (role === 'admin') return true
-    // settings and import are system-only — never grantable
     if (['settings', 'import'].includes(moduleKey)) return false
-    // all other modules (including fund-account, sales-account, dashboard)
-    // are accessible if explicitly in permissions
     return permissions.includes(moduleKey)
-  }
+  }, [loading, role, permissions])
 
   return {
     role, loading, isAdmin,
