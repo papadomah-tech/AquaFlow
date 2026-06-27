@@ -498,59 +498,270 @@ export default function SettingsPage() {
       )}
 
       {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
-      <div className="card border-2 border-red-200 mt-6">
-        <div className="font-semibold text-red-700 mb-1">⚠️ Danger Zone</div>
-        <div className="text-sm text-gray-500 mb-3">
-          These actions are permanent and cannot be undone.
-          Only the system administrator should use these.
-        </div>
-        <button
-          onClick={async () => {
-            const confirm1 = window.confirm(
-              '⚠️ FACTORY RESET\n\n' +
-              'This will permanently delete ALL data:\n' +
-              '• All sales and payments\n' +
-              '• All production batches\n' +
-              '• All expenses and deposits\n' +
-              '• All customers and employees\n' +
-              '• All stock records\n\n' +
-              'User accounts will be kept.\n\n' +
-              'Are you absolutely sure?'
-            )
-            if (!confirm1) return
-            const input = window.prompt(
-              'Type RESET to confirm factory reset:'
-            )
-            if (input?.trim().toUpperCase() !== 'RESET') {
-              alert('Reset cancelled — you did not type RESET.')
-              return
-            }
-            // Delete in reverse dependency order
-            const tables = [
-              'stock_adjustments','stock_take_items','stock_takes',
-              'finished_inventory','employee_losses','salary_payments',
-              'attendance','payments','sales','bank_deposits',
-              'rider_payments','expenses','raw_material_usage',
-              'raw_material_purchases','production_batches','roll_films',
-              'customers','employees','raw_materials',
-            ]
-            let errors: string[] = []
-            for (const t of tables) {
-              const { error } = await (supabase.from(t as any) as any).delete().gte('id', 0)
-              if (error) errors.push(t + ': ' + error.message)
-            }
-            if (errors.length > 0) {
-              alert('Some tables had errors:\n' + errors.join('\n'))
-            } else {
-              alert('✅ Factory reset complete. All data has been cleared.')
-              window.location.href = '/dashboard'
-            }
-          }}
-          className="btn btn-danger">
-          🗑️ Factory Reset — Clear All Data
-        </button>
-      </div>
+      <DangerZone />
 
     </AppLayout>
+  )
+}
+
+// ── Danger Zone component with selective reset ───────────────────────────────
+function DangerZone() {
+  const [showReset, setShowReset]     = useState(false)
+  const [selected, setSelected]       = useState<Record<string,boolean>>({})
+  const [resetting, setResetting]     = useState(false)
+  const [resetDone, setResetDone]     = useState<string[]>([])
+  const [resetErrors, setResetErrors] = useState<string[]>([])
+
+  // Module definitions — each with the tables to delete (in safe order)
+  const RESET_MODULES = [
+    {
+      key: 'sales',
+      label: 'Sales & Payments',
+      icon: '💼',
+      desc: 'All sales records, payments, bulk dispatches',
+      tables: ['payments', 'sales'],
+      warn: 'This will remove all revenue records.',
+    },
+    {
+      key: 'stock',
+      label: 'Stock & Inventory',
+      icon: '📦',
+      desc: 'Finished goods ledger, stock takes, adjustments',
+      tables: ['stock_adjustments','stock_take_items','stock_takes','finished_inventory'],
+      warn: 'Stock balance will reset to zero.',
+    },
+    {
+      key: 'production',
+      label: 'Production',
+      icon: '🏭',
+      desc: 'All production batches and roll film records',
+      tables: ['production_batches','roll_films'],
+      warn: null,
+    },
+    {
+      key: 'rawmaterials',
+      label: 'Raw Materials',
+      icon: '🧱',
+      desc: 'Purchases, usage records (material names kept)',
+      tables: ['raw_material_usage','raw_material_purchases'],
+      warn: null,
+    },
+    {
+      key: 'expenses',
+      label: 'Expenses & Deposits',
+      icon: '💸',
+      desc: 'All expenses, bank deposits, rider payments',
+      tables: ['bank_deposits','rider_payments','expenses'],
+      warn: null,
+    },
+    {
+      key: 'personnel',
+      label: 'Personnel Records',
+      icon: '👥',
+      desc: 'Attendance, salary payments, employee losses',
+      tables: ['employee_losses','salary_payments','attendance'],
+      warn: 'Employee records (names/salaries) are kept.',
+    },
+    {
+      key: 'customers',
+      label: 'Customers',
+      icon: '👤',
+      desc: 'All customer records',
+      tables: ['customers'],
+      warn: 'Sales linked to these customers will error if sales not reset first.',
+    },
+    {
+      key: 'employees',
+      label: 'Employees',
+      icon: '🧑‍💼',
+      desc: 'All employee records',
+      tables: ['employees'],
+      warn: 'Reset Personnel Records first. User login accounts are kept.',
+    },
+    {
+      key: 'everything',
+      label: 'EVERYTHING (Full Reset)',
+      icon: '🗑️',
+      desc: 'Clears all data across all modules',
+      tables: [
+        'stock_adjustments','stock_take_items','stock_takes',
+        'finished_inventory','employee_losses','salary_payments',
+        'attendance','payments','sales','bank_deposits',
+        'rider_payments','expenses','raw_material_usage',
+        'raw_material_purchases','production_batches','roll_films',
+        'customers','employees','raw_materials','opening_balances',
+      ],
+      warn: 'All data will be permanently deleted. User accounts are kept.',
+    },
+  ]
+
+  const toggle = (key: string) => {
+    if (key === 'everything') {
+      // Select/deselect all
+      const anySelected = Object.values(selected).some(Boolean)
+      if (anySelected) {
+        setSelected({})
+      } else {
+        const all: Record<string,boolean> = {}
+        RESET_MODULES.forEach(m => { all[m.key] = true })
+        setSelected(all)
+      }
+      return
+    }
+    setSelected(s => ({...s, [key]: !s[key]}))
+  }
+
+  const selectedModules = RESET_MODULES.filter(m => selected[m.key] && m.key !== 'everything')
+
+  const doReset = async () => {
+    if (selectedModules.length === 0) {
+      alert('Select at least one module to reset.')
+      return
+    }
+    const moduleNames = selectedModules.map(m => '• ' + m.label).join('\n')
+    const confirm1 = window.confirm(
+      '⚠️ SELECTIVE RESET\n\n' +
+      'You are about to permanently delete data from:\n' +
+      moduleNames + '\n\n' +
+      'This cannot be undone. Are you sure?'
+    )
+    if (!confirm1) return
+    const input = window.prompt('Type RESET to confirm:')
+    if (input?.trim().toUpperCase() !== 'RESET') {
+      alert('Reset cancelled.')
+      return
+    }
+
+    setResetting(true)
+    setResetDone([])
+    setResetErrors([])
+
+    // Collect all tables in order (use a Set to avoid duplicates)
+    const allTables: string[] = []
+    const seen = new Set<string>()
+    // Full reset order
+    const ORDER = [
+      'opening_balances','stock_adjustments','stock_take_items','stock_takes',
+      'finished_inventory','employee_losses','salary_payments',
+      'attendance','payments','sales','bank_deposits',
+      'rider_payments','expenses','raw_material_usage',
+      'raw_material_purchases','production_batches','roll_films',
+      'customers','employees','raw_materials',
+    ]
+    // Add tables in dependency-safe order
+    for (const t of ORDER) {
+      for (const mod of selectedModules) {
+        if (mod.tables.includes(t) && !seen.has(t)) {
+          allTables.push(t)
+          seen.add(t)
+        }
+      }
+    }
+
+    const done: string[]   = []
+    const errors: string[] = []
+
+    for (const t of allTables) {
+      const { error } = await (supabase.from(t as any) as any).delete().gte('id', 0)
+      if (error) errors.push(t + ': ' + error.message)
+      else done.push(t)
+    }
+
+    setResetDone(done)
+    setResetErrors(errors)
+    setResetting(false)
+    setSelected({})
+
+    if (errors.length === 0) {
+      alert('✅ Reset complete. ' + done.length + ' table(s) cleared.')
+    }
+  }
+
+  return (
+    <div className="card border-2 border-red-200 mt-6">
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-semibold text-red-700">⚠️ Danger Zone</div>
+        <button onClick={() => { setShowReset(r => !r); setResetDone([]); setResetErrors([]) }}
+          className={'btn btn-sm ' + (showReset ? 'btn-danger' : 'border border-red-300 text-red-600 bg-white hover:bg-red-50')}>
+          {showReset ? '✕ Cancel' : '🗑️ Factory Reset'}
+        </button>
+      </div>
+      <div className="text-sm text-gray-500">
+        Selectively clear data from specific modules. User accounts are never deleted.
+      </div>
+
+      {showReset && (
+        <div className="mt-4 space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Select modules to reset:
+          </div>
+
+          {RESET_MODULES.map(mod => (
+            <label key={mod.key}
+              className={'flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all '
+                + (selected[mod.key]
+                  ? mod.key === 'everything'
+                    ? 'border-red-500 bg-red-50'
+                    : 'border-orange-400 bg-orange-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300')
+                + (mod.key === 'everything' ? ' mt-3 border-dashed' : '')}>
+              <input type="checkbox"
+                checked={!!selected[mod.key]}
+                onChange={() => toggle(mod.key)}
+                className="w-5 h-5 mt-0.5 accent-red-600 cursor-pointer flex-shrink-0"/>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{mod.icon}</span>
+                  <span className={'font-semibold text-sm '
+                    + (selected[mod.key] ? mod.key === 'everything' ? 'text-red-700' : 'text-orange-700' : 'text-gray-700')}>
+                    {mod.label}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">{mod.desc}</div>
+                {mod.warn && selected[mod.key] && (
+                  <div className="text-xs text-red-600 mt-1 font-medium">⚠️ {mod.warn}</div>
+                )}
+              </div>
+            </label>
+          ))}
+
+          {/* Summary */}
+          {selectedModules.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mt-2">
+              <div className="text-xs font-semibold text-red-700 mb-1">
+                Will reset {selectedModules.length} module(s):
+              </div>
+              <div className="text-xs text-red-600">
+                {selectedModules.map(m => m.icon + ' ' + m.label).join(' · ')}
+              </div>
+            </div>
+          )}
+
+          <button onClick={doReset}
+            disabled={resetting || selectedModules.length === 0}
+            className="btn btn-danger w-full justify-center mt-3 py-3">
+            {resetting
+              ? '⏳ Resetting...'
+              : selectedModules.length === 0
+              ? 'Select at least one module'
+              : '🗑️ Reset ' + selectedModules.length + ' Module' + (selectedModules.length > 1 ? 's' : '')}
+          </button>
+
+          {/* Results */}
+          {resetDone.length > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mt-2">
+              <div className="text-xs font-semibold text-green-700 mb-1">✅ Cleared {resetDone.length} table(s):</div>
+              <div className="text-xs text-green-600">{resetDone.join(', ')}</div>
+            </div>
+          )}
+          {resetErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mt-2">
+              <div className="text-xs font-semibold text-red-700 mb-1">❌ Errors:</div>
+              {resetErrors.map((e,i) => <div key={i} className="text-xs text-red-600">{e}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
