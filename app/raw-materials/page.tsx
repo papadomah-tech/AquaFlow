@@ -137,27 +137,19 @@ function RawMaterialsPageInner() {
             <div className="card">
               <table className="data-table">
                 <colgroup>
-                <col style={{width:'150px'}} /><col style={{width:'90px'}} />
-                <col style={{width:'110px'}} /><col style={{width:'80px'}} />
-                <col style={{width:'100px'}} /><col style={{width:'90px'}} />
-                <col style={{width:'90px'}} /><col style={{width:'90px'}} />
-                <col style={{width:'65px'}} /><col style={{width:'90px'}} />
-                <col style={{width:'110px'}} />
-              </colgroup>
-              <colgroup>
-                <col style={{width:'145px'}} /><col style={{width:'88px'}} />
-                <col style={{width:'105px'}} /><col style={{width:'78px'}} />
-                <col style={{width:'95px'}} /><col style={{width:'88px'}} />
-                <col style={{width:'88px'}} /><col style={{width:'88px'}} />
-                <col style={{width:'62px'}} /><col style={{width:'88px'}} />
-                <col style={{width:'105px'}} />
+                <col style={{width:'150px'}} /><col style={{width:'88px'}} />
+                <col style={{width:'100px'}} /><col style={{width:'75px'}} />
+                <col style={{width:'95px'}} /><col style={{width:'82px'}} />
+                <col style={{width:'82px'}} /><col style={{width:'82px'}} />
+                <col style={{width:'60px'}} /><col style={{width:'88px'}} />
+                <col style={{width:'130px'}} />
               </colgroup>
               <thead><tr>
                 <th>Label</th><th>Date</th><th>Supplier</th>
                 <th className="right">Wt(Kg)</th><th className="right">Cost</th>
                 <th className="right">Expected</th><th className="right">Produced</th>
                 <th className="right">Remaining</th><th className="right">Util%</th>
-                <th>Status</th><th>Actions</th>
+                <th>Status</th><th style={{minWidth:'120px'}}>Actions</th>
               </tr></thead>
                 <tbody>
                   {rolls.length === 0 ? <tr><td colSpan={11} className="text-center py-8 text-gray-400">No rolls registered</td></tr>

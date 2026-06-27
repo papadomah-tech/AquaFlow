@@ -85,7 +85,7 @@ function ProductionPageInner() {
               <col style={{width:'75px'}} />
               <col style={{width:'100px'}} />
               <col />
-              <col style={{width:'90px'}} />
+              <col style={{width:'120px'}} />
             </colgroup>
             <thead><tr><th>Batch #</th><th>Date</th><th>Roll Film</th><th className="right">Bags</th><th className="right">Op. Fee</th><th>Notes</th><th>Actions</th></tr></thead>
             <tbody>

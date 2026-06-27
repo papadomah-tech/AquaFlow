@@ -9,7 +9,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #F5F7FA; }
 
 .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 p-4; }
 .stat-card { @apply bg-white rounded-xl p-4 shadow-sm border-l-4; }
-.data-table { @apply w-full text-sm; border-collapse: collapse; table-layout: fixed; }
+.data-table { @apply w-full text-sm; border-collapse: collapse; table-layout: fixed; min-width: 480px; }
 .data-table th {
   @apply text-left text-xs font-semibold text-gray-500 uppercase tracking-wider
          py-2.5 px-3 bg-gray-50 border-b border-gray-200;

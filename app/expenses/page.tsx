@@ -69,7 +69,7 @@ function ExpensesPageInner() {
               <col />
               <col style={{width:'110px'}} />
               <col style={{width:'130px'}} />
-              <col style={{width:'90px'}} />
+              <col style={{width:'120px'}} />
             </colgroup>
             <colgroup>
               <col style={{width:'90px'}} />
@@ -77,7 +77,7 @@ function ExpensesPageInner() {
               <col />
               <col style={{width:'110px'}} />
               <col style={{width:'120px'}} />
-              <col style={{width:'90px'}} />
+              <col style={{width:'120px'}} />
             </colgroup>
             <thead><tr>
               <th>Date</th><th>Category</th><th>Description</th>

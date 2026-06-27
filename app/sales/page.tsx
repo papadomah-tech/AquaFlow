@@ -425,7 +425,7 @@ function SalesPageInner() {
                 {isAdmin && <col style={{width:'120px'}} />}
                 <col style={{width:'70px'}} /><col style={{width:'105px'}} />
                 <col style={{width:'100px'}} /><col style={{width:'100px'}} />
-                <col style={{width:'72px'}} /><col style={{width:'85px'}} />
+                <col style={{width:'72px'}} /><col style={{width:'120px'}} />
               </colgroup>
               <thead>
                 <tr>
@@ -475,7 +475,7 @@ function SalesPageInner() {
                 <col style={{width:'120px'}} /><col style={{width:'70px'}} />
                 <col style={{width:'105px'}} /><col style={{width:'100px'}} />
                 <col style={{width:'100px'}} /><col style={{width:'72px'}} />
-                <col style={{width:'85px'}} />
+                <col style={{width:'120px'}} />
               </colgroup>
               <thead>
                 <tr>
