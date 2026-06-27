@@ -47,7 +47,7 @@ function SalesAccountInner() {
       { data: retailAll },
       { data: riderPayments },
     ] = await Promise.all([
-      // All bulk dispatches to this rider (all time for bag tracking)
+      // All bulk dispatches to this rider
       supabase.from('sales').select('id,sale_date,bags_sold,unit_price,total_amount,amount_paid,outstanding_balance,payment_status')
         .eq('sale_type','bulk').eq('buyer_employee_id', viewId)
         .order('sale_date', { ascending: false }),
@@ -66,12 +66,18 @@ function SalesAccountInner() {
       supabase.from('rider_payments').select('*')
         .eq('employee_id', viewId)
         .order('payment_date', { ascending: false }),
+
+      // Bag returns
+      supabase.from('bulk_returns').select('bags_returned,total_credit,return_date,notes')
+        .eq('employee_id', viewId)
+        .order('return_date', { ascending: false }),
     ])
 
     // ── Bag position ───────────────────────────────────────────────
     const bagsReceived  = (bulkIn ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
     const bagsSoldAll   = (retailAll ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
-    const bagsOnHand    = bagsReceived - bagsSoldAll
+    const totalReturned = ((riderPayments as any[])?.[4] ?? []).reduce((a:number,r:any) => a + r.bags_returned, 0)
+    const bagsOnHand    = bagsReceived - bagsSoldAll - totalReturned
 
     // ── Factory account ────────────────────────────────────────────
     const totalOwed     = (bulkIn ?? []).reduce((a:number,s:any) => a + s.total_amount, 0)

@@ -34,6 +34,11 @@ function SalesPageInner() {
   const [loading, setLoading]     = useState(true)
   const [activeTab, setActiveTab] = useState<'retail'|'bulk'>('retail')
   const [riderBags, setRiderBags]   = useState<number | null>(null)  // bags on hand for rider
+  const [returns, setReturns]         = useState<any[]>([])
+  const [showReturnForm, setShowReturnForm] = useState(false)
+  const [returnTarget, setReturnTarget]     = useState<any>(null)  // the bulk sale being returned
+  const [returnForm, setReturnForm]         = useState({ return_date: '', bags_returned: '', notes: '' })
+  const [savingReturn, setSavingReturn]     = useState(false)
   const [showForm, setShowForm]   = useState(false)
   const [formType, setFormType]   = useState<'retail'|'bulk'>('retail')
   const [editSale, setEditSale]   = useState<any>(null)
@@ -86,6 +91,17 @@ function SalesPageInner() {
         r.employees?.full_name?.toLowerCase().includes(s))
     }
     setSales(rows)
+
+    // Load returns for bulk tab
+    if (activeTab === 'bulk') {
+      let rq = supabase.from('bulk_returns')
+        .select('*,employees(id,full_name)')
+        .order('return_date', { ascending: false })
+      if (!isAdmin && employeeId) rq = rq.eq('employee_id', employeeId)
+      const { data: ret } = await rq
+      setReturns(ret ?? [])
+    }
+
     setLoading(false)
   }, [filter, activeTab, isRider, employeeId, roleLoading])
 
@@ -95,15 +111,18 @@ function SalesPageInner() {
   useEffect(() => {
     if (!isRider || !employeeId) return
     const fetchRiderBags = async () => {
-      const [{ data: bulkIn }, { data: retailOut }] = await Promise.all([
+      const [{ data: bulkIn }, { data: retailOut }, { data: riderRet }] = await Promise.all([
         supabase.from('sales').select('bags_sold')
           .eq('sale_type', 'bulk').eq('buyer_employee_id', employeeId),
         supabase.from('sales').select('bags_sold')
           .eq('sale_type', 'retail').eq('salesperson_id', employeeId),
+        supabase.from('bulk_returns').select('bags_returned')
+          .eq('employee_id', employeeId),
       ])
       const received = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
       const sold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-      setRiderBags(received - sold)
+      const returned = (riderRet ?? []).reduce((a: number, r: any) => a + r.bags_returned, 0)
+      setRiderBags(received - sold - returned)
     }
     fetchRiderBags()
   }, [isRider, employeeId])
@@ -136,15 +155,18 @@ function SalesPageInner() {
     if (!editSale) {
       // For riders: check their personal bag balance
       if (isRider && employeeId) {
-        const [{ data: bulkIn }, { data: retailOut }] = await Promise.all([
+        const [{ data: bulkIn }, { data: retailOut }, { data: riderRet2 }] = await Promise.all([
           supabase.from('sales').select('bags_sold')
             .eq('sale_type','bulk').eq('buyer_employee_id', employeeId),
           supabase.from('sales').select('bags_sold')
             .eq('sale_type','retail').eq('salesperson_id', employeeId),
+          supabase.from('bulk_returns').select('bags_returned')
+            .eq('employee_id', employeeId),
         ])
         const received = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
         const sold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-        const available = received - sold
+        const returned2 = (riderRet2 ?? []).reduce((a: number, r: any) => a + r.bags_returned, 0)
+        const available = received - sold - returned2
         setRiderBags(available)
         if (bags + proto > available) {
           alert(`Insufficient bags!\n\nYou have ${available} bag(s) available.\nYou are trying to sell ${bags + proto} bag(s).\n\nContact your manager for a bulk top-up.`)
@@ -264,6 +286,67 @@ function SalesPageInner() {
       notes: `Bulk dispatch to ${rider?.full_name ?? 'Rider'}`,
     })
     setShowForm(false); load()
+  }
+
+  const saveReturn = async () => {
+    if (!returnTarget) return
+    setSavingReturn(true)
+
+    const bagsBack   = parseInt(returnForm.bags_returned) || 0
+    const unitPrice  = parseFloat(returnTarget.unit_price) || 0
+    const credit     = bagsBack * unitPrice
+
+    if (bagsBack <= 0) { alert('Enter a valid number of bags.'); setSavingReturn(false); return }
+    if (bagsBack > returnTarget.bags_sold) {
+      alert(`Cannot return more than dispatched. Max: ${returnTarget.bags_sold} bags.`)
+      setSavingReturn(false); return
+    }
+
+    // 1. Record the return
+    const { data: { session } } = await supabase.auth.getSession()
+    await supabase.from('bulk_returns').insert({
+      return_date:       returnForm.return_date || returnTarget.sale_date,
+      original_sale_id:  returnTarget.id,
+      employee_id:       returnTarget.buyer_employee_id,
+      bags_returned:     bagsBack,
+      unit_price:        unitPrice,
+      total_credit:      credit,
+      notes:             returnForm.notes || null,
+      recorded_by:       session?.user.id ?? null,
+    })
+
+    // 2. Update the original bulk sale — reduce outstanding by credit amount
+    const newOutstanding = Math.max(0, returnTarget.outstanding_balance - credit)
+    const newPaid        = returnTarget.amount_paid + credit
+    const newStatus      = newOutstanding <= 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+    await supabase.from('sales').update({
+      outstanding_balance: newOutstanding,
+      amount_paid:         newPaid,
+      payment_status:      newStatus,
+      notes:               (returnTarget.notes ? returnTarget.notes + ' | ' : '') +
+                           `Return: ${bagsBack} bags on ${returnForm.return_date}`,
+    }).eq('id', returnTarget.id)
+
+    // 3. Add bags back to factory finished stock
+    await supabase.from('finished_inventory').insert({
+      bags_in:          bagsBack,
+      bags_out:         0,
+      transaction_date: returnForm.return_date || returnTarget.sale_date,
+      reference_type:   'adjustment',
+      notes:            `Return from ${returnTarget.buyer?.full_name ?? 'rider'} — ${bagsBack} bags`,
+    })
+
+    setSavingReturn(false)
+    setShowReturnForm(false)
+    setReturnTarget(null)
+    setReturnForm({ return_date: '', bags_returned: '', notes: '' })
+    load()
+  }
+
+  const deleteReturn = async (r: any) => {
+    if (!confirm('Delete this return record?\nNote: this will NOT reverse the stock or debt adjustments.')) return
+    await supabase.from('bulk_returns').delete().eq('id', r.id)
+    load()
   }
 
   const deleteSale = async (s: any) => {
@@ -510,6 +593,11 @@ function SalesPageInner() {
                           setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
+                        <button onClick={() => {
+                          setReturnTarget({ ...s, buyer: s.buyer })
+                          setReturnForm({ return_date: today(), bags_returned: '', notes: '' })
+                          setShowReturnForm(true)
+                        }} className="btn btn-sm btn-warning">↩ Return</button>
                         <button onClick={() => deleteSale(s)} className="btn btn-sm btn-danger">Del</button>
                       </div>
                     </td>
@@ -700,7 +788,6 @@ function SalesPageInner() {
     </AppLayout>
   )
 }
-
 export default function SalesPage() {
   return (
     <ModuleGuard moduleKey="sales" moduleLabel="Sales">

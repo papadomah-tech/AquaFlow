@@ -19,7 +19,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
   const load = useCallback(async () => {
     setLoading(true)
 
-    // Bags received via bulk purchases (buyer_employee_id = me)
+    // Bags received via bulk purchases
     const { data: bulkIn } = await supabase
       .from('sales')
       .select('bags_sold, sale_date, amount_paid, outstanding_balance, payment_status')
@@ -27,7 +27,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
       .eq('buyer_employee_id', employeeId)
       .order('sale_date', { ascending: false })
 
-    // Bags sold at retail (salesperson_id = me)
+    // Bags sold at retail
     const { data: retailOut } = await supabase
       .from('sales')
       .select('bags_sold, total_amount, amount_paid, outstanding_balance, sale_date, customers(name)')
@@ -36,9 +36,17 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
       .gte('sale_date', dateFrom)
       .order('sale_date', { ascending: false })
 
+    // Bags returned to factory
+    const { data: bagReturns } = await supabase
+      .from('bulk_returns')
+      .select('bags_returned, return_date, total_credit')
+      .eq('employee_id', employeeId)
+      .order('return_date', { ascending: false })
+
     const totalReceived = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
     const totalSold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-    const bagsOnHand    = totalReceived - totalSold
+    const totalReturned = (bagReturns ?? []).reduce((a: number, r: any) => a + r.bags_returned, 0)
+    const bagsOnHand    = totalReceived - totalSold - totalReturned
 
     const revenue       = (retailOut ?? []).reduce((a: number, s: any) => a + s.total_amount, 0)
     const collected     = (retailOut ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
@@ -50,6 +58,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
     setRiderData({
       bulkIn: bulkIn ?? [],
       retailOut: retailOut ?? [],
+      bagReturns: bagReturns ?? [],
       totalReceived, totalSold, bagsOnHand,
       revenue, collected, outstanding, owedToFactory,
     })
