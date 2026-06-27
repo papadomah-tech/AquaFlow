@@ -21,6 +21,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'reports',        label: 'Reports',        icon: '📈', href: '/reports',        adminOnly: false, description: 'P&L, salesperson reports, financial analysis' },
   { key: 'sales-account',  label: 'Sales Account',  icon: '📋', href: '/sales-account',  adminOnly: false, description: 'Per-user sales account — bags, earnings, factory debt' },
   { key: 'fund-account',   label: 'Fund Account',   icon: '🏦', href: '/fund-account',   adminOnly: true,  description: 'Company fund — deposits, rider payments, expenses (admin only)' },
+  { key: 'setup',          label: 'Setup / Opening Bal.', icon: '🚀', href: '/setup',          adminOnly: true,  description: 'Set up opening balances before going live' },
   { key: 'import',         label: 'Import Data',    icon: '📥', href: '/import',         adminOnly: true,  description: 'Import customers, employees, expenses from CSV' },
   { key: 'settings',       label: 'Settings',       icon: '⚙️', href: '/settings',       adminOnly: true,  description: 'User management and permissions (admin only)' },
 ]
