@@ -785,38 +785,64 @@ function SalesPageInner() {
           </div>
         </div>
       )}
-      {/* RETURN MODAL */}
+      {/* RETURN MODAL — uses fixed positioning independently of CSS classes */}
       {showReturnForm && returnTarget && (
-        <div className="modal-overlay" onClick={() => { setShowReturnForm(false) }}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+        <>
+          {/* Backdrop */}
+          <div
+            style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9998}}
+            onClick={() => setShowReturnForm(false)}
+          />
+          {/* Dialog */}
+          <div style={{
+            position:'fixed', top:'50%', left:'50%',
+            transform:'translate(-50%,-50%)',
+            width:'min(480px, 94vw)',
+            maxHeight:'80vh',
+            overflowY:'auto',
+            background:'white',
+            borderRadius:'1rem',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.3)',
+            zIndex:9999,
+          }}>
+            {/* Header */}
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'1.25rem',borderBottom:'1px solid #f0f0f0'}}>
               <div>
-                <h2 className="font-bold text-orange-700">Return Bags</h2>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Rider returns unsold bags to factory
-                </p>
+                <div style={{fontWeight:'bold',color:'#c2410c',fontSize:'1rem'}}>Return Bags to Factory</div>
+                <div style={{fontSize:'0.75rem',color:'#888',marginTop:'2px'}}>
+                  {returnTarget.buyer?.full_name ?? 'Rider'} — dispatch on {returnTarget.sale_date}
+                </div>
               </div>
-              <button onClick={() => setShowReturnForm(false)} className="text-gray-400 text-xl">X</button>
+              <button onClick={() => setShowReturnForm(false)}
+                style={{background:'none',border:'none',fontSize:'1.25rem',color:'#aaa',cursor:'pointer',lineHeight:1}}>
+                ✕
+              </button>
             </div>
-            <div className="modal-body space-y-3">
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-                <div className="text-xs font-semibold text-orange-700 mb-2">Original Dispatch</div>
-                <div className="grid grid-cols-3 gap-2 text-center">
+
+            {/* Body */}
+            <div style={{padding:'1.25rem',display:'flex',flexDirection:'column',gap:'1rem'}}>
+
+              {/* Summary */}
+              <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:'0.75rem',padding:'0.75rem'}}>
+                <div style={{fontSize:'0.7rem',fontWeight:'600',color:'#c2410c',marginBottom:'0.5rem',textTransform:'uppercase'}}>Original Dispatch</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem',textAlign:'center'}}>
                   <div>
-                    <div className="text-xs text-gray-500">Dispatched</div>
-                    <div className="font-bold text-[#1F4E79]">{fmtNum(returnTarget.bags_sold)} bags</div>
+                    <div style={{fontSize:'0.7rem',color:'#666'}}>Bags Out</div>
+                    <div style={{fontWeight:'bold',color:'#1F4E79'}}>{fmtNum(returnTarget.bags_sold)}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Unit Price</div>
-                    <div className="font-bold">{fmtGhc(returnTarget.unit_price)}</div>
+                    <div style={{fontSize:'0.7rem',color:'#666'}}>Price/Bag</div>
+                    <div style={{fontWeight:'bold'}}>{fmtGhc(returnTarget.unit_price)}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Still Owed</div>
-                    <div className="font-bold text-red-600">{fmtGhc(returnTarget.outstanding_balance)}</div>
+                    <div style={{fontSize:'0.7rem',color:'#666'}}>Still Owed</div>
+                    <div style={{fontWeight:'bold',color:'#dc2626'}}>{fmtGhc(returnTarget.outstanding_balance)}</div>
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {/* Inputs */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Return Date</label>
                   <input type="date" value={returnForm.return_date}
@@ -827,32 +853,52 @@ function SalesPageInner() {
                   <label className="form-label">Bags Returned *</label>
                   <input type="number" value={returnForm.bags_returned}
                     onChange={e => setReturnForm(f => ({...f, bags_returned: e.target.value}))}
-                    className="form-input text-xl font-bold text-center"
-                    placeholder="0" />
+                    className="form-input"
+                    style={{textAlign:'center',fontSize:'1.25rem',fontWeight:'bold'}}
+                    placeholder="0"
+                    max={returnTarget.bags_sold} />
                 </div>
               </div>
-              {parseInt(returnForm.bags_returned || '0') > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-                  <div className="text-sm font-medium text-green-700 mb-1">
-                    Credit: {fmtGhc(parseInt(returnForm.bags_returned) * parseFloat(returnTarget.unit_price || '0'))}
+
+              {/* Credit preview */}
+              {parseInt(returnForm.bags_returned || '0') > 0 && (() => {
+                const bags   = parseInt(returnForm.bags_returned)
+                const credit = bags * parseFloat(returnTarget.unit_price || '0')
+                const newBal = Math.max(0, returnTarget.outstanding_balance - credit)
+                return (
+                  <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'0.75rem',padding:'0.75rem',textAlign:'center'}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
+                      <div>
+                        <div style={{fontSize:'0.7rem',color:'#666'}}>Returning</div>
+                        <div style={{fontWeight:'bold',color:'#c2410c'}}>{fmtNum(bags)} bags</div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:'0.7rem',color:'#666'}}>Credit</div>
+                        <div style={{fontWeight:'bold',color:'#15803d'}}>{fmtGhc(credit)}</div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:'0.7rem',color:'#666'}}>New Balance</div>
+                        <div style={{fontWeight:'bold',color:'#1F4E79'}}>{fmtGhc(newBal)}</div>
+                      </div>
+                    </div>
+                    <div style={{fontSize:'0.7rem',color:'#16a34a',marginTop:'0.4rem'}}>
+                      ✅ {fmtNum(bags)} bags returned to factory stock
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    New balance: {fmtGhc(Math.max(0, returnTarget.outstanding_balance -
-                      (parseInt(returnForm.bags_returned) * parseFloat(returnTarget.unit_price || '0'))))}
-                  </div>
-                  <div className="text-xs text-green-600 mt-1">
-                    Bags will be added back to factory stock
-                  </div>
-                </div>
-              )}
+                )
+              })()}
+
               <div className="form-group">
-                <label className="form-label">Notes</label>
+                <label className="form-label">Notes (reason for return)</label>
                 <textarea value={returnForm.notes} rows={2}
                   onChange={e => setReturnForm(f => ({...f, notes: e.target.value}))}
-                  className="form-input" placeholder="Reason for return..." />
+                  className="form-input"
+                  placeholder="e.g. Unsold end of day, market closed..." />
               </div>
             </div>
-            <div className="modal-footer">
+
+            {/* Footer */}
+            <div style={{display:'flex',gap:'0.75rem',justifyContent:'flex-end',padding:'1rem 1.25rem',borderTop:'1px solid #f0f0f0'}}>
               <button onClick={() => setShowReturnForm(false)} className="btn btn-secondary">Cancel</button>
               <button onClick={saveReturn}
                 disabled={savingReturn || !returnForm.bags_returned || parseInt(returnForm.bags_returned) <= 0}
@@ -861,7 +907,7 @@ function SalesPageInner() {
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </AppLayout>
   )
