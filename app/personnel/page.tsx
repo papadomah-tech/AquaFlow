@@ -17,7 +17,7 @@ function PersonnelPageInner() {
   const [period, setPeriod] = useState({ from: monthStart(), to: today() })
   const [perfData, setPerfData] = useState<any[]>([])
 
-  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff' })
+  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff', base_pay:'', feeding_fee:'300', monthly_target:'6500' })
   const [lossForm, setLossForm] = useState({ employee_id:'', loss_date:today(), loss_type:'Bag Shortage', description:'', quantity:'', unit_cost:'', notes:'' })
 
   const loadAll = useCallback(async () => {
@@ -36,17 +36,60 @@ function PersonnelPageInner() {
   useEffect(() => { loadAll() }, [loadAll])
 
   const calcPerformance = useCallback(async () => {
-    const wd = countWorkingDays(period.from, period.to)
     const activeEmp = employees.filter((e: any) => e.status === 'active')
+
     const results = await Promise.all(activeEmp.map(async (emp: any) => {
-      const { data: sales } = await supabase.from('sales').select('bags_sold').eq('salesperson_id', emp.id).gte('sale_date', period.from).lte('sale_date', period.to)
-      const bags = (sales ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-      const { data: pendingLosses } = await supabase.from('employee_losses').select('loss_amount').eq('employee_id', emp.id).eq('posted', false)
+      let bags = 0
+
+      if (emp.employee_type === 'factory_manager' || emp.role?.toLowerCase().includes('manager')) {
+        // Factory Manager: total bags OUT from finished_inventory in period
+        const { data: fi } = await supabase.from('finished_inventory')
+          .select('bags_out')
+          .gte('transaction_date', period.from)
+          .lte('transaction_date', period.to)
+        bags = (fi ?? []).reduce((a: number, r: any) => a + r.bags_out, 0)
+      } else if (emp.employee_type === 'rider') {
+        // Rider: bags from bulk dispatches assigned to them
+        const { data: bulkSales } = await supabase.from('sales')
+          .select('bags_sold')
+          .eq('sale_type', 'bulk')
+          .eq('buyer_employee_id', emp.id)
+          .gte('sale_date', period.from)
+          .lte('sale_date', period.to)
+        bags = (bulkSales ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+      } else {
+        // Other staff: retail sales they recorded
+        const { data: sales } = await supabase.from('sales')
+          .select('bags_sold')
+          .eq('salesperson_id', emp.id)
+          .gte('sale_date', period.from)
+          .lte('sale_date', period.to)
+        bags = (sales ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+      }
+
+      const { data: pendingLosses } = await supabase.from('employee_losses')
+        .select('loss_amount').eq('employee_id', emp.id).eq('posted', false)
       const totalLosses = (pendingLosses ?? []).reduce((a: number, l: any) => a + l.loss_amount, 0)
-      const { data: lockRow } = await supabase.from('salary_payments').select('id,amount,payment_date').eq('employee_id', emp.id).eq('payment_type','performance').eq('period_start', period.from).eq('period_end', period.to).limit(1)
+
+      const { data: lockRow } = await supabase.from('salary_payments')
+        .select('id,amount,payment_date')
+        .eq('employee_id', emp.id).eq('payment_type','performance')
+        .eq('period_start', period.from).eq('period_end', period.to).limit(1)
       const locked = lockRow && lockRow.length > 0
-      const perf = calcPerfPay(emp.salary, emp.sales_target_daily, wd, bags)
-      return { ...emp, bags, periodWd: wd, ...perf, totalLosses, netPay: perf.earned - totalLosses, locked, lockInfo: lockRow?.[0] }
+
+      // VeeBee proportional formula
+      const basePay      = emp.base_pay || emp.salary || 0
+      const feedingFee   = emp.feeding_fee ?? 300
+      const monthlyTarget= emp.monthly_target || emp.sales_target_daily * 26 || 6500
+      const perf = calcPerfPay({ basePay, feedingFee, monthlyTarget, actualBags: bags })
+
+      return {
+        ...emp, bags, basePay, monthlyTarget,
+        ...perf,
+        totalLosses,
+        netPay: Math.max(0, perf.total - totalLosses),
+        locked, lockInfo: lockRow?.[0]
+      }
     }))
     setPerfData(results)
   }, [employees, period])
@@ -54,8 +97,8 @@ function PersonnelPageInner() {
   const payEmployee = async (d: any) => {
     if (d.locked) { alert('Period already paid on ' + d.lockInfo?.payment_date); return }
     if (d.netPay <= 0) { alert('Net pay is zero or negative. No payment recorded.'); return }
-    if (!confirm(`Pay ${d.full_name}?\n\nPay Earned: ${fmtGhc(d.earned)}\nLosses: ${fmtGhc(d.totalLosses)}\nNet Pay: ${fmtGhc(d.netPay)}\n\nPeriod: ${period.from} to ${period.to}`)) return
-    await supabase.from('salary_payments').insert({ employee_id: d.id, payment_date: today(), amount: d.netPay, payment_type: 'performance', period_start: period.from, period_end: period.to, notes: `Period pay: ${period.from} to ${period.to}` })
+    if (!confirm(`Pay ${d.full_name}?\n\nBase Pay Earned: ${fmtGhc(d.earnedBase)}\nFeeding Fee: ${fmtGhc(d.feedingFee)}\nGross Pay: ${fmtGhc(d.total)}\nLosses Deducted: ${fmtGhc(d.totalLosses)}\nNet Pay: ${fmtGhc(d.netPay)}\n\nPeriod: ${period.from} to ${period.to}`)) return
+    await supabase.from('salary_payments').insert({ employee_id: d.id, payment_date: today(), amount: d.netPay, payment_type: 'performance', period_start: period.from, period_end: period.to, notes: `Period pay: ${period.from} to ${period.to} | Base: ${fmtGhc(d.earnedBase)} + Feeding: ${fmtGhc(d.feedingFee)} - Losses: ${fmtGhc(d.totalLosses)}` })
     await supabase.from('expenses').insert({ expense_date: today(), category: 'Salary', description: `Performance pay - ${d.full_name} (${period.from} to ${period.to})`, amount: d.netPay })
     // Mark losses as posted
     await supabase.from('employee_losses').update({ posted: true, posted_date: today() }).eq('employee_id', d.id).eq('posted', false)
@@ -64,7 +107,7 @@ function PersonnelPageInner() {
   }
 
   const saveEmployee = async () => {
-    const payload = { ...empForm, salary: parseFloat(empForm.salary), sales_target_daily: parseInt(empForm.sales_target_daily), working_days: parseInt(empForm.working_days) } as any
+    const payload = { ...empForm, salary: parseFloat(empForm.salary)||0, sales_target_daily: parseInt(empForm.sales_target_daily)||250, working_days: parseInt(empForm.working_days)||26, base_pay: parseFloat(empForm.base_pay)||parseFloat(empForm.salary)||0, feeding_fee: parseFloat(empForm.feeding_fee)||300, monthly_target: parseInt(empForm.monthly_target)||6500 } as any
     if (editEmp) await supabase.from('employees').update(payload).eq('id', editEmp.id)
     else await supabase.from('employees').insert(payload)
     setShowEmpForm(false); loadAll()
@@ -85,7 +128,7 @@ function PersonnelPageInner() {
       <div className="page-header">
         <h1 className="page-title">Personnel</h1>
         <div className="flex gap-2">
-          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff'}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
+          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff',base_pay:'',feeding_fee:'300',monthly_target:'6500'}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
           <button onClick={() => { setShowLossForm(true) }} className="btn btn-warning">+ Record Loss</button>
         </div>
       </div>
@@ -128,7 +171,7 @@ function PersonnelPageInner() {
                   <td className="num">{e.sales_target_daily}/day</td>
                   <td><span className={'badge '+(e.status==='active'?'badge-green':'badge-gray')}>{e.status}</span></td>
                   <td><div className="flex gap-1">
-                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff'});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
+                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff',base_pay:String(e.base_pay??e.salary??''),feeding_fee:String(e.feeding_fee??300),monthly_target:String(e.monthly_target??6500)});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
                     <button onClick={async()=>{if(confirm('Toggle status?'))await supabase.from('employees').update({status:e.status==='active'?'inactive':'active'}).eq('id',e.id);loadAll()}} className="btn btn-sm btn-warning">{e.status==='active'?'Deactivate':'Activate'}</button>
                   </div></td>
                 </tr>
@@ -138,13 +181,18 @@ function PersonnelPageInner() {
         </div>
       )}
 
-      {/* PERFORMANCE PAY TAB */}
+      {/* PERFORMANCE PAY TAB — VeeBee Proportional Framework */}
       {tab === 'perf' && (
         <>
-          <div className="card mb-4">
-            <div className="text-xs text-blue-700 bg-blue-50 rounded-lg p-3 mb-3">
-              Formula: Daily Pay = Monthly Salary / 26 | Period Pay = Daily Pay x Working Days | Period Target = Daily Target x Working Days | Pay = MIN(100%, Bags / Target) x Period Pay
+          <div className="card mb-4 bg-blue-50 border border-blue-200">
+            <div className="text-xs font-semibold text-blue-800 mb-1">VeeBee Performance Pay Formula</div>
+            <div className="text-xs text-blue-700">
+              Monthly Pay = (Actual Bags ÷ Monthly Target) × Base Pay + Feeding Fee
+              &nbsp;|&nbsp; No cap — overperformance earns above base.
+              &nbsp;|&nbsp; Feeding fee always paid in full.
             </div>
+          </div>
+          <div className="card mb-4">
             <div className="flex gap-3 items-end flex-wrap">
               <div><label className="form-label">From</label><input type="date" value={period.from} onChange={e=>setPeriod(p=>({...p,from:e.target.value}))} className="form-input w-36" /></div>
               <div><label className="form-label">To</label><input type="date" value={period.to} onChange={e=>setPeriod(p=>({...p,to:e.target.value}))} className="form-input w-36" /></div>
@@ -152,29 +200,88 @@ function PersonnelPageInner() {
               <button onClick={()=>setPeriod({from:monthStart(),to:today()})} className="btn btn-secondary">This Month</button>
             </div>
           </div>
-          <div className="space-y-3">
-            {perfData.length === 0 ? <div className="card text-center py-8 text-gray-400">Click Calculate to see performance data</div>
+          <div className="space-y-4">
+            {perfData.length === 0
+              ? <div className="card text-center py-8 text-gray-400">Click Calculate to see performance data</div>
             : perfData.map((d: any) => (
-              <div key={d.id} className={'card border-l-4 ' + (d.locked ? 'border-gray-300 opacity-70' : d.netPay > 0 ? 'border-green-500' : 'border-red-400')}>
-                <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div key={d.id} className={'card border-l-4 '
+                + (d.locked ? 'border-gray-300 bg-gray-50'
+                : d.pct >= 100 ? 'border-green-500'
+                : d.pct >= 60  ? 'border-orange-400'
+                : 'border-red-400')}>
+
+                {/* Header row */}
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3 pb-3 border-b border-gray-100">
                   <div>
-                    <div className="font-bold text-[#1F4E79]">{d.locked ? '🔒 ' : ''}{d.full_name} <span className="text-xs font-normal text-gray-400">({d.role})</span></div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      GHc{d.salary.toLocaleString()}/mo ÷ 26 = GHc{d.dailySal.toFixed(2)}/day × {d.periodWd} days = GHc{d.periodPay.toFixed(2)} period pay
+                    <div className="font-bold text-[#1F4E79]">
+                      {d.locked ? '🔒 ' : ''}{d.full_name}
+                      <span className="text-xs font-normal text-gray-400 ml-2">({d.role})</span>
+                      <span className={'text-xs font-medium ml-2 '
+                        + (d.employee_type === 'rider' ? 'text-orange-600'
+                        : d.employee_type === 'factory_manager' ? 'text-purple-600'
+                        : 'text-gray-500')}>
+                        {d.employee_type === 'rider' ? '🛵 Rider'
+                        : d.employee_type === 'factory_manager' ? '🏭 Factory Mgr'
+                        : '👤 Staff'}
+                      </span>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      Target: {d.sales_target_daily} × {d.periodWd} = {(d.sales_target_daily * d.periodWd).toLocaleString()} bags | Sold: {d.bags.toLocaleString()} bags | Performance: {d.pct.toFixed(1)}%
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {d.employee_type === 'rider'
+                        ? `Bulk bags dispatched: ${fmtNum(d.bags)}`
+                        : d.employee_type === 'factory_manager'
+                        ? `Total bags out (finished inventory): ${fmtNum(d.bags)}`
+                        : `Bags sold: ${fmtNum(d.bags)}`}
+                      &nbsp;/&nbsp;Target: {fmtNum(d.monthlyTarget)} bags
                     </div>
                   </div>
-                  <div className="flex gap-4 items-center">
-                    <div className="text-center">
-                      <div className="text-xs text-gray-500">Pay Earned</div>
-                      <div className="font-bold text-green-700">{fmtGhc(d.earned)}</div>
+                  {/* Performance % badge */}
+                  <div className={'text-center px-4 py-2 rounded-xl '
+                    + (d.pct >= 100 ? 'bg-green-100 text-green-700'
+                    : d.pct >= 60  ? 'bg-orange-100 text-orange-700'
+                    : 'bg-red-100 text-red-600')}>
+                    <div className="text-xs font-medium">Performance</div>
+                    <div className="text-xl font-bold tabular-nums">{d.pct.toFixed(1)}%</div>
+                  </div>
+                </div>
+
+                {/* Pay breakdown */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  {[
+                    ['Base Pay Earned',  fmtGhc(d.earnedBase),  'd.pct>=100?"text-green-700":"text-orange-600"'],
+                    ['Feeding Fee',      fmtGhc(d.feedingFee),  '"text-blue-700"'],
+                    ['Gross Pay',        fmtGhc(d.total),       '"text-[#1F4E79] font-bold"'],
+                    ['Losses Deducted',  fmtGhc(d.totalLosses), '"text-red-600"'],
+                  ].map(([l, v]) => (
+                    <div key={l as string} className="bg-gray-50 rounded-lg p-2.5 text-center">
+                      <div className="text-xs text-gray-500">{l}</div>
+                      <div className="font-semibold text-sm mt-0.5 tabular-nums">{v}</div>
                     </div>
-                    {d.totalLosses > 0 && <div className="text-center">
-                      <div className="text-xs text-gray-500">Losses</div>
-                      <div className="font-bold text-red-600">-{fmtGhc(d.totalLosses)}</div>
-                    </div>}
+                  ))}
+                </div>
+
+                {/* Formula explanation */}
+                <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-3">
+                  ({fmtNum(d.bags)} ÷ {fmtNum(d.monthlyTarget)}) × GHc {d.basePay.toLocaleString()} + GHc {d.feedingFee} feeding
+                  = GHc {d.earnedBase.toFixed(2)} + GHc {d.feedingFee} = <strong>GHc {d.total.toFixed(2)}</strong>
+                  {d.totalLosses > 0 && ` − GHc ${d.totalLosses.toFixed(2)} losses`}
+                  = <strong>GHc {d.netPay.toFixed(2)} net</strong>
+                </div>
+
+                {/* Net pay + action */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <div className="text-xs text-gray-500">NET PAY</div>
+                    <div className={'text-2xl font-bold tabular-nums '
+                      + (d.netPay > 0 ? 'text-[#1F4E79]' : 'text-gray-400')}>
+                      {fmtGhc(d.netPay)}
+                    </div>
+                    {d.locked && (
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Paid on {d.lockInfo?.payment_date} · {fmtGhc(d.lockInfo?.amount)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
                     <div className="text-center">
                       <div className="text-xs text-gray-500">Net Pay</div>
                       <div className={'font-bold text-lg ' + (d.netPay > 0 ? 'text-[#1F4E79]' : 'text-red-600')}>{fmtGhc(d.netPay)}</div>
@@ -287,6 +394,32 @@ function PersonnelPageInner() {
                     <option value="factory_manager">🏭 Factory Manager (dispatches to riders)</option>
                   </select>
                   <div className="text-xs text-gray-400 mt-1">This controls what they see in the Sales module</div>
+                </div>
+                <div className="col-span-2 border-t border-gray-100 pt-3">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Performance Pay (VeeBee Framework)
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Base Pay (GHc)</label>
+                  <input type="number" step="0.01" value={empForm.base_pay}
+                    onChange={e=>setEmpForm(f=>({...f,base_pay:e.target.value}))}
+                    className="form-input" placeholder="e.g. 1500 for Rider" />
+                  <div className="text-xs text-gray-400 mt-1">Proportional component — scales with output</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Feeding Fee (GHc)</label>
+                  <input type="number" step="0.01" value={empForm.feeding_fee}
+                    onChange={e=>setEmpForm(f=>({...f,feeding_fee:e.target.value}))}
+                    className="form-input" placeholder="300" />
+                  <div className="text-xs text-gray-400 mt-1">Always paid in full regardless of output</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Monthly Bag Target</label>
+                  <input type="number" value={empForm.monthly_target}
+                    onChange={e=>setEmpForm(f=>({...f,monthly_target:e.target.value}))}
+                    className="form-input" placeholder="6500" />
+                  <div className="text-xs text-gray-400 mt-1">e.g. 250/day × 26 days = 6,500</div>
                 </div>
                 <div className="form-group"><label className="form-label">Phone</label><input value={empForm.phone} onChange={e=>setEmpForm(f=>({...f,phone:e.target.value}))} className="form-input" /></div>
                 <div className="form-group"><label className="form-label">Monthly Salary (GHc)</label><input type="number" value={empForm.salary} onChange={e=>setEmpForm(f=>({...f,salary:e.target.value}))} className="form-input" /></div>

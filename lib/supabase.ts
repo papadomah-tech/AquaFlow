@@ -29,16 +29,21 @@ export const countWorkingDays = (from: string, to: string): number => {
   return Math.max(1, count)
 }
 
-export const calcPerfPay = (
-  monthlySal: number,
-  dailyTarget: number,
-  periodWd: number,
-  bagsSold: number
-) => {
-  const dailySal     = monthlySal / 26
-  const periodPay    = dailySal * periodWd
-  const periodTarget = dailyTarget * periodWd
-  const pct          = periodTarget > 0 ? Math.min(1, bagsSold / periodTarget) : 0
-  const earned       = Math.round(periodPay * pct * 100) / 100
-  return { dailySal, periodPay, periodTarget, pct: pct * 100, earned }
+// VeeBee Performance Pay Framework (proportional, no cap)
+// Formula: (actualBags ÷ monthlyTarget) × basePay + feedingFee
+// - basePay scales linearly — no tiers, no caps
+// - feedingFee is always paid in full regardless of output
+// - pct can exceed 100% for overperformance
+export const calcPerfPay = (params: {
+  basePay:       number   // proportional base (e.g. GHc 1,500 for rider)
+  feedingFee:    number   // fixed top-up always paid (e.g. GHc 300)
+  monthlyTarget: number   // total bags for the month (e.g. 6,500)
+  actualBags:    number   // bags delivered/dispatched in the period
+}) => {
+  const { basePay, feedingFee, monthlyTarget, actualBags } = params
+  const pct         = monthlyTarget > 0 ? actualBags / monthlyTarget : 0
+  const earnedBase  = Math.round(pct * basePay * 100) / 100
+  const total       = Math.round((earnedBase + feedingFee) * 100) / 100
+  const ratePerBag  = monthlyTarget > 0 ? basePay / monthlyTarget : 0
+  return { pct: pct * 100, earnedBase, feedingFee, total, ratePerBag }
 }
