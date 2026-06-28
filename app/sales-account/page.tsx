@@ -266,6 +266,51 @@ function SalesAccountInner() {
             </div>
           </div>
 
+                    {/* Performance */}
+          {data.basePay > 0 && (
+            <div style={{
+              borderRadius:'1rem', padding:'1rem', marginBottom:'1rem',
+              background: data.perfPct >= 100 ? '#15803d'
+                : data.perfPct >= 60 ? '#ea580c' : '#b91c1c',
+              color:'white', boxShadow:'0 4px 16px rgba(0,0,0,0.15)'
+            }}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                flexWrap:'wrap',gap:'0.75rem'}}>
+                <div>
+                  <div style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',
+                    letterSpacing:'0.05em',opacity:0.75,marginBottom:'0.25rem'}}>
+                    Performance
+                  </div>
+                  <div style={{fontSize:'3rem',fontWeight:'bold',lineHeight:1,
+                    fontVariantNumeric:'tabular-nums'}}>
+                    {data.perfPct.toFixed(1)}%
+                  </div>
+                  <div style={{fontSize:'0.7rem',opacity:0.7,marginTop:'0.25rem'}}>
+                    {fmtNum(data.perfBags)} bags ÷ {fmtNum(data.monthlyTgt)} target
+                  </div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',
+                  gap:'0.5rem',textAlign:'center'}}>
+                  {([
+                    ['Base Pay',    fmtGhc(data.earnedBase)],
+                    ['Feeding Fee', fmtGhc(data.feedingFee)],
+                    ['Gross Pay',   fmtGhc(data.grossPay)],
+                  ] as [string,string][]).map(([l, v]) => (
+                    <div key={l} style={{background:'rgba(255,255,255,0.15)',
+                      borderRadius:'0.75rem',padding:'0.5rem 0.6rem'}}>
+                      <div style={{fontSize:'0.65rem',opacity:0.75}}>{l}</div>
+                      <div style={{fontWeight:'bold',fontSize:'0.85rem',
+                        fontVariantNumeric:'tabular-nums',marginTop:'0.2rem'}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{fontSize:'0.65rem',opacity:0.5,marginTop:'0.75rem'}}>
+                ({fmtNum(data.perfBags)} ÷ {fmtNum(data.monthlyTgt)}) × GHc {data.basePay.toLocaleString()} + GHc {data.feedingFee} feeding = {fmtGhc(data.grossPay)}
+              </div>
+            </div>
+          )}
+
           {/* ── Bulk Receipts ─────────────────────────────────────── */}
           <div className="card mb-4">
             <div className="text-sm font-semibold text-[#1F4E79] mb-3">

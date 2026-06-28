@@ -79,8 +79,12 @@ function SalesPageInner() {
       .lte('sale_date', filter.to)
       .order('sale_date', { ascending: false })
 
-    // Riders only see their own retail sales
-    if (isRider && employeeId) {
+    // Riders: filter to their own sales only
+    // If employeeId is null (not linked), return empty — admin must link employee in Settings
+    if (isRider) {
+      if (!employeeId) {
+        setSales([]); setLoading(false); return
+      }
       q = q.eq('salesperson_id', employeeId)
     }
 
@@ -426,6 +430,22 @@ function SalesPageInner() {
           </button>
         </div>
       </div>
+
+      {/* ── Unlinked employee warning ───────────────────────────────── */}
+      {isRider && !employeeId && !roleLoading && (
+        <div className="card mb-4 border-l-4 border-orange-400 bg-orange-50">
+          <div className="font-semibold text-orange-700 mb-1">
+            ⚠️ Account not linked to an employee record
+          </div>
+          <div className="text-sm text-gray-600">
+            Your sales data cannot load because your user account is not linked
+            to an employee record yet. Please contact your administrator.
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            Admin: go to <strong>Settings → Users → Link Employee</strong> for this account.
+          </div>
+        </div>
+      )}
 
       {/* ── Tab bar — hide bulk tab for riders ───────────────────────── */}
       <div className="flex border-b border-gray-200 mb-4">
