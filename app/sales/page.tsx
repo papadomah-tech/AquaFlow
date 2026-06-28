@@ -73,7 +73,7 @@ function SalesPageInner() {
     const saleType = activeTab
 
     let q = supabase.from('sales')
-      .select('*,customers(id,name),employees!salesperson_id(id,full_name),buyer:employees!buyer_employee_id(id,full_name),teammate:employees!teammate_employee_id(id,full_name)')
+      .select('*,customers(id,name),employees!salesperson_id(id,full_name),buyer:employees!buyer_employee_id(id,full_name)')
       .eq('sale_type', saleType)
       .gte('sale_date', filter.from)
       .lte('sale_date', filter.to)
@@ -571,16 +571,15 @@ function SalesPageInner() {
             /* BULK TABLE */
             <table className="data-table">
               <colgroup>
-                <col style={{width:'90px'}} /><col style={{width:'130px'}} />
-                <col style={{width:'120px'}} /><col style={{width:'110px'}} />
-                <col style={{width:'70px'}} /><col style={{width:'105px'}} />
-                <col style={{width:'90px'}} /><col style={{width:'90px'}} />
-                <col style={{width:'72px'}} /><col style={{width:'175px'}} />
+                <col style={{width:'90px'}} /><col style={{width:'150px'}} />
+                <col style={{width:'120px'}} /><col style={{width:'70px'}} />
+                <col style={{width:'105px'}} /><col style={{width:'90px'}} />
+                <col style={{width:'90px'}} /><col style={{width:'72px'}} />
+                <col style={{width:'175px'}} />
               </colgroup>
               <thead>
                 <tr>
                   <th>Date</th><th>Rider / Sales Rep</th>
-                  <th>Teammate</th>
                   <th>Dispatched By</th>
                   <th className="right">Bags</th>
                   <th className="right">Total</th>
@@ -598,7 +597,6 @@ function SalesPageInner() {
                   <tr key={s.id}>
                     <td className="muted">{s.sale_date}</td>
                     <td className="font-medium">{s.buyer?.full_name ?? s.customers?.name ?? '—'}</td>
-                    <td className="muted">{s.teammate?.full_name ?? '—'}</td>
                     <td className="muted">{s.employees?.full_name ?? 'Factory'}</td>
                     <td className="num">{fmtNum(s.bags_sold)}</td>
                     <td className="num">{fmtGhc(s.total_amount)}</td>
