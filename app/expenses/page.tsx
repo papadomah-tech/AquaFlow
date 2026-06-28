@@ -1,6 +1,9 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
+import { offlineSave } from '@/lib/offlineSave'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useRole } from '@/hooks/useRole'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, today, monthStart } from '@/lib/supabase'
@@ -134,6 +137,8 @@ function ExpensesPageInner() {
 }
 
 export default function ExpensesPage() {
+  const { userId } = useRole()
+  const { isOnline } = useOfflineSync(userId ?? undefined)
   return (
     <ModuleGuard moduleKey="expenses" moduleLabel="Expenses">
       <ExpensesPageInner />

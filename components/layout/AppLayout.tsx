@@ -4,10 +4,12 @@ import { supabase } from '@/lib/supabase'
 import Sidebar from '@/components/layout/Sidebar'
 import MobileNav from '@/components/layout/MobileNav'
 import MobileHeader from '@/components/layout/MobileHeader'
+import SyncStatusBar from '@/components/ui/SyncStatusBar'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [userName, setUserName] = useState('User')
   const [userRole, setUserRole] = useState('operator')
+  const [userId, setUserId]     = useState<string | undefined>(undefined)
   const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
@@ -22,6 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           .eq('id', session.user.id)
           .single()
 
+        setUserId(session.user.id)
         if (profile) {
           setUserName(profile.full_name || session.user.email || 'User')
           setUserRole(profile.role || 'operator')
@@ -65,6 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[#F5F7FA]">
       <Sidebar userName={userName} userRole={userRole} />
       <MobileHeader userName={userName} />
+      <SyncStatusBar userId={userId} />
       <main className="md:ml-[220px] pb-16 md:pb-0 min-h-screen">
         <div className="p-4 md:p-6 max-w-screen-2xl mx-auto">{children}</div>
         {/* Change password — always accessible to all users */}

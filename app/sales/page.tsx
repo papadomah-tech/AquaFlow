@@ -6,6 +6,8 @@ import ModuleGuard from '@/components/ui/ModuleGuard'
 import CustomerSelect from '@/components/ui/CustomerSelect'
 import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
+import { offlineSave } from '@/lib/offlineSave'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUSINESS LOGIC
@@ -26,7 +28,8 @@ import { useRole } from '@/hooks/useRole'
 
 function SalesPageInner() {
   const { isAdmin, isFactoryManager, isRider,
-          employeeId, employeeName, loading: roleLoading } = useRole()
+          employeeId, employeeName, userId, loading: roleLoading } = useRole()
+  const { isOnline, queued, syncNow: doSync } = useOfflineSync(userId ?? undefined)
 
   const [sales, setSales]         = useState<any[]>([])
   const [riders, setRiders]       = useState<any[]>([])
@@ -209,20 +212,32 @@ function SalesPageInner() {
       protocol_bags: proto, notes: retailForm.notes,
     }
 
+    const custName = retailForm.customer_id === 'walk-in' ? 'Walk-in Customer' : 'Customer'
+
     if (editSale) {
-      await supabase.from('sales').update(payload).eq('id', editSale.id)
-      await supabase.from('finished_inventory').delete().eq('sale_id', editSale.id)
+      await offlineSave({ table:'sales', operation:'update', payload,
+        recordId: editSale.id, label:`Sale update — ${custName}`,
+        userId: userId ?? '' })
     } else {
-      const { data: ns } = await supabase.from('sales').insert(payload).select().single()
-      if (ns) payload._id = ns.id
+      const { data: ns, offline } = await offlineSave({
+        table:'sales', operation:'insert', payload,
+        label: `Retail sale — ${custName} (${bags} bags)`,
+        userId: userId ?? ''
+      })
+      // Queue inventory update too
+      await offlineSave({
+        table: 'finished_inventory', operation: 'insert',
+        payload: { bags_in:0, bags_out: bags+proto,
+          transaction_date: retailForm.sale_date,
+          reference_type:'sale', notes:`Retail sale to ${custName}` },
+        label: `Stock out — ${bags+proto} bags`,
+        userId: userId ?? ''
+      })
+      if (offline) {
+        // Show optimistic confirmation
+        alert(`📵 Offline — sale saved locally.\nWill sync to server when internet is restored.`)
+      }
     }
-    await supabase.from('finished_inventory').insert({
-      bags_in: 0, bags_out: bags + proto,
-      transaction_date: retailForm.sale_date,
-      reference_type: 'sale',
-      sale_id: editSale?.id ?? payload._id,
-      notes: `Retail sale to ${customerId}`,
-    })
     setShowForm(false); load()
   }
 
