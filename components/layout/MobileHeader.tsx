@@ -64,7 +64,11 @@ export default function MobileHeader({ userName }: { userName: string }) {
                 </Link>
               ))}
             </nav>
-            <div className="p-4 pb-6 border-t border-white/10" style={{paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 1.5rem) + 72px)"}}>
+            <div className="p-4 pb-6 border-t border-white/10 space-y-3" style={{paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 1.5rem) + 72px)"}}>
+              <a href="/change-password"
+                className="text-blue-200 hover:text-white text-sm flex items-center gap-2">
+                🔑 Change Password
+              </a>
               <button onClick={signOut} className="text-blue-200 text-sm flex items-center gap-2">
                 🚪 Sign Out
               </button>
