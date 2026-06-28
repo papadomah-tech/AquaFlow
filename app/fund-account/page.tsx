@@ -111,7 +111,7 @@ export default function DepositsAccountPage() {
 
     const totalDeposited   = (deps ?? []).reduce((a: number, d: any) => a + d.amount, 0)
 
-    const grandTotalCashIn = retailCollected + bulkCollected + totalDeposited
+    const grandTotalCashIn = retailCollected + bulkCollected
 
     setData({
       retailInvoiced, retailCollected, retailOutstanding,
@@ -376,11 +376,17 @@ export default function DepositsAccountPage() {
                   <span className="text-sm font-bold text-green-700 tabular-nums">{fmtGhc(data.totalDeposited)}</span>
                 </div>
 
-                <div className="border-t-2 border-[#1F4E79] mt-4 pt-3">
+                <div className="border-t-2 border-[#1F4E79] mt-4 pt-3 space-y-2">
                   <div className="flex justify-between items-center px-3 py-3 bg-[#1F4E79] rounded-xl">
-                    <span className="font-bold text-white">GRAND TOTAL CASH IN (A + B + C)</span>
+                    <span className="font-bold text-white">GRAND TOTAL CASH IN (A + B)</span>
                     <span className="font-bold text-white text-xl tabular-nums">
-                      {fmtGhc(data.grandTotalCashIn)}
+                      {fmtGhc(data.retailCollected + data.bulkCollected)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-3 bg-green-700 rounded-xl">
+                    <span className="font-bold text-white">GRAND TOTAL CASH AT HAND (A + B − C)</span>
+                    <span className="font-bold text-white text-xl tabular-nums">
+                      {fmtGhc(data.retailCollected + data.bulkCollected - data.totalDeposited)}
                     </span>
                   </div>
                 </div>
