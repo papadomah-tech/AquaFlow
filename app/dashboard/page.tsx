@@ -43,10 +43,26 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
       .eq('employee_id', employeeId)
       .order('return_date', { ascending: false })
 
-    const totalReceived = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+    // Teammate dispatches (bags where this rider is the mate)
+    const { data: teammateBulk } = await supabase
+      .from('sales')
+      .select('bags_sold')
+      .eq('sale_type', 'bulk')
+      .eq('teammate_employee_id', employeeId)
+
+    // Employee pay settings
+    const { data: empRec } = await supabase
+      .from('employees')
+      .select('base_pay, feeding_fee, monthly_target, salary')
+      .eq('id', employeeId)
+      .single()
+
+    const primaryBags   = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+    const mateBags      = (teammateBulk ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+    const totalReceived = primaryBags + mateBags
     const totalSold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
     const totalReturned = (bagReturns ?? []).reduce((a: number, r: any) => a + r.bags_returned, 0)
-    const bagsOnHand    = totalReceived - totalSold - totalReturned
+    const bagsOnHand    = primaryBags - totalSold - totalReturned  // on-hand from primary only
 
     const revenue       = (retailOut ?? []).reduce((a: number, s: any) => a + s.total_amount, 0)
     const collected     = (retailOut ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
@@ -55,12 +71,21 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
     // Unpaid bulk balance (what rider owes factory)
     const owedToFactory = (bulkIn ?? []).reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
+    // Performance pay (VeeBee formula)
+    const basePay    = empRec?.base_pay || empRec?.salary || 0
+    const feedingFee = empRec?.feeding_fee ?? 300
+    const monthlyTgt = empRec?.monthly_target || 6500
+    const perfPct    = monthlyTgt > 0 ? (totalReceived / monthlyTgt) * 100 : 0
+    const earnedBase = monthlyTgt > 0 ? Math.round((totalReceived / monthlyTgt) * basePay * 100) / 100 : 0
+    const grossPay   = Math.round((earnedBase + feedingFee) * 100) / 100
+
     setRiderData({
       bulkIn: bulkIn ?? [],
       retailOut: retailOut ?? [],
       bagReturns: bagReturns ?? [],
       totalReceived, totalSold, bagsOnHand,
       revenue, collected, outstanding, owedToFactory,
+      basePay, feedingFee, monthlyTgt, perfPct, earnedBase, grossPay,
     })
     setLoading(false)
   }, [employeeId, period])
@@ -246,7 +271,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
 }
 
 // ── Admin dashboard ──────────────────────────────────────────────────────────
-function AdminDashboard() {
+function AdminDashboard({ employeeId }: { employeeId?: number }) {
   const [stats, setStats]   = useState<any>(null)
   const [recent, setRecent] = useState<any[]>([])
   const [period, setPeriod] = useState<'today'|'month'|'all'>('month')
@@ -257,11 +282,17 @@ function AdminDashboard() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: sales }, { data: fi }, { data: exp }] = await Promise.all([
+    const [{ data: sales }, { data: fi }, { data: exp }, { data: fiPeriod }, empResult] = await Promise.all([
       supabase.from('sales').select('total_amount,amount_paid,outstanding_balance,bags_sold,sale_type')
         .gte('sale_date', dateFrom),
       supabase.from('finished_inventory').select('bags_in,bags_out'),
       supabase.from('expenses').select('amount').gte('expense_date', dateFrom),
+      // Bags out in period (for factory manager performance)
+      supabase.from('finished_inventory').select('bags_out').gte('transaction_date', dateFrom),
+      // Employee pay settings (if factory manager)
+      employeeId
+        ? supabase.from('employees').select('base_pay,feeding_fee,monthly_target,salary,employee_type').eq('id', employeeId).single()
+        : Promise.resolve({ data: null }),
     ])
 
     const allSales   = sales ?? []
@@ -276,7 +307,18 @@ function AdminDashboard() {
     const totalExpenses = (exp ?? []).reduce((a: number, e: any) => a + e.amount, 0)
     const bagsInStock   = (fi ?? []).reduce((a: number, r: any) => a + r.bags_in - r.bags_out, 0)
 
-    setStats({ totalRevenue, cashCollected, outstanding, bagsSold, bagsInStock, bulkDispatched, totalExpenses })
+    // Factory manager performance
+    const empRec     = (empResult as any)?.data ?? null
+    const fmBasePay  = empRec?.base_pay || empRec?.salary || 0
+    const fmFeeding  = empRec?.feeding_fee ?? 300
+    const fmTarget   = empRec?.monthly_target || 6500
+    const fmBagsOut  = (fiPeriod ?? []).reduce((a: number, r: any) => a + r.bags_out, 0)
+    const fmPerfPct  = fmTarget > 0 ? (fmBagsOut / fmTarget) * 100 : 0
+    const fmEarned   = fmTarget > 0 ? Math.round((fmBagsOut / fmTarget) * fmBasePay * 100) / 100 : 0
+    const fmGross    = Math.round((fmEarned + fmFeeding) * 100) / 100
+
+    setStats({ totalRevenue, cashCollected, outstanding, bagsSold, bagsInStock, bulkDispatched, totalExpenses,
+      fmBasePay, fmFeeding, fmTarget, fmBagsOut, fmPerfPct, fmEarned, fmGross })
 
     const { data: recSales } = await supabase.from('sales')
       .select('id,sale_date,customers(name),bags_sold,total_amount,payment_status,sale_type,buyer:employees!buyer_employee_id(full_name)')
@@ -284,7 +326,7 @@ function AdminDashboard() {
       .order('created_at', { ascending: false }).limit(10)
     setRecent(recSales ?? [])
     setLoading(false)
-  }, [period])
+  }, [period, employeeId])
 
   useEffect(() => { load() }, [load])
 
@@ -305,6 +347,43 @@ function AdminDashboard() {
 
       {loading ? <div className="text-center py-16 text-gray-400">Loading...</div> : stats && (
         <>
+          {/* Performance card — only shown if employee is linked and has pay set */}
+          {stats.fmBasePay > 0 && (
+            <div className={'rounded-2xl p-4 mb-5 '
+              + (stats.fmPerfPct >= 100 ? 'bg-green-700'
+              : stats.fmPerfPct >= 60  ? 'bg-orange-600'
+              : 'bg-red-700')}>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <div className="text-white/80 text-xs font-medium uppercase tracking-wide">
+                    Performance
+                  </div>
+                  <div className="text-5xl font-bold text-white tabular-nums mt-1">
+                    {stats.fmPerfPct.toFixed(1)}%
+                  </div>
+                  <div className="text-white/70 text-xs mt-1">
+                    {stats.fmBagsOut.toLocaleString()} bags out ÷ {stats.fmTarget.toLocaleString()} target
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {[
+                    ['Base Pay',    fmtGhc(stats.fmEarned)],
+                    ['Feeding Fee', fmtGhc(stats.fmFeeding)],
+                    ['Gross Pay',   fmtGhc(stats.fmGross)],
+                  ].map(([l, v]) => (
+                    <div key={l as string} className="bg-white/15 rounded-xl px-3 py-2">
+                      <div className="text-white/70 text-xs">{l}</div>
+                      <div className="text-white font-bold text-sm tabular-nums mt-0.5">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="text-white/50 text-xs mt-3">
+                ({stats.fmBagsOut.toLocaleString()} ÷ {stats.fmTarget.toLocaleString()}) × GHc {stats.fmBasePay.toLocaleString()} + GHc {stats.fmFeeding} feeding = {fmtGhc(stats.fmGross)}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {[
               ['Retail Revenue',    fmtGhc(stats.totalRevenue),    '#1F4E79'],
@@ -398,7 +477,7 @@ export default function DashboardPage() {
   if (isAdmin || isFactoryManager || canAccess('dashboard')) {
     // If also a rider, show rider dashboard
     if (isRider && employeeId) return <RiderDashboard employeeId={employeeId} employeeName={employeeName} />
-    return <AdminDashboard />
+    return <AdminDashboard employeeId={employeeId ?? undefined} />
   }
 
   return <AccessDenied message="You do not have access to the Dashboard." />
