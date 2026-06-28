@@ -202,16 +202,16 @@ function PersonnelPageInner() {
             <col style={{width:'105px'}} /><col style={{width:'75px'}} />
           </colgroup>
           <colgroup>
-            <col style={{width:'90px'}} /><col style={{width:'130px'}} />
-            <col style={{width:'120px'}} /><col />
-            <col style={{width:'105px'}} /><col style={{width:'75px'}} />
+            <col style={{width:'90px'}} /><col style={{width:'120px'}} />
+            <col style={{width:'110px'}} /><col />
+            <col style={{width:'100px'}} /><col style={{width:'70px'}} /><col style={{width:'70px'}} />
           </colgroup>
           <thead><tr>
             <th>Date</th><th>Employee</th><th>Type</th>
-            <th>Description</th><th className="right">Amount</th><th>Status</th>
+            <th>Description</th><th className="right">Amount</th><th>Status</th><th>Actions</th>
           </tr></thead>
             <tbody>
-              {losses.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">No losses recorded</td></tr>
+              {losses.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No losses recorded</td></tr>
               : losses.map((l: any) => (
                 <tr key={l.id}>
                   <td className="muted">{l.loss_date}</td>
@@ -220,6 +220,11 @@ function PersonnelPageInner() {
                   <td className="text-xs">{l.description}</td>
                   <td className="num-red">{fmtGhc(l.loss_amount)}</td>
                   <td><span className={'badge ' + (l.posted ? 'badge-green' : 'badge-yellow')}>{l.posted ? 'Posted' : 'Pending'}</span></td>
+                  <td><button onClick={async () => {
+                    if (!confirm('Delete this loss record?')) return
+                    await supabase.from('employee_losses').delete().eq('id', l.id)
+                    loadAll()
+                  }} className="btn btn-sm btn-danger">Del</button></td>
                 </tr>
               ))}
             </tbody>
@@ -232,24 +237,29 @@ function PersonnelPageInner() {
         <div className="card">
           <table className="data-table">
             <colgroup>
-            <col style={{width:'90px'}} /><col style={{width:'140px'}} />
-            <col style={{width:'110px'}} /><col style={{width:'180px'}} />
-            <col style={{width:'105px'}} /><col />
+            <col style={{width:'90px'}} /><col style={{width:'130px'}} />
+            <col style={{width:'110px'}} /><col style={{width:'160px'}} />
+            <col style={{width:'105px'}} /><col /><col style={{width:'70px'}} />
           </colgroup>
           <thead><tr>
             <th>Date</th><th>Employee</th><th>Type</th>
-            <th>Period</th><th className="right">Amount</th><th>Notes</th>
+            <th>Period</th><th className="right">Amount</th><th>Notes</th><th>Actions</th>
           </tr></thead>
             <tbody>
-              {salaryPay.length === 0 ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">No salary payments</td></tr>
+              {salaryPay.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No salary payments</td></tr>
               : salaryPay.map((p: any) => (
                 <tr key={p.id}>
-                  <td className="text-xs text-gray-500">{p.payment_date}</td>
+                  <td className="muted">{p.payment_date}</td>
                   <td className="font-medium">{p.employees?.full_name}</td>
                   <td><span className="badge badge-blue">{p.payment_type}</span></td>
-                  <td className="text-xs text-gray-500">{p.period_start} → {p.period_end}</td>
-                  <td className="text-right font-medium">{fmtGhc(p.amount)}</td>
-                  <td className="text-xs text-gray-500">{p.notes||'-'}</td>
+                  <td className="muted">{p.period_start} → {p.period_end}</td>
+                  <td className="num">{fmtGhc(p.amount)}</td>
+                  <td className="muted">{p.notes||'—'}</td>
+                  <td><button onClick={async () => {
+                    if (!confirm('Delete this salary payment?')) return
+                    await supabase.from('salary_payments').delete().eq('id', p.id)
+                    loadAll()
+                  }} className="btn btn-sm btn-danger">Del</button></td>
                 </tr>
               ))}
             </tbody>

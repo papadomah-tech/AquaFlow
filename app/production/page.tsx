@@ -8,7 +8,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtNum, today, monthStart } from '@/lib/supabase'
 
-const OP_FEE = 30
+const OP_FEE = 25
 
 function ProductionPageInner() {
   const [batches, setBatches] = useState<any[]>([])

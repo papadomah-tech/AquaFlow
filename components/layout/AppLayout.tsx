@@ -71,13 +71,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <SyncStatusBar userId={userId} />
       <main className="md:ml-[220px] pb-16 md:pb-0 min-h-screen">
         <div className="p-4 md:p-6 max-w-screen-2xl mx-auto">{children}</div>
-        {/* Change password — always accessible to all users */}
-        <div className="px-4 pb-24 md:pb-6 text-center mt-2">
-          <a href="/change-password"
-            className="text-xs text-gray-400 hover:text-[#1F4E79] hover:underline inline-flex items-center gap-1 py-1">
-            🔑 Change my password
-          </a>
-        </div>
+
       </main>
       <MobileNav />
     </div>

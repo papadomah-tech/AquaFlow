@@ -187,7 +187,7 @@ function RawMaterialsPageInner() {
           {tab === 'purchases' && (
             <div className="card">
               <table className="data-table">
-                <thead><tr><th>Date</th><th>Material</th><th>Supplier</th><th className="text-right">Qty</th><th className="text-right">Unit Price</th><th className="text-right">Total Cost</th><th>Notes</th></tr></thead>
+                <thead><tr><th>Date</th><th>Material</th><th>Supplier</th><th className="right">Qty</th><th className="right">Unit Price</th><th className="right">Total Cost</th><th>Notes</th><th>Actions</th></tr></thead>
                 <tbody>
                   {purchases.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No purchases</td></tr>
                   : purchases.map((p: any) => (
@@ -198,7 +198,8 @@ function RawMaterialsPageInner() {
                       <td className="text-right">{p.quantity} {p.raw_materials?.unit}</td>
                       <td className="text-right">{fmtGhc(p.unit_price)}</td>
                       <td className="text-right font-medium">{fmtGhc(p.total_cost)}</td>
-                      <td className="text-xs text-gray-500">{p.notes || '-'}</td>
+                      <td className="muted">{p.notes || '—'}</td>
+                      <td><button onClick={async()=>{if(confirm('Delete this purchase?')){{await supabase.from('raw_material_purchases').delete().eq('id',p.id);loadAll()}}}} className="btn btn-sm btn-danger">Del</button></td>
                     </tr>
                   ))}
                 </tbody>
