@@ -46,6 +46,9 @@ function SalesAccountInner() {
       { data: retailPeriod },
       { data: retailAll },
       { data: riderPayments },
+      { data: bulkReturns },
+      { data: teammateBulk },
+      { data: empRecord },
     ] = await Promise.all([
       // All bulk dispatches to this rider
       supabase.from('sales').select('id,sale_date,bags_sold,unit_price,total_amount,amount_paid,outstanding_balance,payment_status')
@@ -84,7 +87,9 @@ function SalesAccountInner() {
 
     // ── Bag position ───────────────────────────────────────────────
     // Primary dispatches + teammate dispatches (full count for both)
-    const bagsReceived  = (bulkIn ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
+    const primaryBags   = (bulkIn ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
+    const teammateBags  = (teammateBulk ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
+    const bagsReceived  = primaryBags + teammateBags
     const bagsSoldAll   = (retailAll ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
     const totalReturned = 0 // returns tracked separately
     const bagsOnHand    = bagsReceived - bagsSoldAll - totalReturned
@@ -105,12 +110,24 @@ function SalesAccountInner() {
     const grossProfit = retailRevenue - totalOwed
 
     // Performance pay calc using VeeBee formula
-    const empRec    = (riderPayments as any)?.[5]?.data ?? null
-    const basePay   = empRec?.base_pay || empRec?.salary || 0
-    const feedingFee= empRec?.feeding_fee ?? 300
-    const monthlyTgt= empRec?.monthly_target || 6500
-    const perfPct   = monthlyTgt > 0 ? (bagsReceived / monthlyTgt) * 100 : 0
-    const earnedBase= Math.round((bagsReceived / monthlyTgt) * basePay * 100) / 100
+    const empRec      = (empRecord as any) ?? null
+    const basePay     = empRec?.base_pay || empRec?.salary || 0
+    const feedingFee  = empRec?.feeding_fee ?? 300
+    const monthlyTgt  = empRec?.monthly_target || 6500
+    const isFactoryMgr= empRec?.employee_type === 'factory_manager'
+
+    // Factory manager: fetch their bags out from finished_inventory
+    let perfBags = bagsReceived  // for riders: primary + teammate bags
+    if (isFactoryMgr && viewId) {
+      const { data: fiOut } = await supabase
+        .from('finished_inventory')
+        .select('bags_out')
+        .gte('transaction_date', dateFrom)
+      perfBags = (fiOut ?? []).reduce((a:number,r:any) => a + r.bags_out, 0)
+    }
+
+    const perfPct   = monthlyTgt > 0 ? (perfBags / monthlyTgt) * 100 : 0
+    const earnedBase= monthlyTgt > 0 ? Math.round((perfBags / monthlyTgt) * basePay * 100) / 100 : 0
     const grossPay  = Math.round((earnedBase + feedingFee) * 100) / 100
 
     setData({
@@ -123,7 +140,7 @@ function SalesAccountInner() {
       grossProfit,
       // Performance pay
       basePay, feedingFee, monthlyTgt,
-      perfPct, earnedBase, grossPay,
+      perfBags, perfPct, earnedBase, grossPay,
     })
     setLoading(false)
   }, [viewId, period])
