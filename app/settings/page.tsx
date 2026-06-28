@@ -40,7 +40,13 @@ export default function SettingsPage() {
   const [creating, setCreating]     = useState(false)
   const [createError, setCreateError]   = useState('')
   const [createSuccess, setCreateSuccess] = useState('')
-  const [showPwd, setShowPwd]       = useState(false)
+  const [showPwd, setShowPwd]         = useState(false)
+  const [resetUser, setResetUser]     = useState<ProfileRow | null>(null)
+  const [resetPwd, setResetPwd]       = useState('')
+  const [resetShowPwd, setResetShowPwd] = useState(false)
+  const [resetting, setResetting]     = useState(false)
+  const [resetOk, setResetOk]         = useState('')
+  const [resetErr, setResetErr]       = useState('')
 
   const load = async () => {
     const [{ data: p }, { data: e }] = await Promise.all([
@@ -110,6 +116,27 @@ export default function SettingsPage() {
   }
 
   // ── Create user ───────────────────────────────────────────────────────────
+  const resetPassword = async () => {
+    if (!resetUser || !resetPwd) return
+    if (resetPwd.length < 6) { setResetErr('Password must be at least 6 characters.'); return }
+    setResetting(true); setResetErr(''); setResetOk('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (session?.access_token ?? '') },
+        body: JSON.stringify({ userId: resetUser.id, newPassword: resetPwd }),
+      })
+      const json = await res.json()
+      if (!res.ok) setResetErr(json.error ?? 'Failed to reset password.')
+      else { setResetOk('Password reset for ' + resetUser.full_name); setResetPwd('') }
+    } catch (e: any) {
+      setResetErr(e.message ?? 'Network error')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   const createUser = async () => {
     setCreating(true); setCreateError(''); setCreateSuccess('')
     try {
@@ -495,6 +522,81 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── RESET PASSWORD MODAL ─────────────────────────────────────── */}
+      {resetUser && (
+        <>
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9998}}
+            onClick={() => setResetUser(null)} />
+          <div style={{
+            position:'fixed',top:'50%',left:'50%',
+            transform:'translate(-50%,-50%)',
+            width:'min(420px,94vw)',
+            background:'white',borderRadius:'1rem',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.3)',
+            zIndex:9999,overflow:'hidden'
+          }}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+              padding:'1.25rem',borderBottom:'1px solid #f0f0f0'}}>
+              <div>
+                <div style={{fontWeight:'bold',color:'#1F4E79'}}>🔒 Reset Password</div>
+                <div style={{fontSize:'0.75rem',color:'#888',marginTop:'2px'}}>
+                  {resetUser.full_name}
+                </div>
+              </div>
+              <button onClick={() => setResetUser(null)}
+                style={{background:'none',border:'none',fontSize:'1.25rem',color:'#aaa',cursor:'pointer'}}>
+                ✕
+              </button>
+            </div>
+            <div style={{padding:'1.25rem',display:'flex',flexDirection:'column',gap:'1rem'}}>
+              {resetOk && (
+                <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl p-3 text-sm text-center">
+                  ✅ {resetOk}
+                </div>
+              )}
+              {resetErr && (
+                <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+                  ❌ {resetErr}
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">New Password</label>
+                <div className="relative">
+                  <input
+                    type={resetShowPwd ? 'text' : 'password'}
+                    value={resetPwd}
+                    onChange={e => setResetPwd(e.target.value)}
+                    className="form-input pr-16"
+                    placeholder="Min. 6 characters"
+                    autoFocus />
+                  <button type="button"
+                    onClick={() => setResetShowPwd(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-700">
+                    {resetShowPwd ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {resetPwd && resetPwd.length < 6 && (
+                  <div className="text-xs text-red-500 mt-1">Too short — minimum 6 characters</div>
+                )}
+              </div>
+              <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+                The user will be able to log in immediately with this new password.
+                Share it with them securely.
+              </div>
+            </div>
+            <div style={{display:'flex',gap:'0.75rem',justifyContent:'flex-end',
+              padding:'1rem 1.25rem',borderTop:'1px solid #f0f0f0'}}>
+              <button onClick={() => setResetUser(null)} className="btn btn-secondary">Cancel</button>
+              <button onClick={resetPassword}
+                disabled={resetting || !resetPwd || resetPwd.length < 6}
+                className="btn btn-primary">
+                {resetting ? 'Resetting...' : '🔒 Set New Password'}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}

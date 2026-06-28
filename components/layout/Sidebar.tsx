@@ -58,7 +58,11 @@ export default function Sidebar({ userName, userRole }: { userName: string; user
           })
         )}
       </nav>
-      <div className="p-4 border-t border-white/10">
+      <div className="p-4 border-t border-white/10 space-y-2">
+        <a href="/change-password"
+          className="text-blue-200 hover:text-white text-sm flex items-center gap-2">
+          🔑 Change Password
+        </a>
         <button onClick={signOut}
           className="text-blue-200 hover:text-white text-sm flex items-center gap-2">
           🚪 Sign Out
