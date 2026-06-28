@@ -225,15 +225,19 @@ export default function DepositsAccountPage() {
             <div className="text-5xl font-bold mt-1 tabular-nums">
               {fmtGhc(data.grandTotalCashIn)}
             </div>
-            <div className="grid grid-cols-3 gap-3 mt-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
               {[
-                ['Retail Collected',   fmtGhc(data.retailCollected)],
-                ['Bulk Collected',     fmtGhc(data.bulkCollected)],
-                ['Banked',            fmtGhc(data.totalDeposited)],
-              ].map(([l, v]) => (
-                <div key={l as string} className="bg-white/10 rounded-xl p-3 text-center">
+                ['Retail Collected',  fmtGhc(data.retailCollected)],
+                ['Bulk Collected',    fmtGhc(data.bulkCollected)],
+                ['Banked',           fmtGhc(data.totalDeposited)],
+                ['Not Banked',       fmtGhc(data.retailCollected + data.bulkCollected - data.totalDeposited)],
+              ].map(([l, v], i) => (
+                <div key={l as string}
+                  className={'rounded-xl p-3 text-center '
+                    + (i === 3 ? 'bg-orange-400/30' : 'bg-white/10')}>
                   <div className="text-blue-200 text-xs">{l}</div>
-                  <div className="text-white font-bold tabular-nums mt-0.5">{v}</div>
+                  <div className={'font-bold tabular-nums mt-0.5 '
+                    + (i === 3 ? 'text-orange-200' : 'text-white')}>{v}</div>
                 </div>
               ))}
             </div>
@@ -384,7 +388,7 @@ export default function DepositsAccountPage() {
                     </span>
                   </div>
                   <div className="flex justify-between items-center px-3 py-3 bg-green-700 rounded-xl">
-                    <span className="font-bold text-white">GRAND TOTAL CASH AT HAND (A + B − C)</span>
+                    <span className="font-bold text-white">TOTAL CASH NOT BANKED (A + B − C)</span>
                     <span className="font-bold text-white text-xl tabular-nums">
                       {fmtGhc(data.retailCollected + data.bulkCollected - data.totalDeposited)}
                     </span>
