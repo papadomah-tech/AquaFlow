@@ -34,7 +34,9 @@ export default function FundAccountPage() {
   }, [])
 
   const load = useCallback(async () => {
-    if (!canAccess('fund-account')) return
+    // Wait for role to finish loading before checking access
+    if (roleLoading) return
+    if (!canAccess('fund-account')) { setLoading(false); return }
     setLoading(true)
 
     const buildDepQuery = () => {
@@ -85,7 +87,7 @@ export default function FundAccountPage() {
               totalBulkRev, totalBulkColl, totalBulkOuts })
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, userId, period, dateFrom])
+  }, [isAdmin, userId, period, dateFrom, roleLoading])
 
   useEffect(() => { load() }, [load])
 
