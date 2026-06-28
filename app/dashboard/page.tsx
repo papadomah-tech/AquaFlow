@@ -156,7 +156,47 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
             )}
           </div>
 
-          {/* ── Financial cards ───────────────────────────────────────── */}
+          {/* ── Performance card ──────────────────────────────────────── */}
+          {riderData.basePay > 0 && (
+            <div style={{
+              borderRadius:'1rem', padding:'1rem', marginBottom:'1.25rem',
+              background: riderData.perfPct >= 100 ? '#15803d'
+                : riderData.perfPct >= 60 ? '#ea580c' : '#b91c1c',
+              color: 'white', boxShadow: '0 4px 16px rgba(0,0,0,0.15)'
+            }}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'0.75rem'}}>
+                <div>
+                  <div style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',
+                    letterSpacing:'0.05em',opacity:0.7,marginBottom:'0.25rem'}}>
+                    Performance
+                  </div>
+                  <div style={{fontSize:'3rem',fontWeight:'bold',lineHeight:1,fontVariantNumeric:'tabular-nums'}}>
+                    {riderData.perfPct.toFixed(1)}%
+                  </div>
+                  <div style={{fontSize:'0.7rem',opacity:0.7,marginTop:'0.25rem'}}>
+                    {fmtNum(riderData.totalReceived)} ÷ {fmtNum(riderData.monthlyTgt)} bags target
+                  </div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',textAlign:'center'}}>
+                  {[
+                    ['Base Pay',    fmtGhc(riderData.earnedBase)],
+                    ['Feeding Fee', fmtGhc(riderData.feedingFee)],
+                    ['Gross Pay',   fmtGhc(riderData.grossPay)],
+                  ].map(([l, v]) => (
+                    <div key={l as string} style={{background:'rgba(255,255,255,0.15)',borderRadius:'0.75rem',padding:'0.5rem 0.75rem'}}>
+                      <div style={{fontSize:'0.65rem',opacity:0.75}}>{l}</div>
+                      <div style={{fontWeight:'bold',fontSize:'0.85rem',fontVariantNumeric:'tabular-nums',marginTop:'0.2rem'}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{fontSize:'0.65rem',opacity:0.5,marginTop:'0.75rem'}}>
+                ({fmtNum(riderData.totalReceived)} ÷ {fmtNum(riderData.monthlyTgt)}) × GHc {riderData.basePay.toLocaleString()} + GHc {riderData.feedingFee} feeding = {fmtGhc(riderData.grossPay)}
+              </div>
+            </div>
+          )}
+
+          {/* ── Financial cards ──────────────────────────────────────────── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {[
               ['Sales Revenue', fmtGhc(riderData.revenue),     '#1F4E79'],
@@ -347,38 +387,41 @@ function AdminDashboard({ employeeId }: { employeeId?: number }) {
 
       {loading ? <div className="text-center py-16 text-gray-400">Loading...</div> : stats && (
         <>
-          {/* Performance card — only shown if employee is linked and has pay set */}
+          {/* Performance card */}
           {stats.fmBasePay > 0 && (
-            <div className={'rounded-2xl p-4 mb-5 '
-              + (stats.fmPerfPct >= 100 ? 'bg-green-700'
-              : stats.fmPerfPct >= 60  ? 'bg-orange-600'
-              : 'bg-red-700')}>
-              <div className="flex items-center justify-between flex-wrap gap-3">
+            <div style={{
+              borderRadius:'1rem', padding:'1rem', marginBottom:'1.25rem',
+              background: stats.fmPerfPct >= 100 ? '#15803d'
+                : stats.fmPerfPct >= 60 ? '#ea580c' : '#b91c1c',
+              color:'white', boxShadow:'0 4px 16px rgba(0,0,0,0.15)'
+            }}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'0.75rem'}}>
                 <div>
-                  <div className="text-white/80 text-xs font-medium uppercase tracking-wide">
+                  <div style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',
+                    letterSpacing:'0.05em',opacity:0.7,marginBottom:'0.25rem'}}>
                     Performance
                   </div>
-                  <div className="text-5xl font-bold text-white tabular-nums mt-1">
+                  <div style={{fontSize:'3rem',fontWeight:'bold',lineHeight:1,fontVariantNumeric:'tabular-nums'}}>
                     {stats.fmPerfPct.toFixed(1)}%
                   </div>
-                  <div className="text-white/70 text-xs mt-1">
+                  <div style={{fontSize:'0.7rem',opacity:0.7,marginTop:'0.25rem'}}>
                     {stats.fmBagsOut.toLocaleString()} bags out ÷ {stats.fmTarget.toLocaleString()} target
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',textAlign:'center'}}>
                   {[
                     ['Base Pay',    fmtGhc(stats.fmEarned)],
                     ['Feeding Fee', fmtGhc(stats.fmFeeding)],
                     ['Gross Pay',   fmtGhc(stats.fmGross)],
                   ].map(([l, v]) => (
-                    <div key={l as string} className="bg-white/15 rounded-xl px-3 py-2">
-                      <div className="text-white/70 text-xs">{l}</div>
-                      <div className="text-white font-bold text-sm tabular-nums mt-0.5">{v}</div>
+                    <div key={l as string} style={{background:'rgba(255,255,255,0.15)',borderRadius:'0.75rem',padding:'0.5rem 0.75rem'}}>
+                      <div style={{fontSize:'0.65rem',opacity:0.75}}>{l}</div>
+                      <div style={{fontWeight:'bold',fontSize:'0.85rem',fontVariantNumeric:'tabular-nums',marginTop:'0.2rem'}}>{v}</div>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="text-white/50 text-xs mt-3">
+              <div style={{fontSize:'0.65rem',opacity:0.5,marginTop:'0.75rem'}}>
                 ({stats.fmBagsOut.toLocaleString()} ÷ {stats.fmTarget.toLocaleString()}) × GHc {stats.fmBasePay.toLocaleString()} + GHc {stats.fmFeeding} feeding = {fmtGhc(stats.fmGross)}
               </div>
             </div>
