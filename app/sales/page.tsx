@@ -569,11 +569,11 @@ function SalesPageInner() {
             /* BULK TABLE */
             <table className="data-table">
               <colgroup>
-                <col style={{width:'90px'}} /><col />
+                <col style={{width:'90px'}} /><col style={{width:'150px'}} />
                 <col style={{width:'120px'}} /><col style={{width:'70px'}} />
-                <col style={{width:'105px'}} /><col style={{width:'100px'}} />
-                <col style={{width:'100px'}} /><col style={{width:'72px'}} />
-                <col style={{width:'120px'}} />
+                <col style={{width:'105px'}} /><col style={{width:'95px'}} />
+                <col style={{width:'95px'}} /><col style={{width:'72px'}} />
+                <col style={{width:'175px'}} />
               </colgroup>
               <thead>
                 <tr>
@@ -602,7 +602,7 @@ function SalesPageInner() {
                     <td className="num-red">{fmtGhc(s.outstanding_balance)}</td>
                     <td><span className={'badge ' + (s.payment_status==='paid'?'badge-green':s.payment_status==='partial'?'badge-yellow':'badge-red')}>{s.payment_status}</span></td>
                     <td>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
                           setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
