@@ -68,19 +68,11 @@ function ExpensesPageInner() {
           <table className="data-table">
             <colgroup>
               <col style={{width:'90px'}} />
-              <col style={{width:'130px'}} />
-              <col />
-              <col style={{width:'110px'}} />
-              <col style={{width:'130px'}} />
               <col style={{width:'120px'}} />
-            </colgroup>
-            <colgroup>
+              <col />
+              <col style={{width:'105px'}} />
+              <col style={{width:'120px'}} />
               <col style={{width:'90px'}} />
-              <col style={{width:'120px'}} />
-              <col />
-              <col style={{width:'110px'}} />
-              <col style={{width:'120px'}} />
-              <col style={{width:'120px'}} />
             </colgroup>
             <thead><tr>
               <th>Date</th><th>Category</th><th>Description</th>
