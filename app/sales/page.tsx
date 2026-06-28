@@ -59,6 +59,7 @@ function SalesPageInner() {
   })
   const blankBulk = () => ({
     sale_date: today(), buyer_employee_id: '',
+    teammate_employee_id: '',
     bags_sold: '', unit_price: '', amount_paid: '', notes: ''
   })
   const [retailForm, setRetailForm] = useState(blankRetail())
@@ -72,7 +73,7 @@ function SalesPageInner() {
     const saleType = activeTab
 
     let q = supabase.from('sales')
-      .select('*,customers(id,name),employees!salesperson_id(id,full_name),buyer:employees!buyer_employee_id(id,full_name)')
+      .select('*,customers(id,name),employees!salesperson_id(id,full_name),buyer:employees!buyer_employee_id(id,full_name),teammate:employees!teammate_employee_id(id,full_name)')
       .eq('sale_type', saleType)
       .gte('sale_date', filter.from)
       .lte('sale_date', filter.to)
@@ -280,6 +281,7 @@ function SalesPageInner() {
       sale_date: bulkForm.sale_date,
       customer_id: custId,
       buyer_employee_id: riderId || null,
+      teammate_employee_id: bulkForm.teammate_employee_id ? parseInt(bulkForm.teammate_employee_id) : null,
       salesperson_id: employeeId,
       sale_type: 'bulk',
       bags_sold: bags, unit_price: price, total_amount: total,
@@ -569,15 +571,16 @@ function SalesPageInner() {
             /* BULK TABLE */
             <table className="data-table">
               <colgroup>
-                <col style={{width:'90px'}} /><col style={{width:'150px'}} />
-                <col style={{width:'120px'}} /><col style={{width:'70px'}} />
-                <col style={{width:'105px'}} /><col style={{width:'95px'}} />
-                <col style={{width:'95px'}} /><col style={{width:'72px'}} />
-                <col style={{width:'175px'}} />
+                <col style={{width:'90px'}} /><col style={{width:'130px'}} />
+                <col style={{width:'120px'}} /><col style={{width:'110px'}} />
+                <col style={{width:'70px'}} /><col style={{width:'105px'}} />
+                <col style={{width:'90px'}} /><col style={{width:'90px'}} />
+                <col style={{width:'72px'}} /><col style={{width:'175px'}} />
               </colgroup>
               <thead>
                 <tr>
                   <th>Date</th><th>Rider / Sales Rep</th>
+                  <th>Teammate</th>
                   <th>Dispatched By</th>
                   <th className="right">Bags</th>
                   <th className="right">Total</th>
@@ -595,6 +598,7 @@ function SalesPageInner() {
                   <tr key={s.id}>
                     <td className="muted">{s.sale_date}</td>
                     <td className="font-medium">{s.buyer?.full_name ?? s.customers?.name ?? '—'}</td>
+                    <td className="muted">{s.teammate?.full_name ?? '—'}</td>
                     <td className="muted">{s.employees?.full_name ?? 'Factory'}</td>
                     <td className="num">{fmtNum(s.bags_sold)}</td>
                     <td className="num">{fmtGhc(s.total_amount)}</td>
@@ -605,7 +609,7 @@ function SalesPageInner() {
                       <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
-                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
+                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
                         <button onClick={() => {
@@ -755,6 +759,25 @@ function SalesPageInner() {
                       <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
                     ))}
                   </select>
+                </div>
+              </div>
+              {/* Teammate field */}
+              <div className="form-group">
+                <label className="form-label">Teammate / Rider's Mate
+                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                </label>
+                <select value={bulkForm.teammate_employee_id}
+                  onChange={e => setBulkForm(f => ({...f, teammate_employee_id: e.target.value}))}
+                  className="form-select">
+                  <option value="">— No teammate —</option>
+                  {(riders.length > 0 ? riders : employees)
+                    .filter((e: any) => String(e.id) !== bulkForm.buyer_employee_id)
+                    .map((e: any) => (
+                      <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
+                    ))}
+                </select>
+                <div className="text-xs text-gray-400 mt-1">
+                  The full bag count will credit both the rider and teammate for performance pay.
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

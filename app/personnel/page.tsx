@@ -49,14 +49,19 @@ function PersonnelPageInner() {
           .lte('transaction_date', period.to)
         bags = (fi ?? []).reduce((a: number, r: any) => a + r.bags_out, 0)
       } else if (emp.employee_type === 'rider') {
-        // Rider: bags from bulk dispatches assigned to them
-        const { data: bulkSales } = await supabase.from('sales')
-          .select('bags_sold')
-          .eq('sale_type', 'bulk')
-          .eq('buyer_employee_id', emp.id)
-          .gte('sale_date', period.from)
-          .lte('sale_date', period.to)
-        bags = (bulkSales ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+        // Rider: bags from bulk dispatches where they are primary rider OR teammate
+        // Full bag count credits both — no splitting
+        const [{ data: primarySales }, { data: teammateSales }] = await Promise.all([
+          supabase.from('sales').select('bags_sold')
+            .eq('sale_type', 'bulk').eq('buyer_employee_id', emp.id)
+            .gte('sale_date', period.from).lte('sale_date', period.to),
+          supabase.from('sales').select('bags_sold')
+            .eq('sale_type', 'bulk').eq('teammate_employee_id', emp.id)
+            .gte('sale_date', period.from).lte('sale_date', period.to),
+        ])
+        // Combine — full count for both roles
+        bags = [...(primarySales ?? []), ...(teammateSales ?? [])]
+          .reduce((a: number, s: any) => a + s.bags_sold, 0)
       } else {
         // Other staff: retail sales they recorded
         const { data: sales } = await supabase.from('sales')

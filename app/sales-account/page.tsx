@@ -71,12 +71,22 @@ function SalesAccountInner() {
       supabase.from('bulk_returns').select('bags_returned,total_credit,return_date,notes')
         .eq('employee_id', viewId)
         .order('return_date', { ascending: false }),
+
+      // Teammate dispatches (where this employee is the mate, not the primary rider)
+      supabase.from('sales').select('id,sale_date,bags_sold,unit_price,total_amount,payment_status,buyer:employees!buyer_employee_id(full_name)')
+        .eq('sale_type','bulk').eq('teammate_employee_id', viewId)
+        .order('sale_date', { ascending: false }),
+
+      // Employee record for pay calculation
+      supabase.from('employees').select('base_pay,feeding_fee,monthly_target,salary,employee_type')
+        .eq('id', viewId).single(),
     ])
 
     // ── Bag position ───────────────────────────────────────────────
+    // Primary dispatches + teammate dispatches (full count for both)
     const bagsReceived  = (bulkIn ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
     const bagsSoldAll   = (retailAll ?? []).reduce((a:number,s:any) => a + s.bags_sold, 0)
-    const totalReturned = ((riderPayments as any[])?.[4] ?? []).reduce((a:number,r:any) => a + r.bags_returned, 0)
+    const totalReturned = 0 // returns tracked separately
     const bagsOnHand    = bagsReceived - bagsSoldAll - totalReturned
 
     // ── Factory account ────────────────────────────────────────────
@@ -94,6 +104,15 @@ function SalesAccountInner() {
     // Gross profit = retail revenue - cost of goods (amount owed to factory)
     const grossProfit = retailRevenue - totalOwed
 
+    // Performance pay calc using VeeBee formula
+    const empRec    = (riderPayments as any)?.[5]?.data ?? null
+    const basePay   = empRec?.base_pay || empRec?.salary || 0
+    const feedingFee= empRec?.feeding_fee ?? 300
+    const monthlyTgt= empRec?.monthly_target || 6500
+    const perfPct   = monthlyTgt > 0 ? (bagsReceived / monthlyTgt) * 100 : 0
+    const earnedBase= Math.round((bagsReceived / monthlyTgt) * basePay * 100) / 100
+    const grossPay  = Math.round((earnedBase + feedingFee) * 100) / 100
+
     setData({
       bulkIn: bulkIn ?? [],
       retailPeriod: retailPeriod ?? [],
@@ -102,6 +121,9 @@ function SalesAccountInner() {
       totalOwed, totalPaidFactory, owedToFactory,
       retailRevenue, retailCollected, retailOutstanding,
       grossProfit,
+      // Performance pay
+      basePay, feedingFee, monthlyTgt,
+      perfPct, earnedBase, grossPay,
     })
     setLoading(false)
   }, [viewId, period])
