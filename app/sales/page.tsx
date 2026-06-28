@@ -785,6 +785,84 @@ function SalesPageInner() {
           </div>
         </div>
       )}
+      {/* RETURN MODAL */}
+      {showReturnForm && returnTarget && (
+        <div className="modal-overlay" onClick={() => { setShowReturnForm(false) }}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="font-bold text-orange-700">Return Bags</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Rider returns unsold bags to factory
+                </p>
+              </div>
+              <button onClick={() => setShowReturnForm(false)} className="text-gray-400 text-xl">X</button>
+            </div>
+            <div className="modal-body space-y-3">
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                <div className="text-xs font-semibold text-orange-700 mb-2">Original Dispatch</div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="text-xs text-gray-500">Dispatched</div>
+                    <div className="font-bold text-[#1F4E79]">{fmtNum(returnTarget.bags_sold)} bags</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Unit Price</div>
+                    <div className="font-bold">{fmtGhc(returnTarget.unit_price)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Still Owed</div>
+                    <div className="font-bold text-red-600">{fmtGhc(returnTarget.outstanding_balance)}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="form-label">Return Date</label>
+                  <input type="date" value={returnForm.return_date}
+                    onChange={e => setReturnForm(f => ({...f, return_date: e.target.value}))}
+                    className="form-input" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Bags Returned *</label>
+                  <input type="number" value={returnForm.bags_returned}
+                    onChange={e => setReturnForm(f => ({...f, bags_returned: e.target.value}))}
+                    className="form-input text-xl font-bold text-center"
+                    placeholder="0" />
+                </div>
+              </div>
+              {parseInt(returnForm.bags_returned || '0') > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                  <div className="text-sm font-medium text-green-700 mb-1">
+                    Credit: {fmtGhc(parseInt(returnForm.bags_returned) * parseFloat(returnTarget.unit_price || '0'))}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    New balance: {fmtGhc(Math.max(0, returnTarget.outstanding_balance -
+                      (parseInt(returnForm.bags_returned) * parseFloat(returnTarget.unit_price || '0'))))}
+                  </div>
+                  <div className="text-xs text-green-600 mt-1">
+                    Bags will be added back to factory stock
+                  </div>
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">Notes</label>
+                <textarea value={returnForm.notes} rows={2}
+                  onChange={e => setReturnForm(f => ({...f, notes: e.target.value}))}
+                  className="form-input" placeholder="Reason for return..." />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowReturnForm(false)} className="btn btn-secondary">Cancel</button>
+              <button onClick={saveReturn}
+                disabled={savingReturn || !returnForm.bags_returned || parseInt(returnForm.bags_returned) <= 0}
+                className="btn btn-warning">
+                {savingReturn ? 'Saving...' : 'Record Return'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }
