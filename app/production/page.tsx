@@ -87,6 +87,9 @@ function ProductionPageInner() {
           bags_produced: Math.max(0, (prevRoll.bags_produced||0) - editBatch.bags_produced),
           kg_remaining: (prevRoll.kg_remaining ?? prevRoll.weight_kg) + (editBatch.roll_kg_used || 0),
         }).eq('id', prevRoll.id)
+        // Reverse aggregate Roll Film stock too
+        const { data: rfm } = await supabase.from('raw_materials').select('id,current_stock').ilike('name','Roll Film').single()
+        if (rfm) await supabase.from('raw_materials').update({ current_stock: rfm.current_stock + (editBatch.roll_kg_used || 0) }).eq('id', rfm.id)
       }
       // Reverse previous material deductions
       for (const m of materials) {
@@ -103,7 +106,7 @@ function ProductionPageInner() {
       await supabase.from('production_batches').insert(payload)
     }
 
-    // ── Deduct roll film Kg ───────────────────────────────────────────────
+    // ── Deduct roll film Kg (per-roll tracking) ───────────────────────────
     if (roll) {
       const newKgRemaining = (roll.kg_remaining ?? roll.weight_kg) - kgUsed
       if (newKgRemaining < 0) newWarnings.push(`Roll ${roll.label}: Kg went negative (${newKgRemaining.toFixed(2)} Kg)`)
@@ -112,6 +115,17 @@ function ProductionPageInner() {
         kg_remaining: newKgRemaining,
         status: newKgRemaining <= 0 ? 'finished' : 'in_use',
       }).eq('id', roll.id)
+    }
+
+    // ── Also deduct from the aggregate "Roll Film" stock in Raw Materials ──
+    const { data: rollFilmMat } = await supabase
+      .from('raw_materials').select('id,current_stock')
+      .ilike('name', 'Roll Film').single()
+    if (rollFilmMat) {
+      const newAggStock = rollFilmMat.current_stock - kgUsed
+      if (newAggStock < 0) newWarnings.push(`Roll Film stock went negative (${newAggStock.toFixed(2)} Kg)`)
+      await supabase.from('raw_materials')
+        .update({ current_stock: newAggStock }).eq('id', rollFilmMat.id)
     }
 
     // ── Deduct all raw materials by recipe ratio ────────────────────────────
@@ -165,6 +179,8 @@ function ProductionPageInner() {
         kg_remaining: (roll.kg_remaining ?? roll.weight_kg) + (b.roll_kg_used || 0),
         status: 'in_use',
       }).eq('id', roll.id)
+      const { data: rfm2 } = await supabase.from('raw_materials').select('id,current_stock').ilike('name','Roll Film').single()
+      if (rfm2) await supabase.from('raw_materials').update({ current_stock: rfm2.current_stock + (b.roll_kg_used || 0) }).eq('id', rfm2.id)
     }
     // Reverse material deductions
     const { data: mats } = await supabase.from('raw_materials').select('*').gt('usage_per_bag', 0)

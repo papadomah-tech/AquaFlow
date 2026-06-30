@@ -72,9 +72,40 @@ function RawMaterialsPageInner() {
     const wkg = parseFloat(rollForm.weight_kg) || 0
     const cpk  = parseFloat(rollForm.cost_per_kg) || 0
     const auto_label = rollForm.label || ('ROLL-' + rollForm.purchase_date.replace(/-/g,'') + '-' + String(rolls.length + 1).padStart(3,'0'))
-    const payload = { label: auto_label, weight_kg: wkg, purchase_date: rollForm.purchase_date, supplier: rollForm.supplier, cost: wkg * cpk, bags_expected: Math.round(wkg * 20), bags_produced: editItem?.bags_produced ?? 0, status: editItem?.status ?? 'available' }
-    if (editItem) await supabase.from('roll_films').update(payload).eq('id', editItem.id)
-    else await supabase.from('roll_films').insert(payload)
+    const payload = {
+      label: auto_label, weight_kg: wkg, purchase_date: rollForm.purchase_date,
+      supplier: rollForm.supplier, cost: wkg * cpk,
+      bags_expected: Math.round(wkg * 20),
+      bags_produced: editItem?.bags_produced ?? 0,
+      kg_remaining: editItem?.kg_remaining ?? wkg,
+      status: editItem?.status ?? 'available',
+    }
+
+    // Find or create the "Roll Film" raw material row that tracks total Kg in stock
+    let rollFilmMat = materials.find((m: any) => m.name.toLowerCase() === 'roll film')
+    if (!rollFilmMat) {
+      const { data: created } = await supabase.from('raw_materials')
+        .insert({ name: 'Roll Film', unit: 'Kg', current_stock: 0, low_stock_threshold: 50, usage_per_bag: 0 })
+        .select().single()
+      rollFilmMat = created
+    }
+
+    if (editItem) {
+      // Adjust stock by the DIFFERENCE in weight (in case weight was edited)
+      const diff = wkg - editItem.weight_kg
+      if (rollFilmMat && diff !== 0) {
+        await supabase.from('raw_materials')
+          .update({ current_stock: rollFilmMat.current_stock + diff }).eq('id', rollFilmMat.id)
+      }
+      await supabase.from('roll_films').update(payload).eq('id', editItem.id)
+    } else {
+      // New roll — add its full weight to Roll Film stock
+      if (rollFilmMat) {
+        await supabase.from('raw_materials')
+          .update({ current_stock: rollFilmMat.current_stock + wkg }).eq('id', rollFilmMat.id)
+      }
+      await supabase.from('roll_films').insert(payload)
+    }
     setShowForm(false); loadAll()
   }
 
@@ -85,7 +116,13 @@ function RawMaterialsPageInner() {
   }
 
   const deleteRoll = async (roll: any) => {
-    if (!confirm('Delete roll ' + roll.label + '?')) return
+    if (!confirm('Delete roll ' + roll.label + '? This will remove its Kg from Roll Film stock.')) return
+    const rollFilmMat = materials.find((m: any) => m.name.toLowerCase() === 'roll film')
+    if (rollFilmMat) {
+      const kgToRemove = roll.kg_remaining ?? roll.weight_kg
+      await supabase.from('raw_materials')
+        .update({ current_stock: Math.max(0, rollFilmMat.current_stock - kgToRemove) }).eq('id', rollFilmMat.id)
+    }
     await supabase.from('roll_films').delete().eq('id', roll.id)
     loadAll()
   }
