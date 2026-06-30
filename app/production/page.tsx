@@ -242,10 +242,10 @@ function ProductionPageInner() {
         <div className="overflow-x-auto">
           <table className="data-table">
             <colgroup>
-              <col style={{width:'150px'}} /><col style={{width:'85px'}} />
-              <col style={{width:'130px'}} /><col style={{width:'70px'}} />
-              <col style={{width:'80px'}} /><col style={{width:'95px'}} />
-              <col /><col style={{width:'110px'}} />
+              <col style={{width:'155px'}} /><col style={{width:'95px'}} />
+              <col style={{width:'145px'}} /><col style={{width:'72px'}} />
+              <col style={{width:'80px'}} /><col style={{width:'90px'}} />
+              <col style={{width:'130px'}} /><col style={{width:'110px'}} />
             </colgroup>
             <thead><tr>
               <th>Batch #</th><th>Date</th><th>Roll Film</th>
