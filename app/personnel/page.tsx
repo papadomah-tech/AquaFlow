@@ -151,14 +151,9 @@ function PersonnelPageInner() {
         <div className="card">
           <table className="data-table">
             <colgroup>
-            <col /><col style={{width:'110px'}} /><col style={{width:'110px'}} />
-            <col style={{width:'110px'}} /><col style={{width:'110px'}} />
-            <col style={{width:'75px'}} /><col style={{width:'110px'}} />
-          </colgroup>
-          <colgroup>
-            <col /><col style={{width:'110px'}} /><col style={{width:'110px'}} />
-            <col style={{width:'110px'}} /><col style={{width:'100px'}} />
-            <col style={{width:'75px'}} /><col style={{width:'110px'}} />
+            <col style={{width:'140px'}} /><col style={{width:'115px'}} /><col style={{width:'100px'}} />
+            <col style={{width:'105px'}} /><col style={{width:'100px'}} />
+            <col style={{width:'75px'}} /><col style={{width:'180px'}} />
           </colgroup>
           <thead><tr>
             <th>Name</th><th>Role</th><th>Phone</th>
