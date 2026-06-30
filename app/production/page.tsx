@@ -8,7 +8,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 
-const OP_FEE = 25
+const OP_FEE = 30
 const BAGS_PER_KG = 20   // 1 Kg of roll film produces ~20 bags
 
 function ProductionPageInner() {

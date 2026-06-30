@@ -61,7 +61,7 @@ function PerformancePageInner() {
     if (!isAdmin && myEmpId) empQuery = empQuery.eq('id', myEmpId)
     const { data: employees } = await empQuery
 
-    // Count working days (Mon–Sat) in the selected period
+    // Fixed: count Mon–Sat working days in the selected period
     const workingDays = countWorkingDays(period.from, period.to)
 
     const results = await Promise.all((employees ?? []).map(async (emp: any) => {
