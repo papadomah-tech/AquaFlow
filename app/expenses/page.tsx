@@ -8,7 +8,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, today, monthStart } from '@/lib/supabase'
 
-const CATS = ['Fuel','Operator Fee','Salary','Raw Materials','Transport','Utilities','Maintenance','Equipment','Stock Loss','Other']
+const CATS = ['Operator Fee','Salary','Raw Materials','Transport','Utilities','Maintenance','Equipment','Stock Loss','Other']
 
 function ExpensesPageInner() {
   const [expenses, setExpenses] = useState<any[]>([])
