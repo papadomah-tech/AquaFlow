@@ -59,11 +59,6 @@ export default function Sidebar({ userName, userRole }: { userName: string; user
         )}
       </nav>
       <div className="p-4 border-t border-white/10 space-y-2">
-        <a href="/sales-account"
-          className="flex items-center gap-2 bg-white/10 hover:bg-white/20
-                     rounded-xl px-3 py-2 text-white text-sm font-medium transition-colors">
-          📊 Performance
-        </a>
         <a href="/change-password"
           className="flex items-center gap-2 bg-white/10 hover:bg-white/20
                      rounded-xl px-3 py-2 text-white text-sm font-medium transition-colors">

@@ -17,3 +17,28 @@ ALTER TABLE public.production_batches
   ADD COLUMN IF NOT EXISTS roll_kg_used numeric DEFAULT 0;
 
 SELECT 'production recipe columns added' as status;
+
+
+-- ── Set recipe ratios for existing materials (run once) ───────────────────────
+-- Packaging Bags: 1 bag produced = 1 packaging bag used
+UPDATE public.raw_materials
+  SET usage_per_bag = 1
+  WHERE name ILIKE '%packaging%' OR name ILIKE '%sachet bag%';
+
+-- Water: 1 bag produced = 30 sachets x 0.5L = 15 litres
+UPDATE public.raw_materials
+  SET usage_per_bag = 15
+  WHERE name ILIKE '%water%';
+
+-- Verify
+SELECT name, unit, current_stock, usage_per_bag FROM public.raw_materials ORDER BY name;
+
+-- ── One-time sync: set "Roll Film" stock to match sum of all registered rolls ──
+-- Run this once after deploying the code fix, to correct the historical disconnect
+UPDATE public.raw_materials
+SET current_stock = COALESCE(
+  (SELECT SUM(COALESCE(kg_remaining, weight_kg)) FROM public.roll_films), 0
+)
+WHERE name ILIKE 'Roll Film';
+
+SELECT name, current_stock FROM public.raw_materials WHERE name ILIKE 'Roll Film';

@@ -19,6 +19,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'reconciliation', label: 'Cash & Bank',    icon: '🏦', href: '/reconciliation', adminOnly: false, description: 'Bank reconciliation, deposits' },
   { key: 'personnel',      label: 'Personnel',      icon: '👥', href: '/personnel',      adminOnly: false, description: 'Employees, performance pay, losses' },
   { key: 'reports',        label: 'Reports',        icon: '📈', href: '/reports',        adminOnly: false, description: 'P&L, salesperson reports, financial analysis' },
+  { key: 'performance',    label: 'Performance Pay', icon: '📊', href: '/performance',   adminOnly: false, description: 'Calculate and pay performance-based salaries' },
   { key: 'imprest',        label: 'Imprest',        icon: '🧾', href: '/imprest',        adminOnly: false, description: 'Petty cash float — advances and expense reconciliation' },
   { key: 'sales-account',  label: 'Sales Account',  icon: '📋', href: '/sales-account',  adminOnly: false, description: 'Per-user sales account — bags, earnings, factory debt' },
   { key: 'fund-account',   label: 'Deposits Account', icon: '💰', href: '/fund-account',   adminOnly: true,  description: 'Company fund — deposits, rider payments, expenses (admin only)' },
