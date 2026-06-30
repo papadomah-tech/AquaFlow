@@ -9,7 +9,7 @@ import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
 
 const OP_FEE = 25
-const KG_PER_100_BAGS = 1   // 1 Kg of film produces ~100 bags
+const BAGS_PER_KG = 20   // 1 Kg of roll film produces ~20 bags
 
 function ProductionPageInner() {
   const { userId } = useRole()
@@ -48,7 +48,7 @@ function ProductionPageInner() {
 
   const bags = parseInt(form.bags_produced) || 0
   const selectedRoll = rolls.find((r:any) => r.id === parseInt(form.roll_film_id))
-  const kgNeeded = bags / 100 * KG_PER_100_BAGS
+  const kgNeeded = bags / BAGS_PER_KG
   const kgAvailable = selectedRoll ? (selectedRoll.kg_remaining ?? selectedRoll.weight_kg) : 0
 
   // Live preview of material consumption for this batch
@@ -70,7 +70,7 @@ function ProductionPageInner() {
     const batchNum = editBatch?.batch_number
       ?? ('BATCH-' + form.batch_date.replace(/-/g,'') + '-' + String(Math.floor(Math.random()*900+100)))
 
-    const kgUsed = bags / 100 * KG_PER_100_BAGS
+    const kgUsed = bags / BAGS_PER_KG
 
     const payload = {
       batch_date: form.batch_date, batch_number: batchNum,

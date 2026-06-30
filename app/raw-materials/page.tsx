@@ -127,18 +127,10 @@ function RawMaterialsPageInner() {
             <div className="card">
               <table className="data-table">
                 <colgroup>
-                <col /><col style={{width:'70px'}} />
-                <col style={{width:'120px'}} /><col style={{width:'130px'}} />
-                <col style={{width:'75px'}} />
-              </colgroup>
-              <colgroup>
-                <col />
-                <col style={{width:'65px'}} />
-                <col style={{width:'110px'}} />
-                <col style={{width:'110px'}} />
-                <col style={{width:'110px'}} />
-                <col style={{width:'70px'}} />
-                <col style={{width:'120px'}} />
+                <col /><col style={{width:'65px'}} />
+                <col style={{width:'105px'}} /><col style={{width:'110px'}} />
+                <col style={{width:'85px'}} /><col style={{width:'65px'}} />
+                <col style={{width:'150px'}} />
               </colgroup>
               <thead><tr>
                 <th>Material</th><th>Unit</th>
