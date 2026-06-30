@@ -176,12 +176,12 @@ function RawMaterialsPageInner() {
             <div className="card">
               <table className="data-table">
                 <colgroup>
-                <col style={{width:'150px'}} /><col style={{width:'85px'}} />
-                <col style={{width:'95px'}} /><col style={{width:'68px'}} />
-                <col style={{width:'80px'}} /><col style={{width:'82px'}} />
-                <col style={{width:'80px'}} /><col style={{width:'80px'}} />
-                <col style={{width:'80px'}} /><col style={{width:'58px'}} />
-                <col style={{width:'82px'}} /><col style={{width:'150px'}} />
+                <col style={{width:'145px'}} /><col style={{width:'80px'}} />
+                <col style={{width:'90px'}} /><col style={{width:'65px'}} />
+                <col style={{width:'70px'}} /><col style={{width:'78px'}} />
+                <col style={{width:'70px'}} /><col style={{width:'70px'}} />
+                <col style={{width:'72px'}} /><col style={{width:'55px'}} />
+                <col style={{width:'78px'}} /><col style={{width:'150px'}} />
               </colgroup>
               <thead><tr>
                 <th>Label</th><th>Date</th><th>Supplier</th>
@@ -191,7 +191,7 @@ function RawMaterialsPageInner() {
                 <th>Status</th><th>Actions</th>
               </tr></thead>
                 <tbody>
-                  {rolls.length === 0 ? <tr><td colSpan={11} className="text-center py-8 text-gray-400">No rolls registered</td></tr>
+                  {rolls.length === 0 ? <tr><td colSpan={12} className="text-center py-8 text-gray-400">No rolls registered</td></tr>
                   : rolls.map((r: any) => {
                     const remaining = r.bags_expected - r.bags_produced
                     const util = r.bags_expected > 0 ? (r.bags_produced / r.bags_expected * 100).toFixed(1) : '0.0'
@@ -229,9 +229,15 @@ function RawMaterialsPageInner() {
           {tab === 'purchases' && (
             <div className="card">
               <table className="data-table">
+                <colgroup>
+                <col style={{width:'90px'}} /><col style={{width:'130px'}} />
+                <col style={{width:'120px'}} /><col style={{width:'90px'}} />
+                <col style={{width:'95px'}} /><col style={{width:'105px'}} />
+                <col /><col style={{width:'80px'}} />
+              </colgroup>
                 <thead><tr><th>Date</th><th>Material</th><th>Supplier</th><th className="right">Qty</th><th className="right">Unit Price</th><th className="right">Total Cost</th><th>Notes</th><th>Actions</th></tr></thead>
                 <tbody>
-                  {purchases.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No purchases</td></tr>
+                  {purchases.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No purchases</td></tr>
                   : purchases.map((p: any) => (
                     <tr key={p.id}>
                       <td className="text-xs text-gray-500">{p.purchase_date}</td>
