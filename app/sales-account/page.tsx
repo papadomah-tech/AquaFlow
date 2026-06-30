@@ -21,7 +21,8 @@ function SalesAccountInner() {
 
   // For admin — load all riders/reps
   useEffect(() => {
-    if (isAdmin || isFactoryManager || (!isRider && canAccess('sales-account'))) {
+    if (isAdmin) {
+      // Admin only: load employee dropdown, default to first employee
       supabase.from('employees').select('id,full_name,role,employee_type')
         .eq('status','active').order('full_name')
         .then(({ data: emps }) => {
@@ -31,9 +32,10 @@ function SalesAccountInner() {
           }
         })
     } else if (employeeId) {
+      // Everyone else: always show their own account
       setSelectedEmpId(employeeId)
     }
-  }, [isAdmin, isFactoryManager, employeeId])
+  }, [isAdmin, employeeId])
 
   const viewId = selectedEmpId ?? employeeId
 
@@ -150,7 +152,7 @@ function SalesAccountInner() {
   const bagColor = data?.bagsOnHand > 20 ? '#1B5E20'
     : data?.bagsOnHand > 0 ? '#BF4D00' : '#C00000'
 
-  const empName = (isAdmin || isFactoryManager || (!isRider && canAccess('sales-account')))
+  const empName = isAdmin
     ? (employees.find((e:any) => e.id === viewId)?.full_name ?? '—')
     : employeeName
 
@@ -174,7 +176,7 @@ function SalesAccountInner() {
       </div>
 
       {/* Admin employee selector */}
-      {(isAdmin || isFactoryManager || (!isRider && canAccess('sales-account'))) && employees.length > 0 && (
+      {isAdmin && employees.length > 0 && (
         <div className="card mb-4 flex items-center gap-3">
           <label className="form-label mb-0 whitespace-nowrap">View account for:</label>
           <select value={viewId ?? ''} onChange={e => setSelectedEmpId(parseInt(e.target.value))}
@@ -267,7 +269,7 @@ function SalesAccountInner() {
           </div>
 
                     {/* Performance */}
-          {data.basePay > 0 && (
+          {!isAdmin && data.basePay > 0 && (
             <div style={{
               borderRadius:'1rem', padding:'1rem', marginBottom:'1rem',
               background: data.perfPct >= 100 ? '#15803d'
