@@ -15,14 +15,29 @@ import { useRole } from '@/hooks/useRole'
 
 const BAGS_PER_KG = 20
 
+// Count Mon–Sat working days in a date range (excludes Sundays)
+function countWorkingDays(from: string, to: string): number {
+  let count = 0
+  const cur = new Date(from)
+  const end = new Date(to)
+  while (cur <= end) {
+    if (cur.getDay() !== 0) count++   // 0 = Sunday
+    cur.setDate(cur.getDate() + 1)
+  }
+  return Math.max(1, count)
+}
+
 function calcPay(params: {
-  basePay: number; feedingFee: number; monthlyTarget: number; actualBags: number
+  basePay: number; feedingFee: number
+  dailyTarget: number; workingDays: number; actualBags: number
 }) {
-  const { basePay, feedingFee, monthlyTarget, actualBags } = params
-  const pct        = monthlyTarget > 0 ? actualBags / monthlyTarget : 0
-  const earnedBase = Math.round(pct * basePay * 100) / 100
-  const total      = Math.round((earnedBase + feedingFee) * 100) / 100
-  return { pct: pct * 100, earnedBase, feedingFee, total }
+  const { basePay, feedingFee, dailyTarget, workingDays, actualBags } = params
+  // Period target = daily target × working days in period
+  const periodTarget = dailyTarget * workingDays
+  const pct          = periodTarget > 0 ? actualBags / periodTarget : 0
+  const earnedBase   = Math.round(pct * basePay * 100) / 100
+  const total        = Math.round((earnedBase + feedingFee) * 100) / 100
+  return { pct: pct * 100, earnedBase, feedingFee, total, periodTarget }
 }
 
 function PerformancePageInner() {
@@ -45,6 +60,9 @@ function PerformancePageInner() {
     let empQuery = supabase.from('employees').select('*').eq('status', 'active').order('full_name')
     if (!isAdmin && myEmpId) empQuery = empQuery.eq('id', myEmpId)
     const { data: employees } = await empQuery
+
+    // Count working days (Mon–Sat) in the selected period
+    const workingDays = countWorkingDays(period.from, period.to)
 
     const results = await Promise.all((employees ?? []).map(async (emp: any) => {
       let bags = 0
@@ -80,13 +98,13 @@ function PerformancePageInner() {
         .eq('period_start', period.from).eq('period_end', period.to).limit(1)
       const locked = lockRow && lockRow.length > 0
 
-      const basePay     = emp.base_pay || emp.salary || 0
-      const feedingFee  = emp.feeding_fee ?? 300
-      const monthlyTgt  = emp.monthly_target || 6500
-      const perf        = calcPay({ basePay, feedingFee, monthlyTarget: monthlyTgt, actualBags: bags })
-      const netPay      = Math.max(0, perf.total - totalLosses)
+      const basePay    = emp.base_pay || emp.salary || 0
+      const feedingFee = emp.feeding_fee ?? 300
+      const dailyTarget = emp.sales_target_daily || Math.round((emp.monthly_target || 6500) / 26)
+      const perf       = calcPay({ basePay, feedingFee, dailyTarget, workingDays, actualBags: bags })
+      const netPay     = Math.max(0, perf.total - totalLosses)
 
-      return { ...emp, bags, basePay, monthlyTgt, ...perf, totalLosses, netPay, locked, lockInfo: lockRow?.[0] }
+      return { ...emp, bags, basePay, dailyTarget, workingDays, ...perf, totalLosses, netPay, locked, lockInfo: lockRow?.[0] }
     }))
 
     setPerfData(results)
@@ -212,7 +230,8 @@ function PerformancePageInner() {
                         {d.employee_type === 'rider' ? `Bulk bags: ${fmtNum(d.bags)}`
                           : d.employee_type === 'factory_manager' ? `Bags out: ${fmtNum(d.bags)}`
                           : `Bags sold: ${fmtNum(d.bags)}`}
-                        {' / Target: '}{fmtNum(d.monthlyTgt)}
+                        {' / Period target: '}{fmtNum(d.periodTarget)}
+                        {' ('}{d.dailyTarget}/day × {d.workingDays} days{')'}
                       </div>
                     </div>
 
@@ -245,7 +264,11 @@ function PerformancePageInner() {
 
                   {/* Formula line */}
                   <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-3">
-                    ({fmtNum(d.bags)} ÷ {fmtNum(d.monthlyTgt)}) × {fmtGhc(d.basePay)} + {fmtGhc(d.feedingFee)} feeding
+                    <span className="text-blue-600 font-medium">
+                      Target: {d.dailyTarget}/day × {d.workingDays} days = {fmtNum(d.periodTarget)} bags
+                    </span>
+                    <br/>
+                    ({fmtNum(d.bags)} ÷ {fmtNum(d.periodTarget)}) × {fmtGhc(d.basePay)} + {fmtGhc(d.feedingFee)} feeding
                     = {fmtGhc(d.earnedBase)} + {fmtGhc(d.feedingFee)}
                     {d.totalLosses > 0 ? ` − ${fmtGhc(d.totalLosses)} losses` : ''}
                     {' = '}<strong>{fmtGhc(d.netPay)} net</strong>
