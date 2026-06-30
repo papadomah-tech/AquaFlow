@@ -16,7 +16,7 @@ function RawMaterialsPageInner() {
   const [editItem, setEditItem] = useState<any>(null)
 
   const [rollForm, setRollForm] = useState({ label: '', weight_kg: '', purchase_date: today(), supplier: '', cost_per_kg: '' })
-  const [matForm, setMatForm] = useState({ name: '', unit: 'kg', low_stock_threshold: '0' })
+  const [matForm, setMatForm] = useState({ name: '', unit: 'kg', low_stock_threshold: '0', usage_per_bag: '0' })
   const [purchForm, setPurchForm] = useState({ material_id: '', purchase_date: today(), supplier_name: '', quantity: '', unit_price: '', notes: '' })
 
   const loadAll = useCallback(async () => {
@@ -33,6 +33,33 @@ function RawMaterialsPageInner() {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  const openMaterial = (item?: any) => {
+    setFormType('material'); setEditItem(item ?? null)
+    setMatForm(item ? {
+      name: item.name, unit: item.unit,
+      low_stock_threshold: String(item.low_stock_threshold ?? 0),
+      usage_per_bag: String(item.usage_per_bag ?? 0),
+    } : { name:'', unit:'kg', low_stock_threshold:'0', usage_per_bag:'0' })
+    setShowForm(true)
+  }
+
+  const saveMaterial = async () => {
+    const payload = {
+      name: matForm.name, unit: matForm.unit,
+      low_stock_threshold: parseFloat(matForm.low_stock_threshold) || 0,
+      usage_per_bag: parseFloat(matForm.usage_per_bag) || 0,
+    }
+    if (editItem) await supabase.from('raw_materials').update(payload).eq('id', editItem.id)
+    else await supabase.from('raw_materials').insert({ ...payload, current_stock: 0 })
+    setShowForm(false); loadAll()
+  }
+
+  const deleteMaterial = async (m: any) => {
+    if (!confirm('Delete material ' + m.name + '? This cannot be undone.')) return
+    await supabase.from('raw_materials').delete().eq('id', m.id)
+    loadAll()
+  }
 
   const openRoll = (item?: any) => {
     setFormType('roll'); setEditItem(item ?? null)
@@ -87,6 +114,7 @@ function RawMaterialsPageInner() {
         <div className="flex gap-2">
           <button onClick={() => openRoll()} className="btn btn-primary">+ Register Roll</button>
           <button onClick={() => { setFormType('purchase'); setEditItem(null); setPurchForm({material_id:'',purchase_date:today(),supplier_name:'',quantity:'',unit_price:'',notes:''}); setShowForm(true) }} className="btn btn-secondary">+ Purchase</button>
+          <button onClick={() => openMaterial()} className="btn btn-secondary">+ Add Material</button>
         </div>
       </div>
 
@@ -105,26 +133,37 @@ function RawMaterialsPageInner() {
               </colgroup>
               <colgroup>
                 <col />
+                <col style={{width:'65px'}} />
+                <col style={{width:'110px'}} />
+                <col style={{width:'110px'}} />
+                <col style={{width:'110px'}} />
                 <col style={{width:'70px'}} />
                 <col style={{width:'120px'}} />
-                <col style={{width:'130px'}} />
-                <col style={{width:'75px'}} />
               </colgroup>
               <thead><tr>
                 <th>Material</th><th>Unit</th>
                 <th className="right">Current Stock</th>
                 <th className="right">Low Stock Alert</th>
+                <th className="right">Usage / Bag</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr></thead>
                 <tbody>
-                  {materials.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">No materials yet</td></tr>
+                  {materials.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No materials yet — click + Add Material</td></tr>
                   : materials.map((m: any) => (
                     <tr key={m.id}>
                       <td className="font-medium">{m.name}</td>
                       <td className="text-gray-500">{m.unit}</td>
                       <td className="num">{fmtNum(m.current_stock)}</td>
                       <td className="num muted">{fmtNum(m.low_stock_threshold)}</td>
+                      <td className="num muted">{m.usage_per_bag > 0 ? `${m.usage_per_bag} ${m.unit}/bag` : '—'}</td>
                       <td><span className={'badge ' + (m.current_stock <= m.low_stock_threshold ? 'badge-red' : 'badge-green')}>{m.current_stock <= m.low_stock_threshold ? 'LOW' : 'OK'}</span></td>
+                      <td>
+                        <div className="flex gap-1">
+                          <button onClick={() => openMaterial(m)} className="btn btn-sm btn-secondary">Edit</button>
+                          <button onClick={() => deleteMaterial(m)} className="btn btn-sm btn-danger">Del</button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -137,19 +176,19 @@ function RawMaterialsPageInner() {
             <div className="card">
               <table className="data-table">
                 <colgroup>
-                <col style={{width:'150px'}} /><col style={{width:'88px'}} />
-                <col style={{width:'100px'}} /><col style={{width:'75px'}} />
-                <col style={{width:'95px'}} /><col style={{width:'82px'}} />
-                <col style={{width:'82px'}} /><col style={{width:'82px'}} />
-                <col style={{width:'60px'}} /><col style={{width:'88px'}} />
-                <col style={{width:'130px'}} />
+                <col style={{width:'150px'}} /><col style={{width:'85px'}} />
+                <col style={{width:'95px'}} /><col style={{width:'68px'}} />
+                <col style={{width:'80px'}} /><col style={{width:'82px'}} />
+                <col style={{width:'80px'}} /><col style={{width:'80px'}} />
+                <col style={{width:'80px'}} /><col style={{width:'58px'}} />
+                <col style={{width:'82px'}} /><col style={{width:'150px'}} />
               </colgroup>
               <thead><tr>
                 <th>Label</th><th>Date</th><th>Supplier</th>
-                <th className="right">Wt(Kg)</th><th className="right">Cost</th>
+                <th className="right">Wt(Kg)</th><th className="right">Kg Left</th><th className="right">Cost</th>
                 <th className="right">Expected</th><th className="right">Produced</th>
                 <th className="right">Remaining</th><th className="right">Util%</th>
-                <th>Status</th><th style={{minWidth:'120px'}}>Actions</th>
+                <th>Status</th><th>Actions</th>
               </tr></thead>
                 <tbody>
                   {rolls.length === 0 ? <tr><td colSpan={11} className="text-center py-8 text-gray-400">No rolls registered</td></tr>
@@ -162,6 +201,9 @@ function RawMaterialsPageInner() {
                         <td className="muted">{r.purchase_date}</td>
                         <td className="muted">{r.supplier||'—'}</td>
                         <td className="num">{r.weight_kg}</td>
+                        <td className={'num font-medium ' + ((r.kg_remaining ?? r.weight_kg) <= 0 ? 'text-red-600' : (r.kg_remaining ?? r.weight_kg) < r.weight_kg * 0.15 ? 'text-orange-600' : 'text-green-700')}>
+                          {(r.kg_remaining ?? r.weight_kg).toFixed(2)}
+                        </td>
                         <td className="num">{fmtGhc(r.cost)}</td>
                         <td className="num">{fmtNum(r.bags_expected)}</td>
                         <td className="num-green">{fmtNum(r.bags_produced)}</td>
@@ -216,7 +258,8 @@ function RawMaterialsPageInner() {
             <div className="modal-header">
               <h2 className="font-bold text-[#1F4E79]">
                 {formType === 'roll' ? (editItem ? 'Edit Roll Film' : 'Register New Roll Film')
-                 : formType === 'purchase' ? 'Record Purchase' : 'Add Material'}
+                 : formType === 'purchase' ? 'Record Purchase'
+                 : (editItem ? 'Edit Material' : 'Add Raw Material')}
               </h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 text-xl">X</button>
             </div>
@@ -238,6 +281,42 @@ function RawMaterialsPageInner() {
                     </div>
                   )}
                 </>
+              )}
+              {formType === 'material' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="form-group col-span-2">
+                    <label className="form-label">Material Name *</label>
+                    <input value={matForm.name} onChange={e => setMatForm(f => ({...f,name:e.target.value}))}
+                      className="form-input" placeholder="e.g. Sachet Bags, Preservative" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Unit *</label>
+                    <select value={matForm.unit} onChange={e => setMatForm(f => ({...f,unit:e.target.value}))}
+                      className="form-select">
+                      <option value="kg">Kg</option>
+                      <option value="pieces">Pieces</option>
+                      <option value="litres">Litres</option>
+                      <option value="rolls">Rolls</option>
+                      <option value="units">Units</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Low Stock Alert Level</label>
+                    <input type="number" step="0.01" value={matForm.low_stock_threshold}
+                      onChange={e => setMatForm(f => ({...f,low_stock_threshold:e.target.value}))}
+                      className="form-input" />
+                  </div>
+                  <div className="form-group col-span-2">
+                    <label className="form-label">Usage per Bag Produced</label>
+                    <input type="number" step="0.0001" value={matForm.usage_per_bag}
+                      onChange={e => setMatForm(f => ({...f,usage_per_bag:e.target.value}))}
+                      className="form-input" placeholder="e.g. 1 (one sachet bag per bag of water)" />
+                    <div className="text-xs text-gray-400 mt-1">
+                      This material will be automatically deducted from stock every time a production batch is recorded.
+                      Set to 0 if this material is not consumed per bag (e.g. purchased in bulk for other uses).
+                    </div>
+                  </div>
+                </div>
               )}
               {formType === 'purchase' && (
                 <div className="grid grid-cols-2 gap-3">
@@ -262,8 +341,10 @@ function RawMaterialsPageInner() {
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowForm(false)} className="btn btn-secondary">Cancel</button>
-              <button onClick={formType === 'roll' ? saveRoll : savePurchase}
-                disabled={formType === 'roll' ? !rollForm.weight_kg : !purchForm.material_id || !purchForm.quantity}
+              <button onClick={formType === 'roll' ? saveRoll : formType === 'material' ? saveMaterial : savePurchase}
+                disabled={formType === 'roll' ? !rollForm.weight_kg
+                  : formType === 'material' ? !matForm.name
+                  : !purchForm.material_id || !purchForm.quantity}
                 className="btn btn-primary">Save</button>
             </div>
           </div>

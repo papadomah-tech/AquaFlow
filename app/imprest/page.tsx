@@ -16,7 +16,7 @@ import { useRole } from '@/hooks/useRole'
 // and decides what happens to any unspent balance (refund / roll over / write off).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CATEGORIES = ['Fuel','Transport','Stationery','Refreshment','Repairs','Communication','Miscellaneous','Other']
+const CATEGORIES = ['Transport','Stationery','Refreshment','Repairs','Communication','Miscellaneous','Other']
 
 function ImprestPageInner() {
   const { isAdmin, employeeId, employeeName, userId } = useRole()
