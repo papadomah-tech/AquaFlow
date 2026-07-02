@@ -27,17 +27,31 @@ function countWorkingDays(from: string, to: string): number {
   return Math.max(1, count)
 }
 
+// Standard working days in a full month (Mon–Sat)
+const STANDARD_MONTH_DAYS = 26
+
 function calcPay(params: {
   basePay: number; feedingFee: number
   dailyTarget: number; workingDays: number; actualBags: number
 }) {
   const { basePay, feedingFee, dailyTarget, workingDays, actualBags } = params
+
   // Period target = daily target × working days in period
   const periodTarget = dailyTarget * workingDays
-  const pct          = periodTarget > 0 ? actualBags / periodTarget : 0
-  const earnedBase   = Math.round(pct * basePay * 100) / 100
-  const total        = Math.round((earnedBase + feedingFee) * 100) / 100
-  return { pct: pct * 100, earnedBase, feedingFee, total, periodTarget }
+
+  // Pro-rate base pay to the period
+  // e.g. 2 days out of 26 → period base pay = (2/26) × GH₵1,500 = GH₵115.38
+  const dailyBasePay  = basePay / STANDARD_MONTH_DAYS
+  const periodBasePay = Math.round(dailyBasePay * workingDays * 100) / 100
+
+  // Performance % = actual ÷ period target (can exceed 100% for overperformance)
+  const pct        = periodTarget > 0 ? actualBags / periodTarget : 0
+
+  // Base pay earned = performance % × period base pay
+  const earnedBase = Math.round(pct * periodBasePay * 100) / 100
+  const total      = Math.round((earnedBase + feedingFee) * 100) / 100
+
+  return { pct: pct * 100, earnedBase, feedingFee, total, periodTarget, periodBasePay, dailyBasePay }
 }
 
 function PerformancePageInner() {
@@ -268,7 +282,9 @@ function PerformancePageInner() {
                       Target: {d.dailyTarget}/day × {d.workingDays} days = {fmtNum(d.periodTarget)} bags
                     </span>
                     <br/>
-                    ({fmtNum(d.bags)} ÷ {fmtNum(d.periodTarget)}) × {fmtGhc(d.basePay)} + {fmtGhc(d.feedingFee)} feeding
+                    Period base pay: {fmtGhc(d.basePay)} ÷ {STANDARD_MONTH_DAYS} days × {d.workingDays} days = <strong>{fmtGhc(d.periodBasePay)}</strong>
+                    <br/>
+                    ({fmtNum(d.bags)} ÷ {fmtNum(d.periodTarget)}) × {fmtGhc(d.periodBasePay)} + {fmtGhc(d.feedingFee)} feeding
                     = {fmtGhc(d.earnedBase)} + {fmtGhc(d.feedingFee)}
                     {d.totalLosses > 0 ? ` − ${fmtGhc(d.totalLosses)} losses` : ''}
                     {' = '}<strong>{fmtGhc(d.netPay)} net</strong>
