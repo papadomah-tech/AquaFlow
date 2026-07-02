@@ -16,3 +16,8 @@ INSERT INTO public.opening_balances (key, value, notes) VALUES
   ('total_receivables',  0, 'Total amount customers already owe'),
   ('total_payables',     0, 'Total expenses already incurred')
 ON CONFLICT (key) DO NOTHING;
+
+
+-- Add created_by to customers so riders only see their own customers
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
