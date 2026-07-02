@@ -17,7 +17,17 @@ function PersonnelPageInner() {
   const [period, setPeriod] = useState({ from: monthStart(), to: today() })
   const [perfData, setPerfData] = useState<any[]>([])
 
-  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff', base_pay:'', feeding_fee:'300', monthly_target:'6500' })
+  // Pricing rates for target viability analysis
+  const PRICING = {
+    roll_cost_per_kg: 45, bags_per_kg: 20,
+    pkg_bulk_qty: 1000, pkg_bulk_cost: 640,
+    water_cost_per_liter: 0.0318, liters_per_bag: 15,
+    operator_fee_per_100: 30,
+    labor_per_bag: 0.50, utility_per_bag: 0.20, machine_per_bag: 0.10,
+    std_days: 26,
+  }
+
+  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff', base_pay:'', feeding_fee:'300', monthly_target:'6500', selling_price:'6' })
   const [lossForm, setLossForm] = useState({ employee_id:'', loss_date:today(), loss_type:'Bag Shortage', description:'', quantity:'', unit_cost:'', notes:'' })
 
   const loadAll = useCallback(async () => {
@@ -133,7 +143,7 @@ function PersonnelPageInner() {
       <div className="page-header">
         <h1 className="page-title">Personnel</h1>
         <div className="flex gap-2">
-          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff',base_pay:'',feeding_fee:'300',monthly_target:'6500'}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
+          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff',base_pay:'',feeding_fee:'300',monthly_target:'6500',selling_price:'6'}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
           <button onClick={() => { setShowLossForm(true) }} className="btn btn-warning">+ Record Loss</button>
         </div>
       </div>
@@ -171,7 +181,7 @@ function PersonnelPageInner() {
                   <td className="num">{e.sales_target_daily}/day</td>
                   <td><span className={'badge '+(e.status==='active'?'badge-green':'badge-gray')}>{e.status}</span></td>
                   <td><div className="flex gap-1">
-                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff',base_pay:String(e.base_pay??e.salary??''),feeding_fee:String(e.feeding_fee??300),monthly_target:String(e.monthly_target??6500)});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
+                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff',base_pay:String(e.base_pay??e.salary??''),feeding_fee:String(e.feeding_fee??300),monthly_target:String(e.monthly_target??6500),selling_price:'6'});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
                     <button onClick={async()=>{if(confirm('Toggle status?'))await supabase.from('employees').update({status:e.status==='active'?'inactive':'active'}).eq('id',e.id);loadAll()}} className="btn btn-sm btn-warning">{e.status==='active'?'Deactivate':'Activate'}</button>
                   </div></td>
                 </tr>
@@ -396,36 +406,250 @@ function PersonnelPageInner() {
                   <div className="text-xs text-gray-400 mt-1">This controls what they see in the Sales module</div>
                 </div>
                 <div className="col-span-2 border-t border-gray-100 pt-3">
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Performance Pay (VeeBee Framework)
+                  <div className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">
+                    Performance Pay — Target Viability
+                  </div>
+                  <div className="text-xs text-blue-500 mb-3">
+                    Enter base pay and selling price → system auto-suggests a daily target.
+                    Or enter a target manually to see the full financial breakdown.
                   </div>
                 </div>
+
+                {/* Pricing inputs row */}
                 <div className="form-group">
                   <label className="form-label">Base Pay (GHc)</label>
                   <input type="number" step="0.01" value={empForm.base_pay}
-                    onChange={e=>setEmpForm(f=>({...f,base_pay:e.target.value}))}
-                    className="form-input" placeholder="e.g. 1500 for Rider" />
-                  <div className="text-xs text-gray-400 mt-1">Proportional component — scales with output</div>
+                    onChange={e => setEmpForm(f => ({...f, base_pay: e.target.value}))}
+                    className="form-input" placeholder="e.g. 1500" />
+                  <div className="text-xs text-gray-400 mt-1">Proportional — scales with bags delivered</div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Feeding Fee (GHc)</label>
                   <input type="number" step="0.01" value={empForm.feeding_fee}
-                    onChange={e=>setEmpForm(f=>({...f,feeding_fee:e.target.value}))}
+                    onChange={e => setEmpForm(f => ({...f, feeding_fee: e.target.value}))}
                     className="form-input" placeholder="300" />
-                  <div className="text-xs text-gray-400 mt-1">Always paid in full regardless of output</div>
+                  <div className="text-xs text-gray-400 mt-1">Always paid in full</div>
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Selling Price per Bag (GHc)</label>
+                  <input type="number" step="0.01" value={empForm.selling_price}
+                    onChange={e => setEmpForm(f => ({...f, selling_price: e.target.value}))}
+                    className="form-input" placeholder="e.g. 6.00" />
+                  <div className="text-xs text-gray-400 mt-1">Used to calculate surplus per bag</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phone</label>
+                  <input value={empForm.phone}
+                    onChange={e => setEmpForm(f => ({...f, phone: e.target.value}))}
+                    className="form-input" />
+                </div>
+
+                {/* Smart target calculator */}
+                {(() => {
+                  const bp   = parseFloat(empForm.base_pay) || 0
+                  const sp   = parseFloat(empForm.selling_price) || 0
+                  const ff   = parseFloat(empForm.feeding_fee) || 0
+                  const mt   = parseInt(empForm.monthly_target) || 0
+                  const dt   = parseInt(empForm.sales_target_daily) || 0
+                  const p    = PRICING
+
+                  // Per-bag costs
+                  const roll   = p.roll_cost_per_kg / p.bags_per_kg
+                  const pkg    = p.pkg_bulk_cost / p.pkg_bulk_qty
+                  const water  = p.water_cost_per_liter * p.liters_per_bag
+                  const op     = p.operator_fee_per_100 / 100
+                  const oh     = p.labor_per_bag + p.utility_per_bag + p.machine_per_bag
+                  const perfEst = bp > 0 && mt > 0 ? bp / mt : 0
+                  const totalCostPb = roll + pkg + water + op + oh + perfEst
+                  const surplusPb   = sp - totalCostPb
+
+                  // Auto-suggest: monthly target = base pay ÷ surplus per bag
+                  const suggestedMonthly = surplusPb > 0 ? Math.ceil(bp / surplusPb) : 0
+                  const suggestedDaily   = suggestedMonthly > 0
+                    ? Math.ceil(suggestedMonthly / p.std_days) : 0
+
+                  // Viability of current manual target
+                  const usedMonthly = mt > 0 ? mt : dt * p.std_days
+                  const riderRevenue = sp * usedMonthly
+                  const riderCosts   = totalCostPb * usedMonthly
+                  const riderSurplus = riderRevenue - riderCosts
+                  const payRatio     = riderSurplus > 0 ? (bp / riderSurplus) * 100 : 0
+                  const viable       = payRatio <= 100 && surplusPb > 0
+
+                  const autoFillTarget = () => {
+                    setEmpForm(f => ({
+                      ...f,
+                      monthly_target: String(suggestedMonthly),
+                      sales_target_daily: String(suggestedDaily),
+                    }))
+                  }
+
+                  return bp > 0 && sp > 0 ? (
+                    <div className="col-span-2">
+                      {/* Auto-suggestion */}
+                      {suggestedDaily > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3">
+                          <div className="text-xs font-semibold text-blue-700 mb-1">
+                            💡 Suggested Target based on Base Pay ÷ Surplus per bag
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                            {[
+                              ['Surplus / bag', `${fmtGhc(surplusPb)}`, surplusPb > 0 ? 'text-green-700' : 'text-red-600'],
+                              ['Monthly target', `${suggestedMonthly.toLocaleString()} bags`, 'text-[#1F4E79]'],
+                              ['Daily target',   `${suggestedDaily} bags/day`,                'text-[#1F4E79]'],
+                            ].map(([l,v,c]) => (
+                              <div key={l as string} className="bg-white rounded-lg p-2">
+                                <div className="text-xs text-gray-500">{l}</div>
+                                <div className={'text-sm font-bold ' + c}>{v}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" onClick={autoFillTarget}
+                            className="btn btn-primary btn-sm w-full">
+                            ✅ Use this target ({suggestedDaily} bags/day)
+                          </button>
+                        </div>
+                      )}
+                      {surplusPb <= 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-xs text-red-700">
+                          ❌ Selling price ({fmtGhc(sp)}) is below total cost per bag ({fmtGhc(totalCostPb)}).
+                          No target can make this pay viable — increase selling price first.
+                        </div>
+                      )}
+                    </div>
+                  ) : null
+                })()}
+
+                {/* Target inputs */}
                 <div className="form-group">
                   <label className="form-label">Monthly Bag Target</label>
                   <input type="number" value={empForm.monthly_target}
-                    onChange={e=>setEmpForm(f=>({...f,monthly_target:e.target.value}))}
+                    onChange={e => setEmpForm(f => ({
+                      ...f, monthly_target: e.target.value,
+                      sales_target_daily: String(Math.ceil(parseInt(e.target.value)||0 / 26))
+                    }))}
                     className="form-input" placeholder="6500" />
-                  <div className="text-xs text-gray-400 mt-1">e.g. 250/day × 26 days = 6,500</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    = {Math.ceil((parseInt(empForm.monthly_target)||0) / 26)} bags/day × 26 days
+                  </div>
                 </div>
-                <div className="form-group"><label className="form-label">Phone</label><input value={empForm.phone} onChange={e=>setEmpForm(f=>({...f,phone:e.target.value}))} className="form-input" /></div>
-                <div className="form-group"><label className="form-label">Monthly Salary (GHc)</label><input type="number" value={empForm.salary} onChange={e=>setEmpForm(f=>({...f,salary:e.target.value}))} className="form-input" /></div>
-                <div className="form-group"><label className="form-label">Daily Bag Target</label><input type="number" value={empForm.sales_target_daily} onChange={e=>setEmpForm(f=>({...f,sales_target_daily:e.target.value}))} className="form-input" /></div>
-                <div className="form-group"><label className="form-label">Working Days/Week</label><input type="number" value={empForm.working_days} onChange={e=>setEmpForm(f=>({...f,working_days:e.target.value}))} className="form-input" /></div>
-                <div className="form-group"><label className="form-label">Hire Date</label><input type="date" value={empForm.hire_date} onChange={e=>setEmpForm(f=>({...f,hire_date:e.target.value}))} className="form-input" /></div>
+                <div className="form-group">
+                  <label className="form-label">Daily Bag Target</label>
+                  <input type="number" value={empForm.sales_target_daily}
+                    onChange={e => setEmpForm(f => ({
+                      ...f, sales_target_daily: e.target.value,
+                      monthly_target: String((parseInt(e.target.value)||0) * 26)
+                    }))}
+                    className="form-input" placeholder="250" />
+                  <div className="text-xs text-gray-400 mt-1">
+                    Synced with monthly target above
+                  </div>
+                </div>
+
+                {/* Full viability breakdown */}
+                {(() => {
+                  const bp   = parseFloat(empForm.base_pay) || 0
+                  const sp   = parseFloat(empForm.selling_price) || 0
+                  const ff   = parseFloat(empForm.feeding_fee) || 0
+                  const mt   = parseInt(empForm.monthly_target) || 0
+                  if (bp <= 0 || sp <= 0 || mt <= 0) return null
+                  const p    = PRICING
+                  const roll   = p.roll_cost_per_kg / p.bags_per_kg
+                  const pkg    = p.pkg_bulk_cost / p.pkg_bulk_qty
+                  const water  = p.water_cost_per_liter * p.liters_per_bag
+                  const op     = p.operator_fee_per_100 / 100
+                  const oh     = p.labor_per_bag + p.utility_per_bag + p.machine_per_bag
+                  const perfEst = bp / mt
+                  const totalCostPb = roll + pkg + water + op + oh + perfEst
+                  const surplusPb   = sp - totalCostPb
+                  const revenue     = sp * mt
+                  const totalCost   = totalCostPb * mt
+                  const surplus     = surplusPb * mt
+                  const payRatio    = surplus > 0 ? (bp / surplus) * 100 : Infinity
+                  const dt          = parseInt(empForm.sales_target_daily) || Math.ceil(mt/26)
+                  const verdict     = surplusPb <= 0 ? 'loss'
+                    : payRatio > 100 ? 'unsustainable'
+                    : payRatio > 80  ? 'tight' : 'viable'
+
+                  return (
+                    <div className="col-span-2">
+                      <div className={'rounded-xl border p-4 '
+                        + (verdict==='viable' ? 'bg-green-50 border-green-200'
+                        : verdict==='tight'   ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-red-50 border-red-200')}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-lg">
+                            {verdict==='viable'?'✅':verdict==='tight'?'⚠️':'❌'}
+                          </span>
+                          <span className={'font-bold text-sm '
+                            + (verdict==='viable'?'text-green-700':verdict==='tight'?'text-yellow-700':'text-red-700')}>
+                            {verdict==='viable' ? 'Target is viable'
+                            : verdict==='tight'  ? 'Target is tight — base pay consumes >80% of surplus'
+                            : verdict==='unsustainable' ? 'Unsustainable — base pay exceeds available surplus'
+                            : 'Loss-making — selling price below total cost'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                          Monthly breakdown at {mt.toLocaleString()} bags ({dt} bags/day)
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {[
+                            ['Rider Revenue (bags × price)',    revenue,           'text-green-700'],
+                            ['Roll Film cost',                  -(roll * mt),      'text-red-600'],
+                            ['Packaging Bags cost',             -(pkg * mt),       'text-red-600'],
+                            ['Water cost',                      -(water * mt),     'text-red-600'],
+                            ['Operator Fee',                    -(op * mt),        'text-orange-600'],
+                            ['Overhead (labor+elec+machine)',   -(oh * mt),        'text-orange-600'],
+                            ['Est. Base Pay (cost)',            -bp,               'text-purple-600'],
+                            ['Feeding Fee',                     -ff,               'text-purple-600'],
+                          ].map(([l,v,c]) => (
+                            <div key={l as string} className="flex justify-between text-xs">
+                              <span className="text-gray-600">{l}</span>
+                              <span className={'font-medium tabular-nums ' + c}>
+                                {(v as number) < 0 ? `−${fmtGhc(Math.abs(v as number))}` : fmtGhc(v as number)}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="border-t border-gray-200 pt-1.5 mt-1">
+                            <div className="flex justify-between text-xs font-bold">
+                              <span>Company Net Surplus after all costs</span>
+                              <span className={surplusPb * mt - ff >= 0 ? 'text-green-700' : 'text-red-700'}>
+                                {fmtGhc(surplus - ff)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-500 mt-0.5">
+                              <span>Base pay as % of generated surplus</span>
+                              <span className={payRatio <= 80 ? 'text-green-600' : payRatio <= 100 ? 'text-yellow-600' : 'text-red-600'}>
+                                {isFinite(payRatio) ? payRatio.toFixed(1) + '%' : '∞'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                <div className="form-group">
+                  <label className="form-label">Monthly Salary (GHc)</label>
+                  <input type="number" value={empForm.salary}
+                    onChange={e => setEmpForm(f => ({...f, salary: e.target.value}))}
+                    className="form-input" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Working Days/Week</label>
+                  <input type="number" value={empForm.working_days}
+                    onChange={e => setEmpForm(f => ({...f, working_days: e.target.value}))}
+                    className="form-input" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Hire Date</label>
+                  <input type="date" value={empForm.hire_date}
+                    onChange={e => setEmpForm(f => ({...f, hire_date: e.target.value}))}
+                    className="form-input" />
+                </div>
               </div>
             </div>
             <div className="modal-footer">
