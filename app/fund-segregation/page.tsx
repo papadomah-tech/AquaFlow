@@ -47,6 +47,9 @@ function FundSegregationInner() {
   const [data, setData]       = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [showRates, setShowRates] = useState(false)
+  const [tab, setTab] = useState<'summary'|'dispatches'>('summary')
+  const [dispatches, setDispatches] = useState<any[]>([])
+  const [loadingDisp, setLoadingDisp] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -98,9 +101,9 @@ function FundSegregationInner() {
     const utility_pb = rates.utility_per_bag
     const machine_pb = rates.machine_per_bag
 
-    // Fuel: total monthly fuel ÷ bags sold
-    const totalFuel  = rates.fuel_per_rider_day * rates.riders * rates.working_days
-    const fuel_pb    = totalBagsSold > 0 ? totalFuel / totalBagsSold : 0
+    // Fuel removed from ring-fenced calculations
+    const totalFuel  = 0
+    const fuel_pb    = 0
 
     // Performance pay per bag (based on actual paid in period)
     const perf_pb    = totalBagsSold > 0 ? actualSalary / totalBagsSold : 0
@@ -119,7 +122,7 @@ function FundSegregationInner() {
     const agg_water   = water_pb  * totalBagsSold
     const agg_opFee   = actualOpFee   // actual from expenses
     const agg_perf    = actualSalary  // actual paid
-    const agg_fuel    = totalFuel
+    const agg_fuel    = 0  // fuel removed
     const agg_ringFenced = agg_roll + agg_pkg + agg_water + agg_opFee + agg_perf + agg_fuel
 
     // Non-ring-fenced
@@ -147,6 +150,47 @@ function FundSegregationInner() {
   }, [period, rates])
 
   useEffect(() => { load() }, [load])
+
+  const loadDispatches = useCallback(async () => {
+    setLoadingDisp(true)
+    const { data: bulkSales } = await supabase.from('sales')
+      .select('id,sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name)')
+      .eq('sale_type', 'bulk')
+      .gte('sale_date', period.from).lte('sale_date', period.to)
+      .order('sale_date', { ascending: false })
+
+    // Per-bag cost rates (ring-fenced components, fuel removed)
+    const roll_pb  = rates.roll_cost_per_kg / rates.bags_per_kg
+    const pkg_pb   = rates.pkg_bulk_cost / rates.pkg_bulk_qty
+    const water_pb = rates.water_cost_per_liter * rates.liters_per_bag
+    const op_pb    = rates.operator_fee_per_100 / 100
+    const perf_pb_est = 0  // actual perf pay not available per-dispatch; show 0
+    const oh_pb    = rates.labor_per_bag + rates.utility_per_bag + rates.machine_per_bag
+
+    const enriched = (bulkSales ?? []).map((s: any) => {
+      const bags        = s.bags_sold
+      const ringFenced  = (roll_pb + pkg_pb + water_pb + op_pb) * bags
+      const overhead    = oh_pb * bags
+      const totalCost   = ringFenced + overhead
+      const surplus     = s.total_amount - totalCost
+      const collected   = s.amount_paid
+      const ringFencedFromCollected = collected > 0
+        ? Math.min(collected, ringFenced) : 0
+      const surplusFromCollected = Math.max(0, collected - ringFenced - overhead)
+      return {
+        ...s, bags, ringFenced, overhead, surplus,
+        collected, ringFencedFromCollected, surplusFromCollected,
+        roll: roll_pb * bags, pkg: pkg_pb * bags,
+        water: water_pb * bags, op: op_pb * bags,
+      }
+    })
+    setDispatches(enriched)
+    setLoadingDisp(false)
+  }, [period, rates])
+
+  useEffect(() => {
+    if (tab === 'dispatches') loadDispatches()
+  }, [tab, loadDispatches])
 
   const pct = (n: number, total: number) =>
     total > 0 ? ((n / total) * 100).toFixed(1) + '%' : '0%'
@@ -192,6 +236,17 @@ function FundSegregationInner() {
           className="btn btn-secondary">This Month</button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-4">
+        {([['summary','📊 Period Summary'],['dispatches','📦 By Bulk Dispatch']] as const).map(([k,l]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={'px-5 py-2.5 text-sm font-medium border-b-2 transition-colors '
+              + (tab === k ? 'border-[#1F4E79] text-[#1F4E79]' : 'border-transparent text-gray-500 hover:text-gray-700')}>
+            {l}
+          </button>
+        ))}
+      </div>
+
       {/* Rate overrides */}
       {showRates && (
         <div className="card mb-4">
@@ -227,7 +282,7 @@ function FundSegregationInner() {
         </div>
       )}
 
-      {loading ? (
+      {tab === 'summary' && (loading ? (
         <div className="text-center py-12 text-gray-400">Calculating...</div>
       ) : data && (
         <>
@@ -494,6 +549,110 @@ function FundSegregationInner() {
             </div>
           </div>
         </>
+      ))}
+
+      {/* ── BY BULK DISPATCH TAB ─────────────────────────────────────── */}
+      {tab === 'dispatches' && (
+        loadingDisp ? (
+          <div className="text-center py-12 text-gray-400">Loading dispatches...</div>
+        ) : dispatches.length === 0 ? (
+          <div className="card text-center py-10 text-gray-400">No bulk dispatches in this period.</div>
+        ) : (
+          <>
+            {/* Aggregate totals bar */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                ['🔒 Total Ring-fenced', dispatches.reduce((a,d)=>a+d.ringFenced,0), '#b91c1c', 'Cost to replenish raw materials + operator fee'],
+                ['⚙️ Total Overhead',    dispatches.reduce((a,d)=>a+d.overhead,0),   '#c2410c', 'Labor, electricity, machine estimates'],
+                ['✅ Total Surplus',     dispatches.reduce((a,d)=>a+d.surplus,0),    '#15803d', 'What remains after all costs'],
+              ].map(([l,v,c,note]) => (
+                <div key={l as string} className="card text-center border-l-4" style={{borderLeftColor: c as string}}>
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{color: c as string}}>{l}</div>
+                  <div className="text-2xl font-bold tabular-nums" style={{color: c as string}}>{fmtGhc(v as number)}</div>
+                  <div className="text-xs text-gray-400 mt-1">{note}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Per-dispatch table */}
+            <div className="card">
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <colgroup>
+                    <col style={{width:'90px'}} /><col style={{width:'140px'}} />
+                    <col style={{width:'65px'}} /><col style={{width:'90px'}} />
+                    <col style={{width:'100px'}} /><col style={{width:'100px'}} />
+                    <col style={{width:'100px'}} /><col style={{width:'105px'}} />
+                    <col style={{width:'75px'}} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Date</th><th>Rider</th><th className="right">Bags</th>
+                      <th className="right">Invoiced</th>
+                      <th className="right">🔒 Ring-fenced</th>
+                      <th className="right">⚙️ Overhead</th>
+                      <th className="right">✅ Surplus</th>
+                      <th className="right">Collected</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dispatches.map((d: any) => (
+                      <tr key={d.id}>
+                        <td className="muted">{d.sale_date}</td>
+                        <td className="font-medium">{d.buyer?.full_name ?? '—'}</td>
+                        <td className="num">{fmtNum(d.bags)}</td>
+                        <td className="num">{fmtGhc(d.total_amount)}</td>
+                        <td className="num font-medium text-red-700">{fmtGhc(d.ringFenced)}</td>
+                        <td className="num text-orange-600">{fmtGhc(d.overhead)}</td>
+                        <td className={'num font-medium ' + (d.surplus >= 0 ? 'text-green-700' : 'text-red-600')}>
+                          {fmtGhc(d.surplus)}
+                        </td>
+                        <td className="num-green">{fmtGhc(d.collected)}</td>
+                        <td>
+                          <span className={'badge ' + (d.payment_status==='paid'?'badge-green':d.payment_status==='partial'?'badge-yellow':'badge-red')}>
+                            {d.payment_status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-[#1F4E79]">
+                      <td colSpan={3} className="py-2 px-3 text-white text-xs font-semibold">
+                        TOTALS ({dispatches.length} dispatches)
+                      </td>
+                      <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
+                        {fmtGhc(dispatches.reduce((a,d)=>a+d.total_amount,0))}
+                      </td>
+                      <td className="py-2 px-3 text-xs font-bold text-right tabular-nums text-red-300">
+                        {fmtGhc(dispatches.reduce((a,d)=>a+d.ringFenced,0))}
+                      </td>
+                      <td className="py-2 px-3 text-xs font-bold text-right tabular-nums text-orange-300">
+                        {fmtGhc(dispatches.reduce((a,d)=>a+d.overhead,0))}
+                      </td>
+                      <td className="py-2 px-3 text-xs font-bold text-right tabular-nums text-green-300">
+                        {fmtGhc(dispatches.reduce((a,d)=>a+d.surplus,0))}
+                      </td>
+                      <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
+                        {fmtGhc(dispatches.reduce((a,d)=>a+d.collected,0))}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Collected breakdown note */}
+              <div className="mt-4 bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+                <div className="font-semibold mb-1">📌 Note on Ring-fenced vs Collected:</div>
+                <div>Ring-fenced is calculated from cost rates (bags × per-bag cost). Collected is actual cash received so far.
+                When collected &lt; ring-fenced, you have not yet recovered your costs on that dispatch.
+                When collected &gt; ring-fenced + overhead, the excess is available surplus.</div>
+              </div>
+            </div>
+          </>
+        )
       )}
     </AppLayout>
   )
