@@ -92,6 +92,35 @@ function FundSegregationInner() {
       .in('payment_type', ['performance', 'feeding'])
     const actualSalary = (salPayments ?? []).reduce((a: number, p: any) => a + p.amount, 0)
 
+    // ── Cash position cross-check ─────────────────────────────────────────────
+    // Total cash collected from ALL sales (retail + bulk)
+    const { data: allSales } = await supabase.from('sales')
+      .select('amount_paid, sale_type')
+      .gte('sale_date', period.from).lte('sale_date', period.to)
+    const cashCollected = (allSales ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
+
+    // Total banked in period
+    const { data: bankDeps } = await supabase.from('bank_deposits')
+      .select('amount')
+      .gte('deposit_date', period.from).lte('deposit_date', period.to)
+    const totalBanked = (bankDeps ?? []).reduce((a: number, d: any) => a + d.amount, 0)
+
+    // Total ALL expenses in period (everything paid out)
+    const { data: allExp } = await supabase.from('expenses')
+      .select('amount, category')
+      .gte('expense_date', period.from).lte('expense_date', period.to)
+    const totalAllExpenses = (allExp ?? []).reduce((a: number, e: any) => a + e.amount, 0)
+
+    // Unaccounted expenses = all expenses minus the ones the module already tracks
+    const trackedExpCategories = ['Operator Fee','Performance Pay','Feeding Fee']
+    const trackedExpenses = (allExp ?? [])
+      .filter((e: any) => trackedExpCategories.includes(e.category))
+      .reduce((a: number, e: any) => a + e.amount, 0)
+    const unaccountedExp = totalAllExpenses - trackedExpenses
+
+    const cashOnHand     = cashCollected - totalBanked
+    const cashExpected   = 0  // computed below after surplus calc
+
     // ── Per-bag cost calculations ────────────────────────────────────────────
     const roll_pb    = rates.roll_cost_per_kg / rates.bags_per_kg
     const pkg_pb     = rates.pkg_bulk_cost / rates.pkg_bulk_qty
@@ -135,6 +164,9 @@ function FundSegregationInner() {
     setData({
       // Summary
       totalBagsSold, totalBagsProd, totalRevenue, avgUnitPrice, totalKgUsed,
+      // Cash cross-check
+      cashCollected, totalBanked, cashOnHand,
+      totalAllExpenses, trackedExpenses, unaccountedExp,
       // Per bag
       roll_pb, pkg_pb, water_pb, op_pb, perf_pb, fuel_pb,
       rawMat_pb, ringFenced_pb, overhead_pb, profit_pb,
@@ -548,6 +580,97 @@ function FundSegregationInner() {
               </div>
             </div>
           </div>
+
+          {/* ── Cash Position Cross-Check ───────────────────────────────── */}
+          {(() => {
+            const gap = data.agg_profit - data.cashOnHand
+            const gapAbs = Math.abs(gap)
+            const isAligned = Math.abs(gap) < data.agg_profit * 0.1  // within 10%
+            return (
+              <div className="card mt-4">
+                <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                  🔍 Reality Check — Calculated Surplus vs Actual Cash
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="bg-green-50 rounded-xl p-4 text-center">
+                    <div className="text-xs font-semibold text-green-600 uppercase mb-1">
+                      Calculated Surplus
+                    </div>
+                    <div className="text-2xl font-bold text-green-700 tabular-nums">
+                      {fmtGhc(data.agg_profit)}
+                    </div>
+                    <div className="text-xs text-green-500 mt-1">
+                      What the model says you should have
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 rounded-xl p-4 text-center">
+                    <div className="text-xs font-semibold text-blue-600 uppercase mb-1">
+                      Cash Not Banked
+                    </div>
+                    <div className="text-2xl font-bold text-blue-700 tabular-nums">
+                      {fmtGhc(data.cashOnHand)}
+                    </div>
+                    <div className="text-xs text-blue-500 mt-1">
+                      Collected {fmtGhc(data.cashCollected)} − Banked {fmtGhc(data.totalBanked)}
+                    </div>
+                  </div>
+
+                  <div className={'rounded-xl p-4 text-center '
+                    + (isAligned ? 'bg-green-50' : gap > 0 ? 'bg-orange-50' : 'bg-red-50')}>
+                    <div className={'text-xs font-semibold uppercase mb-1 '
+                      + (isAligned ? 'text-green-600' : gap > 0 ? 'text-orange-600' : 'text-red-600')}>
+                      {isAligned ? '✅ Aligned' : gap > 0 ? '⚠️ Unexplained Gap' : '❌ Cash Shortfall'}
+                    </div>
+                    <div className={'text-2xl font-bold tabular-nums '
+                      + (isAligned ? 'text-green-700' : gap > 0 ? 'text-orange-700' : 'text-red-700')}>
+                      {fmtGhc(gapAbs)}
+                    </div>
+                    <div className={'text-xs mt-1 '
+                      + (isAligned ? 'text-green-500' : gap > 0 ? 'text-orange-500' : 'text-red-500')}>
+                      {isAligned
+                        ? 'Surplus matches cash on hand'
+                        : gap > 0
+                        ? 'Surplus exceeds cash — costs not captured by model'
+                        : 'More cash than expected — uncollected costs still owed'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expense breakdown */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Expense Breakdown — {period.from} to {period.to}
+                  </div>
+                  <div className="space-y-2">
+                    {[
+                      ['Total Cash Collected (all sales)',  data.cashCollected,    'text-green-700'],
+                      ['Total Banked',                     -data.totalBanked,      'text-blue-700'],
+                      ['Operator Fee (actual)',             -data.trackedExpenses,  'text-red-600'],
+                      ['Unaccounted Expenses',              -data.unaccountedExp,  'text-orange-600'],
+                      ['Total All Expenses',               -data.totalAllExpenses, 'text-red-700'],
+                    ].map(([l, v, c]) => (
+                      <div key={l as string} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
+                        <span className="text-sm text-gray-600">{l}</span>
+                        <span className={'text-sm font-medium tabular-nums ' + c}>
+                          {(v as number) < 0 ? `−${fmtGhc(Math.abs(v as number))}` : fmtGhc(v as number)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {data.unaccountedExp > 0 && (
+                    <div className="mt-3 bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
+                      <strong>⚠️ {fmtGhc(data.unaccountedExp)} in expenses</strong> are not captured
+                      in the ring-fenced model (e.g. fuel, repairs, imprest, miscellaneous).
+                      These reduce your real available surplus. Check the Expenses module for the full breakdown.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
         </>
       ))}
 
