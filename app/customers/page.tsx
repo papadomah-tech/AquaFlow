@@ -12,7 +12,7 @@ interface Customer {
 }
 
 function CustomersPageInner() {
-  const { isAdmin, isRider, userId } = useRole()
+  const { isAdmin, isRider, userId, loading: roleLoading } = useRole()
   const [customers, setCustomers]   = useState<Customer[]>([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
@@ -28,17 +28,27 @@ function CustomersPageInner() {
   }, [])
 
   const load = useCallback(async () => {
+    // Wait until role is resolved — prevents loading all customers before
+    // the filter is known, which would expose every customer to every user
+    if (roleLoading) return
     setLoading(true)
     let q = supabase.from('customers').select('*').order('name')
     if (search) q = q.ilike('name', '%' + search + '%')
-    // Riders and non-admin users only see customers they created
-    if (!isAdmin && userId) q = q.eq('created_by', userId)
+    // Non-admin users only see customers they personally created
+    if (!isAdmin && userId) {
+      q = q.eq('created_by', userId)
+    } else if (!isAdmin && !userId) {
+      // Role loaded but no userId (shouldn't happen) — show nothing
+      setCustomers([])
+      setLoading(false)
+      return
+    }
     const { data } = await q
     setCustomers(data ?? [])
     setLoading(false)
-  }, [search, isAdmin, userId])
+  }, [search, isAdmin, userId, roleLoading])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (!roleLoading) load() }, [load, roleLoading])
 
   const openNew = () => {
     setEditItem(null)
