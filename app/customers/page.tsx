@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase } from '@/lib/supabase'
+import { useRole } from '@/hooks/useRole'
 
 interface Customer {
   id: number; name: string; phone?: string
@@ -11,6 +12,7 @@ interface Customer {
 }
 
 function CustomersPageInner() {
+  const { isAdmin, isRider, userId } = useRole()
   const [customers, setCustomers]   = useState<Customer[]>([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
@@ -29,10 +31,12 @@ function CustomersPageInner() {
     setLoading(true)
     let q = supabase.from('customers').select('*').order('name')
     if (search) q = q.ilike('name', '%' + search + '%')
+    // Riders and non-admin users only see customers they created
+    if (!isAdmin && userId) q = q.eq('created_by', userId)
     const { data } = await q
     setCustomers(data ?? [])
     setLoading(false)
-  }, [search])
+  }, [search, isAdmin, userId])
 
   useEffect(() => { load() }, [load])
 
@@ -75,7 +79,7 @@ function CustomersPageInner() {
     if (editItem) {
       await supabase.from('customers').update(form).eq('id', editItem.id)
     } else {
-      await supabase.from('customers').insert(form)
+      await supabase.from('customers').insert({ ...form, created_by: userId })
     }
     setSaving(false)
     setShowForm(false)
@@ -97,6 +101,14 @@ function CustomersPageInner() {
         </div>
         <button onClick={openNew} className="btn btn-primary">+ Add Customer</button>
       </div>
+
+      {!isAdmin && (
+        <div className="card mb-3 bg-blue-50 border border-blue-200">
+          <div className="text-sm text-blue-700">
+            📋 Showing your customers only. Add new customers using the + button.
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="card mb-4 flex gap-3 items-center">
