@@ -155,7 +155,7 @@ function PerformancePageInner() {
   const loadHistory = useCallback(async () => {
     setLoadingHist(true)
     let q = supabase.from('salary_payments')
-      .select('*,employees(full_name,role)')
+      .select('*,employees(full_name,role),expenses(id,category,description,amount,expense_date)')
       .in('payment_type', ['performance', 'feeding'])
       .order('payment_date', { ascending: false })
     if (!isAdmin && myEmpId) q = q.eq('employee_id', myEmpId)
@@ -179,21 +179,21 @@ function PerformancePageInner() {
     )) return
     setPayingFeeding(d.id)
     const payDate = today()
-    await Promise.all([
-      supabase.from('salary_payments').insert({
-        employee_id: d.id, payment_date: payDate,
-        amount: d.feedingFee, payment_type: 'feeding',
-        period_start: period.from, period_end: period.to,
-        notes: `Feeding fee for ${period.from.slice(0,7)}`,
-      }),
-      supabase.from('expenses').insert({
-        expense_date: payDate,
-        category: 'Feeding Fee',
-        description: `Feeding fee — ${d.full_name} (${period.from.slice(0,7)})`,
-        amount: d.feedingFee,
-        paid_to: d.full_name,
-      }),
-    ])
+    // Create expense first to get its ID, then link it to salary_payment
+    const { data: feedingExp } = await supabase.from('expenses').insert({
+      expense_date: payDate,
+      category: 'Feeding Fee',
+      description: `Feeding fee — ${d.full_name} (${period.from.slice(0,7)})`,
+      amount: d.feedingFee,
+      paid_to: d.full_name,
+    }).select().single()
+    await supabase.from('salary_payments').insert({
+      employee_id: d.id, payment_date: payDate,
+      amount: d.feedingFee, payment_type: 'feeding',
+      period_start: period.from, period_end: period.to,
+      notes: `Feeding fee for ${period.from.slice(0,7)}`,
+      expense_id: feedingExp?.id ?? null,
+    })
     setPayingFeeding(null)
     calculate()
   }
@@ -215,22 +215,46 @@ function PerformancePageInner() {
     const expDesc  = d.feedingAlreadyPaid
       ? `Performance pay — ${d.full_name} (${period.from} → ${period.to})`
       : `Performance pay (incl. feeding) — ${d.full_name} (${period.from} → ${period.to})`
-    await Promise.all([
-      supabase.from('salary_payments').insert({
-        employee_id: d.id, payment_date: payDate2, amount: d.netPay,
-        payment_type: 'performance',
-        period_start: period.from, period_end: period.to,
-        notes: payNotes,
-      }),
-      supabase.from('expenses').insert({
-        expense_date: payDate2,
-        category: 'Performance Pay',
-        description: expDesc,
-        amount: d.netPay,
-        paid_to: d.full_name,
-      }),
-    ])
+    // Create expense first, then link via expense_id
+    const { data: perfExp } = await supabase.from('expenses').insert({
+      expense_date: payDate2,
+      category: 'Performance Pay',
+      description: expDesc,
+      amount: d.netPay,
+      paid_to: d.full_name,
+    }).select().single()
+    await supabase.from('salary_payments').insert({
+      employee_id: d.id, payment_date: payDate2, amount: d.netPay,
+      payment_type: 'performance',
+      period_start: period.from, period_end: period.to,
+      notes: payNotes,
+      expense_id: perfExp?.id ?? null,
+    })
     setPaying(null)
+    calculate()
+  }
+
+  // ── Delete payment + linked expense ──────────────────────────────────────
+  const deletePayment = async (p: any) => {
+    const typeName  = p.payment_type === 'feeding' ? 'Feeding Fee' : 'Performance Pay'
+    const expInfo   = p.expenses
+      ? `\n\nLinked expense will also be deleted:\n  ${p.expenses.category} — ${fmtGhc(p.expenses.amount)} on ${p.expenses.expense_date}`
+      : '\n\n(No linked expense found)'
+    const confirmed = confirm(
+      `Delete this payment record?\n\n` +
+      `Type: ${typeName}\n` +
+      `Employee: ${p.employees?.full_name ?? '—'}\n` +
+      `Amount: ${fmtGhc(p.amount)}\n` +
+      `Date: ${p.payment_date}` +
+      expInfo
+    )
+    if (!confirmed) return
+    // Delete expense first (linked), then salary_payment
+    if (p.expense_id) {
+      await supabase.from('expenses').delete().eq('id', p.expense_id)
+    }
+    await supabase.from('salary_payments').delete().eq('id', p.id)
+    loadHistory()
     calculate()
   }
 
@@ -426,19 +450,20 @@ function PerformancePageInner() {
                   <colgroup>
                     <col style={{width:'90px'}} /><col style={{width:'130px'}} />
                     <col style={{width:'100px'}} /><col style={{width:'105px'}} />
-                    <col style={{width:'95px'}} /><col style={{width:'90px'}} />
-                    <col />
+                    <col style={{width:'90px'}} /><col style={{width:'85px'}} />
+                    <col /><col style={{width:'65px'}} />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Date</th><th>Employee</th>
                       <th>Type</th><th>Period</th>
-                      <th className="right">Amount</th><th>Role</th><th>Notes</th>
+                      <th className="right">Amount</th><th>Role</th>
+                      <th>Notes</th><th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {history.length === 0
-                      ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">
+                      ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">
                           No payments recorded yet.
                         </td></tr>
                       : history.map((p: any) => (
@@ -454,6 +479,12 @@ function PerformancePageInner() {
                         <td className="num-green">{fmtGhc(p.amount)}</td>
                         <td className="muted">{p.employees?.role ?? '—'}</td>
                         <td className="text-xs text-gray-400">{p.notes ?? '—'}</td>
+                        <td>
+                          {isAdmin && (
+                            <button onClick={() => deletePayment(p)}
+                              className="btn btn-sm btn-danger">Del</button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -466,7 +497,7 @@ function PerformancePageInner() {
                         <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
                           {fmtGhc(history.reduce((a: number, p: any) => a + p.amount, 0))}
                         </td>
-                        <td colSpan={2} />
+                        <td colSpan={3} />
                       </tr>
                     </tfoot>
                   )}

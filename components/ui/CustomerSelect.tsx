@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRole } from '@/hooks/useRole'
 
 interface Customer { id: number; name: string; phone?: string; address?: string }
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function CustomerSelect({ value, onChange, disabled }: Props) {
+  const { isAdmin, userId } = useRole()
   const [customers, setCustomers]         = useState<Customer[]>([])
   const [search, setSearch]               = useState('')
   const [open, setOpen]                   = useState(false)
@@ -39,6 +41,8 @@ export default function CustomerSelect({ value, onChange, disabled }: Props) {
   const loadCustomers = async (q?: string) => {
     let query = supabase.from('customers').select('id,name,phone,address').order('name')
     if (q) query = query.ilike('name', '%' + q + '%')
+    // Non-admin: only show own customers
+    if (!isAdmin && userId) query = query.eq('created_by', userId)
     const { data } = await query
     setCustomers(data ?? [])
   }
