@@ -178,12 +178,22 @@ function PerformancePageInner() {
       `This will be recorded separately from performance pay.`
     )) return
     setPayingFeeding(d.id)
-    await supabase.from('salary_payments').insert({
-      employee_id: d.id, payment_date: today(),
-      amount: d.feedingFee, payment_type: 'feeding',
-      period_start: period.from, period_end: period.to,
-      notes: `Feeding fee for ${period.from.slice(0,7)}`,
-    })
+    const payDate = today()
+    await Promise.all([
+      supabase.from('salary_payments').insert({
+        employee_id: d.id, payment_date: payDate,
+        amount: d.feedingFee, payment_type: 'feeding',
+        period_start: period.from, period_end: period.to,
+        notes: `Feeding fee for ${period.from.slice(0,7)}`,
+      }),
+      supabase.from('expenses').insert({
+        expense_date: payDate,
+        category: 'Feeding Fee',
+        description: `Feeding fee — ${d.full_name} (${period.from.slice(0,7)})`,
+        amount: d.feedingFee,
+        paid_to: d.full_name,
+      }),
+    ])
     setPayingFeeding(null)
     calculate()
   }
@@ -200,12 +210,26 @@ function PerformancePageInner() {
       `Period: ${period.from} to ${period.to}`
     )) return
     setPaying(d.id)
-    await supabase.from('salary_payments').insert({
-      employee_id: d.id, payment_date: today(), amount: d.netPay,
-      payment_type: 'performance',
-      period_start: period.from, period_end: period.to,
-      notes: `${period.from} → ${period.to} | Base: ${fmtGhc(d.earnedBase)}${d.feedingAlreadyPaid ? ' (feeding paid separately)' : ' + Feeding: ' + fmtGhc(d.feedingFee)} − Losses: ${fmtGhc(d.totalLosses)}`,
-    })
+    const payDate2 = today()
+    const payNotes = `${period.from} → ${period.to} | Base: ${fmtGhc(d.earnedBase)}${d.feedingAlreadyPaid ? ' (feeding paid separately)' : ' + Feeding: ' + fmtGhc(d.feedingFee)} − Losses: ${fmtGhc(d.totalLosses)}`
+    const expDesc  = d.feedingAlreadyPaid
+      ? `Performance pay — ${d.full_name} (${period.from} → ${period.to})`
+      : `Performance pay (incl. feeding) — ${d.full_name} (${period.from} → ${period.to})`
+    await Promise.all([
+      supabase.from('salary_payments').insert({
+        employee_id: d.id, payment_date: payDate2, amount: d.netPay,
+        payment_type: 'performance',
+        period_start: period.from, period_end: period.to,
+        notes: payNotes,
+      }),
+      supabase.from('expenses').insert({
+        expense_date: payDate2,
+        category: 'Performance Pay',
+        description: expDesc,
+        amount: d.netPay,
+        paid_to: d.full_name,
+      }),
+    ])
     setPaying(null)
     calculate()
   }
