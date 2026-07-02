@@ -62,9 +62,12 @@ function PerformancePageInner() {
   const [period, setPeriod]   = useState({ from: monthStart(), to: today() })
   const [perfData, setPerfData] = useState<any[]>([])
   const [history, setHistory]   = useState<any[]>([])
-  const [loading, setLoading]   = useState(false)
+  const [loading, setLoading]     = useState(false)
   const [loadingHist, setLoadingHist] = useState(false)
-  const [paying, setPaying]     = useState<number | null>(null)
+  const [paying, setPaying]       = useState<number | null>(null)
+  const [payingFeeding, setPayingFeeding] = useState<number | null>(null)
+  // Track which employees have had feeding fee paid this month
+  const [feedingPaid, setFeedingPaid] = useState<Record<number, any>>({})
 
   // ── Calculate performance for all employees (or just current user) ──────────
   const calculate = useCallback(async () => {
@@ -77,6 +80,17 @@ function PerformancePageInner() {
 
     // Fixed: count Mon–Sat working days in the selected period
     const workingDays = countWorkingDays(period.from, period.to)
+
+    // Fetch feeding fee payments made this month for all employees
+    const monthStart = period.from.slice(0, 7) + '-01'
+    const { data: feedingPayments } = await supabase
+      .from('salary_payments')
+      .select('employee_id, amount, payment_date, id')
+      .eq('payment_type', 'feeding')
+      .gte('payment_date', monthStart)
+    const feedingMap: Record<number, any> = {}
+    ;(feedingPayments ?? []).forEach((p: any) => { feedingMap[p.employee_id] = p })
+    setFeedingPaid(feedingMap)
 
     const results = await Promise.all((employees ?? []).map(async (emp: any) => {
       let bags = 0
@@ -118,7 +132,19 @@ function PerformancePageInner() {
       const perf       = calcPay({ basePay, feedingFee, dailyTarget, workingDays, actualBags: bags })
       const netPay     = Math.max(0, perf.total - totalLosses)
 
-      return { ...emp, bags, basePay, dailyTarget, workingDays, ...perf, totalLosses, netPay, locked, lockInfo: lockRow?.[0] }
+      const feedingAlreadyPaid = !!feedingMap[emp.id]
+      // If feeding already paid — subtract it from net pay so it's not double-counted
+      const adjustedNetPay = feedingAlreadyPaid
+        ? Math.max(0, netPay - perf.feedingFee)
+        : netPay
+
+      return {
+        ...emp, bags, basePay, dailyTarget, workingDays,
+        ...perf, totalLosses, netPay: adjustedNetPay,
+        feedingAlreadyPaid,
+        feedingPaymentInfo: feedingMap[emp.id] ?? null,
+        locked, lockInfo: lockRow?.[0]
+      }
     }))
 
     setPerfData(results)
@@ -130,7 +156,7 @@ function PerformancePageInner() {
     setLoadingHist(true)
     let q = supabase.from('salary_payments')
       .select('*,employees(full_name,role)')
-      .eq('payment_type', 'performance')
+      .in('payment_type', ['performance', 'feeding'])
       .order('payment_date', { ascending: false })
     if (!isAdmin && myEmpId) q = q.eq('employee_id', myEmpId)
     const { data } = await q
@@ -141,13 +167,33 @@ function PerformancePageInner() {
   useEffect(() => { if (tab === 'calc') calculate() }, [tab, calculate])
   useEffect(() => { if (tab === 'history') loadHistory() }, [tab, loadHistory])
 
-  // ── Pay an employee ────────────────────────────────────────────────────────
+  // ── Pay feeding fee separately ────────────────────────────────────────────
+  const payFeeding = async (d: any) => {
+    if (!confirm(
+      `Pay feeding fee to ${d.full_name}?
+
+` +
+      `Amount: ${fmtGhc(d.feedingFee)}
+` +
+      `This will be recorded separately from performance pay.`
+    )) return
+    setPayingFeeding(d.id)
+    await supabase.from('salary_payments').insert({
+      employee_id: d.id, payment_date: today(),
+      amount: d.feedingFee, payment_type: 'feeding',
+      period_start: period.from, period_end: period.to,
+      notes: `Feeding fee for ${period.from.slice(0,7)}`,
+    })
+    setPayingFeeding(null)
+    calculate()
+  }
+
+  // ── Pay performance base pay (feeding excluded if already paid) ────────────
   const pay = async (d: any) => {
     if (!confirm(
       `Pay ${d.full_name}?\n\n` +
-      `Base Pay: ${fmtGhc(d.earnedBase)}\n` +
-      `Feeding Fee: ${fmtGhc(d.feedingFee)}\n` +
-      `Gross Pay: ${fmtGhc(d.total)}\n` +
+      `Base Pay Earned: ${fmtGhc(d.earnedBase)}\n` +
+      `Feeding Fee: ${d.feedingAlreadyPaid ? '✅ Already paid separately' : fmtGhc(d.feedingFee)}\n` +
       `Losses Deducted: ${fmtGhc(d.totalLosses)}\n` +
       `──────────────────\n` +
       `Net Pay: ${fmtGhc(d.netPay)}\n\n` +
@@ -158,7 +204,7 @@ function PerformancePageInner() {
       employee_id: d.id, payment_date: today(), amount: d.netPay,
       payment_type: 'performance',
       period_start: period.from, period_end: period.to,
-      notes: `${period.from} → ${period.to} | Base: ${fmtGhc(d.earnedBase)} + Feeding: ${fmtGhc(d.feedingFee)} − Losses: ${fmtGhc(d.totalLosses)}`,
+      notes: `${period.from} → ${period.to} | Base: ${fmtGhc(d.earnedBase)}${d.feedingAlreadyPaid ? ' (feeding paid separately)' : ' + Feeding: ' + fmtGhc(d.feedingFee)} − Losses: ${fmtGhc(d.totalLosses)}`,
     })
     setPaying(null)
     calculate()
@@ -265,7 +311,7 @@ function PerformancePageInner() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                     {([
                       ['Base Pay Earned', fmtGhc(d.earnedBase), d.pct >= 100 ? '#15803d' : '#ea580c'],
-                      ['Feeding Fee',     fmtGhc(d.feedingFee), '#1d4ed8'],
+                      [d.feedingAlreadyPaid ? 'Feeding ✅ Paid' : 'Feeding Fee', fmtGhc(d.feedingFee), d.feedingAlreadyPaid ? '#15803d' : '#1d4ed8'],
                       ['Gross Pay',       fmtGhc(d.total),      '#1F4E79'],
                       ['Losses',          fmtGhc(d.totalLosses), '#dc2626'],
                     ] as [string,string,string][]).map(([l,v,c]) => (
@@ -284,8 +330,10 @@ function PerformancePageInner() {
                     <br/>
                     Period base pay: {fmtGhc(d.basePay)} ÷ {STANDARD_MONTH_DAYS} days × {d.workingDays} days = <strong>{fmtGhc(d.periodBasePay)}</strong>
                     <br/>
-                    ({fmtNum(d.bags)} ÷ {fmtNum(d.periodTarget)}) × {fmtGhc(d.periodBasePay)} + {fmtGhc(d.feedingFee)} feeding
-                    = {fmtGhc(d.earnedBase)} + {fmtGhc(d.feedingFee)}
+                    ({fmtNum(d.bags)} ÷ {fmtNum(d.periodTarget)}) × {fmtGhc(d.periodBasePay)}
+                    {d.feedingAlreadyPaid
+                      ? <span className="text-green-600"> + feeding ✅ paid</span>
+                      : <span> + {fmtGhc(d.feedingFee)} feeding</span>}
                     {d.totalLosses > 0 ? ` − ${fmtGhc(d.totalLosses)} losses` : ''}
                     {' = '}<strong>{fmtGhc(d.netPay)} net</strong>
                   </div>
@@ -304,19 +352,36 @@ function PerformancePageInner() {
                         </div>
                       )}
                     </div>
-                    {canPay && (
-                      <div className="flex gap-2">
-                        {d.locked ? (
-                          <span className="badge badge-green px-3 py-1.5 text-xs">✅ Paid</span>
+                    <div className="flex gap-2 flex-wrap">
+                      {/* Feeding fee button */}
+                      {canPay && (
+                        d.feedingAlreadyPaid ? (
+                          <div className="text-center">
+                            <span className="badge badge-green px-3 py-1.5 text-xs">
+                              🍽️ Feeding paid {d.feedingPaymentInfo?.payment_date}
+                            </span>
+                          </div>
+                        ) : (
+                          <button onClick={() => payFeeding(d)}
+                            disabled={payingFeeding === d.id}
+                            className="btn btn-secondary">
+                            {payingFeeding === d.id ? '⏳...' : `🍽️ Pay Feeding ${fmtGhc(d.feedingFee)}`}
+                          </button>
+                        )
+                      )}
+                      {/* Performance base pay button */}
+                      {canPay && (
+                        d.locked ? (
+                          <span className="badge badge-green px-3 py-1.5 text-xs">✅ Base Pay Paid</span>
                         ) : (
                           <button onClick={() => pay(d)}
                             disabled={paying === d.id || d.netPay <= 0}
                             className="btn btn-primary">
-                            {paying === d.id ? '⏳ Processing...' : `💳 Pay ${fmtGhc(d.netPay)}`}
+                            {paying === d.id ? '⏳ Processing...' : `💳 Pay Base ${fmtGhc(d.netPay)}`}
                           </button>
-                        )}
-                      </div>
-                    )}
+                        )
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -335,26 +400,32 @@ function PerformancePageInner() {
               <div className="overflow-x-auto">
                 <table className="data-table">
                   <colgroup>
-                    <col style={{width:'95px'}} /><col style={{width:'140px'}} />
-                    <col style={{width:'110px'}} /><col style={{width:'100px'}} />
-                    <col style={{width:'100px'}} /><col />
+                    <col style={{width:'90px'}} /><col style={{width:'130px'}} />
+                    <col style={{width:'100px'}} /><col style={{width:'105px'}} />
+                    <col style={{width:'95px'}} /><col style={{width:'90px'}} />
+                    <col />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Date</th><th>Employee</th>
-                      <th>Period</th><th className="right">Amount</th>
-                      <th>Role</th><th>Notes</th>
+                      <th>Type</th><th>Period</th>
+                      <th className="right">Amount</th><th>Role</th><th>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {history.length === 0
-                      ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">
-                          No performance payments recorded yet.
+                      ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">
+                          No payments recorded yet.
                         </td></tr>
                       : history.map((p: any) => (
                       <tr key={p.id}>
                         <td className="muted">{p.payment_date}</td>
                         <td className="font-medium">{p.employees?.full_name ?? '—'}</td>
+                        <td>
+                          <span className={'badge ' + (p.payment_type === 'feeding' ? 'badge-blue' : 'badge-green')}>
+                            {p.payment_type === 'feeding' ? '🍽️ Feeding' : '💳 Base Pay'}
+                          </span>
+                        </td>
                         <td className="text-xs text-gray-500">{p.period_start} → {p.period_end}</td>
                         <td className="num-green">{fmtGhc(p.amount)}</td>
                         <td className="muted">{p.employees?.role ?? '—'}</td>
@@ -365,7 +436,7 @@ function PerformancePageInner() {
                   {history.length > 0 && (
                     <tfoot>
                       <tr className="bg-[#1F4E79]">
-                        <td colSpan={3} className="py-2 px-3 text-white text-xs font-semibold">
+                        <td colSpan={4} className="py-2 px-3 text-white text-xs font-semibold">
                           TOTAL PAID ({history.length} payments)
                         </td>
                         <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
