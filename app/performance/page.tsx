@@ -160,7 +160,41 @@ function PerformancePageInner() {
       .order('payment_date', { ascending: false })
     if (!isAdmin && myEmpId) q = q.eq('employee_id', myEmpId)
     const { data } = await q
-    setHistory(data ?? [])
+    const payments = data ?? []
+
+    // Auto-sync: back-fill expense records for any unlinked historical payments
+    const unlinked = payments.filter((p: any) => !p.expense_id)
+    if (unlinked.length > 0) {
+      await Promise.all(unlinked.map(async (p: any) => {
+        const empName   = p.employees?.full_name ?? 'Unknown'
+        const category  = p.payment_type === 'feeding' ? 'Feeding Fee' : 'Performance Pay'
+        const description = p.payment_type === 'feeding'
+          ? `Feeding fee — ${empName} (${p.payment_date?.slice(0,7)})`
+          : `Performance pay — ${empName} (${p.period_start} → ${p.period_end})`
+        // Create the missing expense
+        const { data: newExp } = await supabase.from('expenses').insert({
+          expense_date: p.payment_date,
+          category, description,
+          amount: p.amount,
+          paid_to: empName,
+        }).select().single()
+        // Link it back to the salary_payment
+        if (newExp?.id) {
+          await supabase.from('salary_payments')
+            .update({ expense_id: newExp.id }).eq('id', p.id)
+        }
+      }))
+      // Re-fetch with updated expense links
+      const { data: refreshed } = await supabase.from('salary_payments')
+        .select('*,employees(full_name,role),expenses(id,category,description,amount,expense_date)')
+        .in('payment_type', ['performance', 'feeding'])
+        .order('payment_date', { ascending: false })
+      setHistory(refreshed ?? [])
+      setLoadingHist(false)
+      return
+    }
+
+    setHistory(payments)
     setLoadingHist(false)
   }, [canPay, myEmpId])
 
