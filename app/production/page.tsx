@@ -38,9 +38,16 @@ function ProductionPageInner() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
+    // Only the currently active (in_use) roll can be used in production
     supabase.from('roll_films').select('*')
-      .in('status',['available','in_use']).order('label')
-      .then(({data}) => setRolls(data ?? []))
+      .eq('status', 'in_use').order('purchase_date', { ascending: true })
+      .then(({data}) => {
+        setRolls(data ?? [])
+        // Auto-select the active roll if there's exactly one
+        if (data && data.length === 1) {
+          setForm(f => ({ ...f, roll_film_id: String(data[0].id) }))
+        }
+      })
     supabase.from('raw_materials').select('*')
       .gt('usage_per_bag', 0).order('name')
       .then(({data}) => setMaterials(data ?? []))
@@ -208,7 +215,8 @@ function ProductionPageInner() {
         <h1 className="page-title">Production</h1>
         <button onClick={() => {
           setEditBatch(null); setWarnings([])
-          setForm({batch_date:today(),roll_film_id:'',bags_produced:'',notes:''})
+          const activeRoll = rolls.find((r: any) => r.status === 'in_use') ?? rolls[0]
+          setForm({batch_date:today(),roll_film_id:activeRoll ? String(activeRoll.id) : '',bags_produced:'',notes:''})
           setShowForm(true)
         }} className="btn btn-primary">+ New Batch</button>
       </div>
@@ -301,20 +309,24 @@ function ProductionPageInner() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Roll Film *
-                  <span className="text-red-500 ml-1">(required)</span>
+                <label className="form-label">Active Roll Film
+                  <span className="text-red-500 ml-1">(auto-selected)</span>
                 </label>
-                <select value={form.roll_film_id} onChange={e=>setForm(f=>({...f,roll_film_id:e.target.value}))} className="form-select">
-                  <option value="">Select roll...</option>
-                  {rolls.map((r:any) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label} — {(r.kg_remaining ?? r.weight_kg).toFixed(2)} Kg left
-                    </option>
-                  ))}
-                </select>
-                {rolls.length === 0 && (
-                  <div className="text-xs text-red-500 mt-1">
-                    No rolls available. Register a roll in Raw Materials first.
+                {rolls.length === 0 ? (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+                    ⚠️ No active roll. Go to <strong>Raw Materials → Roll Film</strong> and
+                    register a new roll or mark one as active before recording production.
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                    <div className="font-medium text-[#1F4E79]">
+                      🎬 {rolls[0]?.label}
+                    </div>
+                    <div className="text-xs text-blue-600 mt-0.5">
+                      {(rolls[0]?.kg_remaining ?? rolls[0]?.weight_kg ?? 0).toFixed(2)} Kg remaining
+                      · {rolls[0]?.bags_expected ?? 0} bags expected
+                    </div>
+                    <input type="hidden" value={form.roll_film_id} />
                   </div>
                 )}
               </div>
@@ -380,7 +392,7 @@ function ProductionPageInner() {
             <div className="modal-footer">
               <button onClick={()=>setShowForm(false)} className="btn btn-secondary">Cancel</button>
               <button onClick={saveBatch}
-                disabled={saving || !form.bags_produced || !form.roll_film_id}
+                disabled={saving || !form.bags_produced || !form.roll_film_id || rolls.length === 0}
                 className="btn btn-primary">
                 {saving ? 'Saving...' : 'Save Batch'}
               </button>

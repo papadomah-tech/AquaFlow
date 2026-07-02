@@ -42,3 +42,21 @@ SET current_stock = COALESCE(
 WHERE name ILIKE 'Roll Film';
 
 SELECT name, current_stock FROM public.raw_materials WHERE name ILIKE 'Roll Film';
+
+
+-- ── Fix existing data: enforce one active roll at a time ─────────────────────
+-- Step 1: Set all in_use rolls to 'available' first
+UPDATE public.roll_films SET status = 'available' WHERE status = 'in_use';
+
+-- Step 2: Activate the single oldest non-finished roll as the active one
+UPDATE public.roll_films
+SET status = 'in_use'
+WHERE id = (
+  SELECT id FROM public.roll_films
+  WHERE status = 'available'
+  ORDER BY purchase_date ASC, id ASC
+  LIMIT 1
+);
+
+-- Verify
+SELECT id, label, status, kg_remaining, bags_produced FROM public.roll_films ORDER BY purchase_date;

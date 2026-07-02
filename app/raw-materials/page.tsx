@@ -78,6 +78,7 @@ function RawMaterialsPageInner() {
       bags_expected: Math.round(wkg * 20),
       bags_produced: editItem?.bags_produced ?? 0,
       kg_remaining: editItem?.kg_remaining ?? wkg,
+      // New rolls go 'available' by default; only become in_use if no active roll exists
       status: editItem?.status ?? 'available',
     }
 
@@ -99,7 +100,14 @@ function RawMaterialsPageInner() {
       }
       await supabase.from('roll_films').update(payload).eq('id', editItem.id)
     } else {
-      // New roll — add its full weight to Roll Film stock
+      // Check if any roll is currently in_use
+      const { data: activeRoll } = await supabase
+        .from('roll_films').select('id').eq('status', 'in_use').limit(1)
+      // If no active roll, this new roll becomes in_use immediately
+      if (!activeRoll || activeRoll.length === 0) {
+        payload.status = 'in_use'
+      }
+      // Add to Roll Film stock
       if (rollFilmMat) {
         await supabase.from('raw_materials')
           .update({ current_stock: rollFilmMat.current_stock + wkg }).eq('id', rollFilmMat.id)
@@ -110,8 +118,28 @@ function RawMaterialsPageInner() {
   }
 
   const markFinished = async (roll: any) => {
-    if (!confirm('Mark ' + roll.label + ' as Finished?')) return
+    if (!confirm(
+      'Mark ' + roll.label + ' as Done (finished)?\n\n' +
+      'This will close this roll and activate the next available roll for production.'
+    )) return
+
+    // 1. Mark current roll as finished
     await supabase.from('roll_films').update({ status: 'finished' }).eq('id', roll.id)
+
+    // 2. Activate the next available roll (oldest by purchase_date)
+    const { data: nextRoll } = await supabase
+      .from('roll_films')
+      .select('id, label')
+      .eq('status', 'available')
+      .order('purchase_date', { ascending: true })
+      .limit(1)
+      .single()
+
+    if (nextRoll) {
+      await supabase.from('roll_films')
+        .update({ status: 'in_use' }).eq('id', nextRoll.id)
+    }
+
     loadAll()
   }
 
