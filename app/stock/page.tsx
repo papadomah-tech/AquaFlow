@@ -89,6 +89,50 @@ function StockPageInner() {
     loadAll()
   }
 
+  // ── Edit / Delete ledger entries ────────────────────────────────────────────
+  const [editEntry, setEditEntry] = useState<any>(null)
+  const [editForm, setEditForm]   = useState({
+    transaction_date: '', bags_in: '', bags_out: '',
+    reference_type: 'adjustment', notes: ''
+  })
+
+  const openEdit = (r: any) => {
+    setEditEntry(r)
+    setEditForm({
+      transaction_date: r.transaction_date,
+      bags_in:          String(r.bags_in  || 0),
+      bags_out:         String(r.bags_out || 0),
+      reference_type:   r.reference_type || 'adjustment',
+      notes:            r.notes || '',
+    })
+  }
+
+  const saveEdit = async () => {
+    if (!editEntry) return
+    await supabase.from('finished_inventory').update({
+      transaction_date: editForm.transaction_date,
+      bags_in:          parseInt(editForm.bags_in)  || 0,
+      bags_out:         parseInt(editForm.bags_out) || 0,
+      reference_type:   editForm.reference_type,
+      notes:            editForm.notes || null,
+    }).eq('id', editEntry.id)
+    setEditEntry(null)
+    loadAll()
+  }
+
+  const deleteEntry = async (r: any) => {
+    if (!confirm(
+      `Delete this stock entry?\n\n` +
+      `Date: ${r.transaction_date}\n` +
+      `Type: ${r.reference_type}\n` +
+      `Bags In: ${r.bags_in || 0}  |  Bags Out: ${r.bags_out || 0}\n` +
+      `Notes: ${r.notes || '—'}\n\n` +
+      `This will adjust the stock balance.`
+    )) return
+    await supabase.from('finished_inventory').delete().eq('id', r.id)
+    loadAll()
+  }
+
   const BADGE: Record<string,[string,string]> = {
     production: ['badge-green',  'Production'],
     sale:       ['badge-red',    'Sale'      ],
@@ -190,12 +234,13 @@ function StockPageInner() {
                       <th className="text-right w-28">Bags Out</th>
                       <th className="text-right w-28">Balance</th>
                       <th>Notes</th>
+                      <th className="w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {withBalance.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-12 text-gray-400">
+                        <td colSpan={7} className="text-center py-12 text-gray-400">
                           No stock movements yet. Record a production batch to get started.
                         </td>
                       </tr>
@@ -220,6 +265,14 @@ function StockPageInner() {
                           </td>
                           <td className="text-xs text-gray-500 max-w-xs truncate">
                             {r.notes ?? '—'}
+                          </td>
+                          <td>
+                            <div className="flex gap-1">
+                              <button onClick={() => openEdit(r)}
+                                className="btn btn-sm btn-secondary">Edit</button>
+                              <button onClick={() => deleteEntry(r)}
+                                className="btn btn-sm btn-danger">Del</button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -393,6 +446,71 @@ function StockPageInner() {
             </div>
           </div>
         </div>
+      )}
+      {/* ── EDIT LEDGER ENTRY MODAL ────────────────────────────────────── */}
+      {editEntry && (
+        <>
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9998}}
+            onClick={() => setEditEntry(null)} />
+          <div style={{position:'fixed',top:'50%',left:'50%',
+            transform:'translate(-50%,-50%)',width:'min(460px,94vw)',
+            background:'white',borderRadius:'1rem',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.3)',zIndex:9999,overflow:'hidden'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+              padding:'1.25rem',borderBottom:'1px solid #f0f0f0'}}>
+              <div className="font-bold text-[#1F4E79]">✏️ Edit Stock Entry</div>
+              <button onClick={() => setEditEntry(null)}
+                style={{background:'none',border:'none',fontSize:'1.25rem',
+                  color:'#aaa',cursor:'pointer'}}>✕</button>
+            </div>
+            <div style={{padding:'1.25rem',display:'grid',
+              gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
+              <div className="form-group col-span-2" style={{gridColumn:'1/-1'}}>
+                <label className="form-label">Date</label>
+                <input type="date" value={editForm.transaction_date}
+                  onChange={e => setEditForm(f => ({...f,transaction_date:e.target.value}))}
+                  className="form-input" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Bags In</label>
+                <input type="number" value={editForm.bags_in}
+                  onChange={e => setEditForm(f => ({...f,bags_in:e.target.value}))}
+                  className="form-input" placeholder="0" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Bags Out</label>
+                <input type="number" value={editForm.bags_out}
+                  onChange={e => setEditForm(f => ({...f,bags_out:e.target.value}))}
+                  className="form-input" placeholder="0" />
+              </div>
+              <div className="form-group col-span-2" style={{gridColumn:'1/-1'}}>
+                <label className="form-label">Type</label>
+                <select value={editForm.reference_type}
+                  onChange={e => setEditForm(f => ({...f,reference_type:e.target.value}))}
+                  className="form-select">
+                  <option value="production">Production</option>
+                  <option value="adjustment">Adjustment</option>
+                  <option value="sale">Sale</option>
+                  <option value="factory_retail">Factory Retail</option>
+                  <option value="write-off">Write-off</option>
+                  <option value="protocol">Protocol</option>
+                  <option value="loss">Loss</option>
+                </select>
+              </div>
+              <div className="form-group col-span-2" style={{gridColumn:'1/-1'}}>
+                <label className="form-label">Notes</label>
+                <textarea value={editForm.notes} rows={2}
+                  onChange={e => setEditForm(f => ({...f,notes:e.target.value}))}
+                  className="form-input" />
+              </div>
+            </div>
+            <div style={{display:'flex',gap:'0.75rem',justifyContent:'flex-end',
+              padding:'1rem 1.25rem',borderTop:'1px solid #f0f0f0'}}>
+              <button onClick={() => setEditEntry(null)} className="btn btn-secondary">Cancel</button>
+              <button onClick={saveEdit} className="btn btn-primary">💾 Save Changes</button>
+            </div>
+          </div>
+        </>
       )}
     </AppLayout>
   )
