@@ -19,6 +19,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'reconciliation', label: 'Cash & Bank',    icon: '🏦', href: '/reconciliation', adminOnly: false, description: 'Bank reconciliation, deposits' },
   { key: 'personnel',      label: 'Personnel',      icon: '👥', href: '/personnel',      adminOnly: false, description: 'Employees, performance pay, losses' },
   { key: 'reports',        label: 'Reports',        icon: '📈', href: '/reports',        adminOnly: false, description: 'P&L, salesperson reports, financial analysis' },
+  { key: 'weekly-report',    label: 'Deposit Report',   icon: '📅', href: '/weekly-report',  adminOnly: false, description: 'Monthly deposit report segregated by week' },
   { key: 'fund-segregation', label: 'Fund Segregation', icon: '💰', href: '/fund-segregation', adminOnly: false, description: 'Ring-fence cost components and track available funds' },
   { key: 'performance',    label: 'Performance Pay', icon: '📊', href: '/performance',   adminOnly: false, description: 'Calculate and pay performance-based salaries' },
   { key: 'imprest',        label: 'Imprest',        icon: '🧾', href: '/imprest',        adminOnly: false, description: 'Petty cash float — advances and expense reconciliation' },
