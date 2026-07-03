@@ -40,7 +40,7 @@ function getWeeks(year: number, month: number) {
     weeks.push({
       from:  fmt(from),
       to:    fmt(toFinal),
-      label: `Week ${weekNum} (${fmt(from)} → ${fmt(toFinal)})`,
+      label: `Week ${weekNum} (${fmt(from)} → ${fmt(toFinal)})`,  // internal label uses ISO
     })
     weekNum++
     // Move to next Monday
@@ -240,7 +240,7 @@ function WeeklyReportInner() {
                       {isDeposited && <span className="text-green-600 mr-1">✅</span>}
                       Week {wi + 1}
                     </div>
-                    <div className="text-xs text-gray-400">{week.from} → {week.to}</div>
+                    <div className="text-xs text-gray-400">{fmtDate(week.from)} → {fmtDate(week.to)}</div>
                   </div>
                   <div className="flex gap-3 text-center">
                     {[
@@ -361,7 +361,7 @@ function WeeklyReportInner() {
                       {[
                         ['Collected',   fmtGhc(wd.totalCollected),  '#1B5E20'],
                         ['Deposited',   fmtGhc(dep.amount),          '#1F4E79'],
-                        ['Date',        dep.deposit_date,             '#374151'],
+                        ['Date',        fmtDate(dep.deposit_date),    '#374151'],
                       ].map(([l,v,c]) => (
                         <div key={l as string} className="bg-white rounded-lg p-2.5 text-center">
                           <div className="text-xs text-gray-500">{l}</div>
