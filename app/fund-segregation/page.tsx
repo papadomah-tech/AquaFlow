@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUND SEGREGATION MODULE
@@ -54,13 +54,18 @@ function FundSegregationInner() {
   const load = useCallback(async () => {
     setLoading(true)
 
-    // ── Actual sales in period ───────────────────────────────────────────────
-    const { data: sales } = await supabase.from('sales')
-      .select('bags_sold, total_amount, unit_price, sale_type')
+    // ── Actual sales in period (exclude rider retail — not company revenue) ─────
+    const riderIds = await getRiderEmployeeIds()
+    const { data: salesRaw } = await supabase.from('sales')
+      .select('bags_sold, total_amount, unit_price, sale_type, salesperson_id')
       .gte('sale_date', period.from).lte('sale_date', period.to)
 
-    const totalBagsSold   = (sales ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-    const totalRevenue    = (sales ?? []).reduce((a: number, s: any) => a + s.total_amount, 0)
+    const sales = (salesRaw ?? []).filter((s: any) =>
+      !(s.sale_type === 'retail' && riderIds.includes(s.salesperson_id))
+    )
+
+    const totalBagsSold   = sales.reduce((a: number, s: any) => a + s.bags_sold, 0)
+    const totalRevenue    = sales.reduce((a: number, s: any) => a + s.total_amount, 0)
     const avgUnitPrice    = totalBagsSold > 0 ? totalRevenue / totalBagsSold : 0
 
     // ── Actual production in period ──────────────────────────────────────────
@@ -185,6 +190,7 @@ function FundSegregationInner() {
 
   const loadDispatches = useCallback(async () => {
     setLoadingDisp(true)
+    const riderIdsDisp = await getRiderEmployeeIds()
     const { data: bulkSales } = await supabase.from('sales')
       .select('id,sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name)')
       .eq('sale_type', 'bulk')

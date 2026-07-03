@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import AccessDenied from '@/components/ui/AccessDenied'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,10 +57,8 @@ export default function DepositsAccountPage() {
     if (!canAccess('fund-account')) { setLoading(false); return }
     setLoading(true)
 
-    // Rider employee IDs — to exclude their retail from factory retail
-    const { data: riderEmps } = await supabase
-      .from('employees').select('id').eq('employee_type', 'rider')
-    const riderIds = (riderEmps ?? []).map((e: any) => e.id)
+    // Exclude rider retail — not company revenue
+    const riderIds = await getRiderEmployeeIds()
 
     // ── A. Factory Retail Sales ─────────────────────────────────────────
     const { data: retail } = await supabase

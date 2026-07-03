@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import AccessDenied from '@/components/ui/AccessDenied'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 import Link from 'next/link'
 
@@ -323,11 +323,13 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
 
   const load = useCallback(async () => {
     setLoading(true)
+    const riderIds = await getRiderEmployeeIds()
+
     const [
-      { data: sales }, { data: fi }, { data: exp }, { data: fiPeriod }, empResult,
+      { data: salesRaw }, { data: fi }, { data: exp }, { data: fiPeriod }, empResult,
     ] = await Promise.all([
       supabase.from('sales')
-        .select('total_amount,amount_paid,outstanding_balance,bags_sold,sale_type')
+        .select('total_amount,amount_paid,outstanding_balance,bags_sold,sale_type,salesperson_id')
         .gte('sale_date', dateFrom),
       supabase.from('finished_inventory').select('bags_in,bags_out'),
       supabase.from('expenses').select('amount').gte('expense_date', dateFrom),
@@ -337,7 +339,10 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
         : Promise.resolve({ data: null }),
     ])
 
-    const allSales = sales ?? []
+    // Exclude rider retail from revenue
+    const allSales = (salesRaw ?? []).filter((s: any) =>
+      !(s.sale_type === 'retail' && riderIds.includes(s.salesperson_id))
+    )
     const retail    = allSales.filter((s: any) => s.sale_type !== 'bulk')
     const bulk      = allSales.filter((s: any) => s.sale_type === 'bulk')
 

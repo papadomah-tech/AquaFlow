@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUSINESS LOGIC
@@ -33,13 +33,8 @@ function ReconciliationPageInner() {
   const load = useCallback(async () => {
     setLoading(true)
 
-    // Fetch rider employee IDs (to exclude their retail sales)
-    const { data: riderEmps } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('employee_type', 'rider')
-
-    const riderIds = (riderEmps ?? []).map((e: any) => e.id)
+    // Exclude rider retail — not company revenue
+    const riderIds = await getRiderEmployeeIds()
 
     // ── Revenue: Factory retail + Bulk dispatches ─────────────────────────
     // Retail sales NOT made by riders
