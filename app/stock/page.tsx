@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtNum, today } from '@/lib/supabase'
+import { supabase, fmtNum, today, fmtDate} from '@/lib/supabase'
 
 function StockPageInner() {
   const [tab, setTab]         = useState<'ledger'|'stocktake'>('ledger')
@@ -123,7 +123,7 @@ function StockPageInner() {
   const deleteEntry = async (r: any) => {
     if (!confirm(
       `Delete this stock entry?\n\n` +
-      `Date: ${r.transaction_date}\n` +
+      `Date: ${fmtDate(r.transaction_date)}\n` +
       `Type: ${r.reference_type}\n` +
       `Bags In: ${r.bags_in || 0}  |  Bags Out: ${r.bags_out || 0}\n` +
       `Notes: ${r.notes || '—'}\n\n` +
@@ -249,7 +249,7 @@ function StockPageInner() {
                       return (
                         <tr key={r.id}>
                           <td className="text-gray-500 text-xs whitespace-nowrap">
-                            {r.transaction_date}
+                            {fmtDate(r.transaction_date)}
                           </td>
                           <td>
                             <span className={'badge ' + badge}>{label}</span>
@@ -326,7 +326,7 @@ function StockPageInner() {
                       return (
                         <tr key={t.id}>
                           <td className="text-gray-400 text-xs">{takes.length - i}</td>
-                          <td className="text-xs text-gray-500 whitespace-nowrap">{t.take_date}</td>
+                          <td className="text-xs text-gray-500 whitespace-nowrap">{fmtDate(t.take_date)}</td>
                           <td>
                             <span className={'badge ' + (t.status === 'finalised' ? 'badge-green' : 'badge-yellow')}>
                               {t.status}
@@ -467,7 +467,7 @@ function StockPageInner() {
               gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
               <div className="form-group col-span-2" style={{gridColumn:'1/-1'}}>
                 <label className="form-label">Date</label>
-                <input type="date" value={editForm.transaction_date}
+                <input type="date" value={fmtDate(editForm.transaction_date)}
                   onChange={e => setEditForm(f => ({...f,transaction_date:e.target.value}))}
                   className="form-input" />
               </div>

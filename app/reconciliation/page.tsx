@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds, fmtDate} from '@/lib/supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUSINESS LOGIC
@@ -346,7 +346,7 @@ function ReconciliationPageInner() {
                         </td></tr>
                       : deposits.map((d: any) => (
                       <tr key={d.id}>
-                        <td className="muted">{d.deposit_date}</td>
+                        <td className="muted">{fmtDate(d.deposit_date)}</td>
                         <td className="font-medium">{d.bank_name}</td>
                         <td className="muted">{d.reference||'—'}</td>
                         <td className="muted">{d.deposited_by||'—'}</td>
@@ -413,7 +413,7 @@ function ReconciliationPageInner() {
                       <tr key={s.id}
                         className={s.overdue ? 'bg-red-50' : ''}>
                         <td className={'muted ' + (s.overdue ? 'text-red-400' : '')}>
-                          {s.sale_date}
+                          {fmtDate(s.sale_date)}
                         </td>
                         <td>
                           <span className={'badge ' + (s.sale_type === 'bulk'
@@ -486,7 +486,7 @@ function ReconciliationPageInner() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={depForm.deposit_date}
+                  <input type="date" value={fmtDate(depForm.deposit_date)}
                     onChange={e => setDepForm(f => ({...f, deposit_date: e.target.value}))}
                     className="form-input" />
                 </div>

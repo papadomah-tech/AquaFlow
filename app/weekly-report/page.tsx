@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, fmtDate} from '@/lib/supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MONTHLY DEPOSIT REPORT — Weekly Breakdown
@@ -273,7 +273,7 @@ function WeeklyReportInner() {
                       <tbody>
                         {wd.batches.map((b: any, i: number) => (
                           <tr key={i}>
-                            <td className="muted">{b.batch_date}</td>
+                            <td className="muted">{fmtDate(b.batch_date)}</td>
                             <td className="muted">{b.roll_ref || '—'}</td>
                             <td className="num-green">+{fmtNum(b.bags_produced)}</td>
                           </tr>

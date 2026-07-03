@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, monthStart, today } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, monthStart, today, fmtDate} from '@/lib/supabase'
 import { exportToCSV, exportSalesToCSV, exportExpensesToCSV } from '@/lib/exportExcel'
 
 function ReportsPageInner() {
@@ -217,7 +217,7 @@ function ReportsPageInner() {
                         ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">No expenses in this period</td></tr>
                         : expData.map((e:any,i:number) => (
                         <tr key={i}>
-                          <td className="muted">{e.expense_date}</td>
+                          <td className="muted">{fmtDate(e.expense_date)}</td>
                           <td><span className="badge badge-gray">{e.category}</span></td>
                           <td className="text-sm">{e.description}</td>
                           <td className="muted">{e.paid_to||'—'}</td>

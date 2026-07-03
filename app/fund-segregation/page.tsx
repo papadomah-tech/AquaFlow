@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds, fmtDate} from '@/lib/supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FUND SEGREGATION MODULE
@@ -728,7 +728,7 @@ function FundSegregationInner() {
                   <tbody>
                     {dispatches.map((d: any) => (
                       <tr key={d.id}>
-                        <td className="muted">{d.sale_date}</td>
+                        <td className="muted">{fmtDate(d.sale_date)}</td>
                         <td className="font-medium">{d.buyer?.full_name ?? '—'}</td>
                         <td className="num">{fmtNum(d.bags)}</td>
                         <td className="num">{fmtGhc(d.total_amount)}</td>

@@ -14,6 +14,15 @@ export const fmtNum = (v: number | null | undefined) =>
 
 export const today = () => new Date().toISOString().split('T')[0]
 
+// Format YYYY-MM-DD → DD/MM/YYYY for display
+export const fmtDate = (d: string | Date | null | undefined): string => {
+  if (!d) return '—'
+  const s = typeof d === 'string' ? d : (d as Date).toISOString().slice(0,10)
+  const parts = s.slice(0,10).split('-')
+  if (parts.length !== 3) return s
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
+}
+
 export const monthStart = () => {
   const d = new Date(); d.setDate(1)
   return d.toISOString().split('T')[0]

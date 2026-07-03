@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 function SalesAccountInner() {
@@ -340,7 +340,7 @@ function SalesAccountInner() {
                     ? <tr><td colSpan={6} className="text-center py-6 text-gray-400">No bulk dispatches yet</td></tr>
                     : data.bulkIn.map((s:any) => (
                     <tr key={s.id}>
-                      <td className="muted">{s.sale_date}</td>
+                      <td className="muted">{fmtDate(s.sale_date)}</td>
                       <td className="num text-green-700">+{fmtNum(s.bags_sold)}</td>
                       <td className="num">{fmtGhc(s.unit_price)}</td>
                       <td className="num">{fmtGhc(s.total_amount)}</td>
@@ -379,7 +379,7 @@ function SalesAccountInner() {
                     ? <tr><td colSpan={6} className="text-center py-6 text-gray-400">No retail sales in this period</td></tr>
                     : data.retailPeriod.map((s:any) => (
                     <tr key={s.id}>
-                      <td className="muted">{s.sale_date}</td>
+                      <td className="muted">{fmtDate(s.sale_date)}</td>
                       <td className="font-medium">{s.customers?.name ?? '—'}</td>
                       <td className="num">{fmtNum(s.bags_sold)}</td>
                       <td className="num">{fmtGhc(s.total_amount)}</td>

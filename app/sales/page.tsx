@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import CustomerSelect from '@/components/ui/CustomerSelect'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 import { offlineSave } from '@/lib/offlineSave'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
@@ -372,7 +372,7 @@ function SalesPageInner() {
       amount_paid:         newPaid,
       payment_status:      newStatus,
       notes:               (returnTarget.notes ? returnTarget.notes + ' | ' : '') +
-                           `Return: ${bagsBack} bags on ${returnForm.return_date}`,
+                           `Return: ${bagsBack} bags on ${fmtDate(returnForm.return_date)}`,
     }).eq('id', returnTarget.id)
 
     // 3. Add bags back to factory finished stock
@@ -592,7 +592,7 @@ function SalesPageInner() {
                   ? <tr><td colSpan={isAdmin ? 9 : 8} className="text-center py-8 text-gray-400">No retail sales found</td></tr>
                   : sales.map((s: any) => (
                   <tr key={s.id}>
-                    <td className="muted">{s.sale_date}</td>
+                    <td className="muted">{fmtDate(s.sale_date)}</td>
                     <td className="font-medium">{s.customers?.name}</td>
                     {isAdmin && <td className="muted">{s.employees?.full_name ?? '—'}</td>}
                     <td className="num">{fmtNum(s.bags_sold)}</td>
@@ -642,7 +642,7 @@ function SalesPageInner() {
                   ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">No bulk dispatches found</td></tr>
                   : sales.map((s: any) => (
                   <tr key={s.id}>
-                    <td className="muted">{s.sale_date}</td>
+                    <td className="muted">{fmtDate(s.sale_date)}</td>
                     <td className="font-medium">{s.buyer?.full_name ?? s.customers?.name ?? '—'}</td>
                     <td className="muted">{s.employees?.full_name ?? 'Factory'}</td>
                     <td className="num">{fmtNum(s.bags_sold)}</td>
@@ -690,7 +690,7 @@ function SalesPageInner() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={retailForm.sale_date}
+                  <input type="date" value={fmtDate(retailForm.sale_date)}
                     onChange={e => setRetailForm(f => ({...f, sale_date:e.target.value}))}
                     className="form-input" />
                 </div>
@@ -806,7 +806,7 @@ function SalesPageInner() {
 
               <div className="form-group">
                 <label className="form-label">Date</label>
-                <input type="date" value={bulkForm.sale_date}
+                <input type="date" value={fmtDate(bulkForm.sale_date)}
                   onChange={e => setBulkForm(f => ({...f, sale_date:e.target.value}))}
                   className="form-input" />
               </div>
@@ -928,7 +928,7 @@ function SalesPageInner() {
               <div>
                 <div style={{fontWeight:'bold',color:'#c2410c',fontSize:'1rem'}}>Return Bags to Factory</div>
                 <div style={{fontSize:'0.75rem',color:'#888',marginTop:'2px'}}>
-                  {returnTarget.buyer?.full_name ?? 'Rider'} — dispatch on {returnTarget.sale_date}
+                  {returnTarget.buyer?.full_name ?? 'Rider'} — dispatch on {fmtDate(returnTarget.sale_date)}
                 </div>
               </div>
               <button onClick={() => setShowReturnForm(false)}
@@ -963,7 +963,7 @@ function SalesPageInner() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Return Date</label>
-                  <input type="date" value={returnForm.return_date}
+                  <input type="date" value={fmtDate(returnForm.return_date)}
                     onChange={e => setReturnForm(f => ({...f, return_date: e.target.value}))}
                     className="form-input" />
                 </div>

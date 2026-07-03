@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import AccessDenied from '@/components/ui/AccessDenied'
-import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds, fmtDate} from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 import Link from 'next/link'
 
@@ -250,7 +250,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
                       </td></tr>
                     : riderData.bulkIn.slice(0, 10).map((s: any, i: number) => (
                     <tr key={i}>
-                      <td className="muted">{s.sale_date}</td>
+                      <td className="muted">{fmtDate(s.sale_date)}</td>
                       <td className="num text-green-700">+{fmtNum(s.bags_sold)}</td>
                       <td className="num">{fmtGhc(s.amount_paid + s.outstanding_balance)}</td>
                       <td className="num-green">{fmtGhc(s.amount_paid)}</td>
@@ -292,7 +292,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
                     ? <tr><td colSpan={5} className="text-center py-6 text-gray-400">No sales this period.</td></tr>
                     : riderData.retailOut.slice(0, 10).map((s: any, i: number) => (
                     <tr key={i}>
-                      <td className="muted">{s.sale_date}</td>
+                      <td className="muted">{fmtDate(s.sale_date)}</td>
                       <td className="font-medium">{s.customers?.name}</td>
                       <td className="num">{fmtNum(s.bags_sold)}</td>
                       <td className="num">{fmtGhc(s.total_amount)}</td>
@@ -496,7 +496,7 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
                     ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No transactions in this period</td></tr>
                     : recent.map((s: any) => (
                     <tr key={s.id}>
-                      <td className="muted">{s.sale_date}</td>
+                      <td className="muted">{fmtDate(s.sale_date)}</td>
                       <td>
                         <span className={'badge ' + (s.sale_type==='bulk' ? 'badge-yellow' : 'badge-blue')}>
                           {s.sale_type === 'bulk' ? '📦 Bulk' : '🛍️ Retail'}

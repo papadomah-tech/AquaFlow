@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ function PerformancePageInner() {
         const category  = p.payment_type === 'feeding' ? 'Feeding Fee' : 'Performance Pay'
         const description = p.payment_type === 'feeding'
           ? `Feeding fee — ${empName} (${p.payment_date?.slice(0,7)})`
-          : `Performance pay — ${empName} (${p.period_start} → ${p.period_end})`
+          : `Performance pay — ${empName} (${fmtDate(p.period_start)} → ${fmtDate(p.period_end)})`
         // Create the missing expense
         const { data: newExp } = await supabase.from('expenses').insert({
           expense_date: p.payment_date,
@@ -279,7 +279,7 @@ function PerformancePageInner() {
       `Type: ${typeName}\n` +
       `Employee: ${p.employees?.full_name ?? '—'}\n` +
       `Amount: ${fmtGhc(p.amount)}\n` +
-      `Date: ${p.payment_date}` +
+      `Date: ${fmtDate(p.payment_date)}` +
       expInfo
     )
     if (!confirmed) return
@@ -502,14 +502,14 @@ function PerformancePageInner() {
                         </td></tr>
                       : history.map((p: any) => (
                       <tr key={p.id}>
-                        <td className="muted">{p.payment_date}</td>
+                        <td className="muted">{fmtDate(p.payment_date)}</td>
                         <td className="font-medium">{p.employees?.full_name ?? '—'}</td>
                         <td>
                           <span className={'badge ' + (p.payment_type === 'feeding' ? 'badge-blue' : 'badge-green')}>
                             {p.payment_type === 'feeding' ? '🍽️ Feeding' : '💳 Base Pay'}
                           </span>
                         </td>
-                        <td className="text-xs text-gray-500">{p.period_start} → {p.period_end}</td>
+                        <td className="text-xs text-gray-500">{fmtDate(p.period_start)} → {fmtDate(p.period_end)}</td>
                         <td className="num-green">{fmtGhc(p.amount)}</td>
                         <td className="muted">{p.employees?.role ?? '—'}</td>
                         <td className="text-xs text-gray-400">{p.notes ?? '—'}</td>

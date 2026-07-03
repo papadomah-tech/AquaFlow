@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart, countWorkingDays, calcPerfPay } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, countWorkingDays, calcPerfPay, fmtDate} from '@/lib/supabase'
 
 function PersonnelPageInner() {
   const [tab, setTab] = useState<'employees'|'perf'|'losses'|'salary'>('employees')
@@ -376,10 +376,10 @@ function PersonnelPageInner() {
               {salaryPay.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No salary payments</td></tr>
               : salaryPay.map((p: any) => (
                 <tr key={p.id}>
-                  <td className="muted">{p.payment_date}</td>
+                  <td className="muted">{fmtDate(p.payment_date)}</td>
                   <td className="font-medium">{p.employees?.full_name}</td>
                   <td><span className="badge badge-blue">{p.payment_type}</span></td>
-                  <td className="muted">{p.period_start} → {p.period_end}</td>
+                  <td className="muted">{fmtDate(p.period_start)} → {fmtDate(p.period_end)}</td>
                   <td className="num">{fmtGhc(p.amount)}</td>
                   <td className="muted">{p.notes||'—'}</td>
                   <td><button onClick={async () => {
@@ -656,7 +656,7 @@ function PersonnelPageInner() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Hire Date</label>
-                  <input type="date" value={empForm.hire_date}
+                  <input type="date" value={fmtDate(empForm.hire_date)}
                     onChange={e => setEmpForm(f => ({...f, hire_date: e.target.value}))}
                     className="form-input" />
                 </div>

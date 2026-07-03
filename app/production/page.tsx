@@ -6,7 +6,7 @@ import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useRole } from '@/hooks/useRole'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
 
 const OP_FEE = 30
 const BAGS_PER_KG = 20   // 1 Kg of roll film produces ~20 bags
@@ -266,7 +266,7 @@ function ProductionPageInner() {
               : batches.map((b:any) => (
                 <tr key={b.id}>
                   <td className="font-mono text-xs">{b.batch_number}</td>
-                  <td className="muted">{b.batch_date}</td>
+                  <td className="muted">{fmtDate(b.batch_date)}</td>
                   <td className="muted">{b.roll_ref||'—'}</td>
                   <td className="num-green">{fmtNum(b.bags_produced)}</td>
                   <td className="num">{(b.roll_kg_used ?? 0).toFixed(2)}</td>
@@ -305,7 +305,7 @@ function ProductionPageInner() {
 
               <div className="form-group">
                 <label className="form-label">Date</label>
-                <input type="date" value={form.batch_date} onChange={e=>setForm(f=>({...f,batch_date:e.target.value}))} className="form-input" />
+                <input type="date" value={fmtDate(form.batch_date)} onChange={e=>setForm(f=>({...f,batch_date:e.target.value}))} className="form-input" />
               </div>
 
               <div className="form-group">

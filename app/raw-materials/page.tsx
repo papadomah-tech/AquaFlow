@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, fmtDate} from '@/lib/supabase'
 
 function RawMaterialsPageInner() {
   const [tab, setTab] = useState<'stock'|'rolls'|'purchases'>('stock')
@@ -255,7 +255,7 @@ function RawMaterialsPageInner() {
                     return (
                       <tr key={r.id}>
                         <td className="font-mono text-xs font-medium whitespace-nowrap">{r.label}</td>
-                        <td className="muted">{r.purchase_date}</td>
+                        <td className="muted">{fmtDate(r.purchase_date)}</td>
                         <td className="muted">{r.supplier||'—'}</td>
                         <td className="num">{r.weight_kg}</td>
                         <td className={'num font-medium ' + ((r.kg_remaining ?? r.weight_kg) <= 0 ? 'text-red-600' : (r.kg_remaining ?? r.weight_kg) < r.weight_kg * 0.15 ? 'text-orange-600' : 'text-green-700')}>
@@ -297,7 +297,7 @@ function RawMaterialsPageInner() {
                   {purchases.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No purchases</td></tr>
                   : purchases.map((p: any) => (
                     <tr key={p.id}>
-                      <td className="text-xs text-gray-500">{p.purchase_date}</td>
+                      <td className="text-xs text-gray-500">{fmtDate(p.purchase_date)}</td>
                       <td className="font-medium">{p.raw_materials?.name}</td>
                       <td className="text-xs text-gray-500">{p.supplier_name}</td>
                       <td className="text-right">{p.quantity} {p.raw_materials?.unit}</td>
@@ -331,7 +331,7 @@ function RawMaterialsPageInner() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="form-group col-span-2"><label className="form-label">Roll Label (auto-generated if blank)</label><input value={rollForm.label} onChange={e => setRollForm(f => ({...f,label:e.target.value}))} className="form-input" placeholder="e.g. ROLL-20260425-001" /></div>
-                    <div className="form-group"><label className="form-label">Purchase Date</label><input type="date" value={rollForm.purchase_date} onChange={e => setRollForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
+                    <div className="form-group"><label className="form-label">Purchase Date</label><input type="date" value={fmtDate(rollForm.purchase_date)} onChange={e => setRollForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
                     <div className="form-group"><label className="form-label">Supplier</label><input value={rollForm.supplier} onChange={e => setRollForm(f => ({...f,supplier:e.target.value}))} className="form-input" /></div>
                     <div className="form-group"><label className="form-label">Weight (Kg) *</label><input type="number" step="0.01" value={rollForm.weight_kg} onChange={e => setRollForm(f => ({...f,weight_kg:e.target.value}))} className="form-input" /></div>
                     <div className="form-group"><label className="form-label">Cost per Kg (GHc)</label><input type="number" step="0.01" value={rollForm.cost_per_kg} onChange={e => setRollForm(f => ({...f,cost_per_kg:e.target.value}))} className="form-input" /></div>
@@ -388,7 +388,7 @@ function RawMaterialsPageInner() {
                       <option value="">Select...</option>
                       {materials.map((m: any) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
                     </select></div>
-                  <div className="form-group"><label className="form-label">Date</label><input type="date" value={purchForm.purchase_date} onChange={e => setPurchForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
+                  <div className="form-group"><label className="form-label">Date</label><input type="date" value={fmtDate(purchForm.purchase_date)} onChange={e => setPurchForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Supplier *</label><input value={purchForm.supplier_name} onChange={e => setPurchForm(f => ({...f,supplier_name:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Quantity *</label><input type="number" step="0.01" value={purchForm.quantity} onChange={e => setPurchForm(f => ({...f,quantity:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Unit Price (GHc)</label><input type="number" step="0.01" value={purchForm.unit_price} onChange={e => setPurchForm(f => ({...f,unit_price:e.target.value}))} className="form-input" /></div>

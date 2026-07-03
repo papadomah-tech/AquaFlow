@@ -6,7 +6,7 @@ import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useRole } from '@/hooks/useRole'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, today, monthStart } from '@/lib/supabase'
+import { supabase, fmtGhc, today, monthStart, fmtDate} from '@/lib/supabase'
 
 const CATS = ['Operator Fee','Salary','Raw Materials','Transport','Utilities','Maintenance','Equipment','Stock Loss','Other']
 
@@ -83,7 +83,7 @@ function ExpensesPageInner() {
               : expenses.length===0 ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">No expenses found</td></tr>
               : expenses.map((e:any) => (
                 <tr key={e.id}>
-                  <td className="muted">{e.expense_date}</td>
+                  <td className="muted">{fmtDate(e.expense_date)}</td>
                   <td><span className="badge badge-blue">{e.category}</span></td>
                   <td>{e.description}</td>
                   <td className="num-red">{fmtGhc(e.amount)}</td>
@@ -107,7 +107,7 @@ function ExpensesPageInner() {
             </div>
             <div className="modal-body space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div className="form-group"><label className="form-label">Date</label><input type="date" value={form.expense_date} onChange={e=>setForm(f=>({...f,expense_date:e.target.value}))} className="form-input" /></div>
+                <div className="form-group"><label className="form-label">Date</label><input type="date" value={fmtDate(form.expense_date)} onChange={e=>setForm(f=>({...f,expense_date:e.target.value}))} className="form-input" /></div>
                 <div className="form-group"><label className="form-label">Category</label>
                   <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} className="form-select">
                     {CATS.map(c=><option key={c}>{c}</option>)}

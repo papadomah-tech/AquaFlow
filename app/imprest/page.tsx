@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
-import { supabase, fmtGhc, fmtNum, today } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, fmtDate} from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ function ImprestPageInner() {
                     <div className="text-blue-200 text-sm font-medium">Active Float Balance</div>
                     <div className="text-5xl font-bold mt-1 tabular-nums">{fmtGhc(unspentBalance)}</div>
                     <div className="text-blue-200 text-xs mt-1">
-                      Advanced on {activeFloat.advance_date}
+                      Advanced on {fmtDate(activeFloat.advance_date)}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-center">
@@ -299,7 +299,7 @@ function ImprestPageInner() {
                           </td></tr>
                         : entries.map((e:any) => (
                         <tr key={e.id}>
-                          <td className="muted">{e.entry_date}</td>
+                          <td className="muted">{fmtDate(e.entry_date)}</td>
                           <td>{CAT_BADGE(e.category)}</td>
                           <td className="text-sm">{e.description}</td>
                           <td className="muted">{e.receipt_ref || '—'}</td>
@@ -358,7 +358,7 @@ function ImprestPageInner() {
                   <tbody>
                     {floats.map((f:any) => (
                       <tr key={f.id}>
-                        <td className="muted">{f.advance_date}</td>
+                        <td className="muted">{fmtDate(f.advance_date)}</td>
                         <td className="num">{fmtGhc(f.advance_amount)}</td>
                         <td>
                           <span className={'badge ' + (f.status==='active'?'badge-blue':f.status==='reconciled'?'badge-green':'badge-gray')}>
@@ -415,7 +415,7 @@ function ImprestPageInner() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={advanceForm.advance_date}
+                  <input type="date" value={fmtDate(advanceForm.advance_date)}
                     onChange={e => setAdvanceForm(f => ({...f, advance_date: e.target.value}))}
                     className="form-input" />
                 </div>
@@ -461,7 +461,7 @@ function ImprestPageInner() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={entryForm.entry_date}
+                  <input type="date" value={fmtDate(entryForm.entry_date)}
                     onChange={e => setEntryForm(f => ({...f, entry_date: e.target.value}))}
                     className="form-input" />
                 </div>

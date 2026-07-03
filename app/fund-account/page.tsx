@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import AccessDenied from '@/components/ui/AccessDenied'
-import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds } from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds, fmtDate} from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -412,7 +412,7 @@ export default function DepositsAccountPage() {
                         </td></tr>
                       : retailSales.map((s: any) => (
                       <tr key={s.id}>
-                        <td className="muted">{s.sale_date}</td>
+                        <td className="muted">{fmtDate(s.sale_date)}</td>
                         <td className="font-medium">{s.customers?.name ?? '—'}</td>
                         <td className="num">{fmtGhc(s.total_amount)}</td>
                         <td className="num-green">{fmtGhc(s.amount_paid)}</td>
@@ -474,7 +474,7 @@ export default function DepositsAccountPage() {
                         </td></tr>
                       : bulkSales.map((s: any) => (
                       <tr key={s.id}>
-                        <td className="muted">{s.sale_date}</td>
+                        <td className="muted">{fmtDate(s.sale_date)}</td>
                         <td className="font-medium">{s.buyer?.full_name ?? '—'}</td>
                         <td className="num">{fmtGhc(s.total_amount)}</td>
                         <td className="num-green">{fmtGhc(s.amount_paid)}</td>
@@ -534,7 +534,7 @@ export default function DepositsAccountPage() {
                         </td></tr>
                       : deposits.map((d: any) => (
                       <tr key={d.id}>
-                        <td className="muted">{d.deposit_date}</td>
+                        <td className="muted">{fmtDate(d.deposit_date)}</td>
                         <td className="font-medium">{d.bank_name}</td>
                         <td className="muted">{d.reference || '—'}</td>
                         <td className="muted">{d.deposited_by || '—'}</td>
@@ -597,7 +597,7 @@ export default function DepositsAccountPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={form.deposit_date}
+                  <input type="date" value={fmtDate(form.deposit_date)}
                     onChange={e => setForm(f => ({...f, deposit_date: e.target.value}))}
                     className="form-input" />
                 </div>
