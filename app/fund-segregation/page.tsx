@@ -54,15 +54,14 @@ function FundSegregationInner() {
   const load = useCallback(async () => {
     setLoading(true)
 
-    // ── Actual sales in period (exclude rider retail — not company revenue) ─────
-    const riderIds = await getRiderEmployeeIds()
+    // ── Revenue = bulk sales ONLY (to riders + external customers) ───────────
+    // ALL retail excluded from revenue calculations
     const { data: salesRaw } = await supabase.from('sales')
       .select('bags_sold, total_amount, unit_price, sale_type, salesperson_id')
+      .eq('sale_type', 'bulk')
       .gte('sale_date', period.from).lte('sale_date', period.to)
 
-    const sales = (salesRaw ?? []).filter((s: any) =>
-      !(s.sale_type === 'retail' && riderIds.includes(s.salesperson_id))
-    )
+    const sales = salesRaw ?? []
 
     const totalBagsSold   = sales.reduce((a: number, s: any) => a + s.bags_sold, 0)
     const totalRevenue    = sales.reduce((a: number, s: any) => a + s.total_amount, 0)
@@ -98,9 +97,10 @@ function FundSegregationInner() {
     const actualSalary = (salPayments ?? []).reduce((a: number, p: any) => a + p.amount, 0)
 
     // ── Cash position cross-check ─────────────────────────────────────────────
-    // Total cash collected from ALL sales (retail + bulk)
+    // Cash collected = bulk sales only
     const { data: allSales } = await supabase.from('sales')
       .select('amount_paid, sale_type')
+      .eq('sale_type', 'bulk')
       .gte('sale_date', period.from).lte('sale_date', period.to)
     const cashCollected = (allSales ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
 

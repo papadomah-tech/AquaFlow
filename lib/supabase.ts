@@ -49,9 +49,9 @@ export const calcPerfPay = (params: {
 }
 
 // ── Revenue filter helper ──────────────────────────────────────────────────
-// Rider retail sales are NOT company revenue — riders sell independently
-// from their own bulk stock. Only bulk dispatches + factory direct retail count.
-// Use this to get rider employee IDs for exclusion in revenue queries.
+// Company revenue = BULK SALES ONLY (to riders + external customers)
+// ALL retail sales are excluded from revenue regardless of who made them.
+// Retail is for tracking purposes only — visible in Sales module + rider accounts.
 export const getRiderEmployeeIds = async (): Promise<number[]> => {
   const { data } = await supabase
     .from('employees')
@@ -61,10 +61,6 @@ export const getRiderEmployeeIds = async (): Promise<number[]> => {
   return (data ?? []).map((e: any) => e.id)
 }
 
-// Filter a query to exclude rider retail sales
-// Usage: let q = supabase.from('sales').select('...')
-//        q = excludeRiderRetail(q, riderIds)
-export const isRiderRetail = (sale: any, riderIds: number[]) =>
-  sale.sale_type === 'retail' &&
-  sale.salesperson_id !== null &&
-  riderIds.includes(sale.salesperson_id)
+// Returns true if this sale should be EXCLUDED from revenue
+// Revenue = bulk sales only; ALL retail excluded
+export const isNonRevenueSale = (sale: any) => sale.sale_type !== 'bulk'

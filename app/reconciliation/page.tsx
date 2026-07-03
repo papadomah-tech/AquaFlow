@@ -36,15 +36,8 @@ function ReconciliationPageInner() {
     // Exclude rider retail — not company revenue
     const riderIds = await getRiderEmployeeIds()
 
-    // ── Revenue: Factory retail + Bulk dispatches ─────────────────────────
-    // Retail sales NOT made by riders
-    let retailQ = supabase.from('sales')
-      .select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,customers(name)')
-      .eq('sale_type', 'retail')
-      .gte('sale_date', filter.from)
-      .lte('sale_date', filter.to)
-
-    // Bulk dispatches (all bulk = factory to riders, all count as revenue)
+    // ── Revenue: Bulk sales ONLY (to riders + external customers) ────────────
+    // ALL retail is excluded — retail is for tracking only, not revenue
     const { data: bulkSales } = await supabase
       .from('sales')
       .select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name)')
@@ -52,15 +45,8 @@ function ReconciliationPageInner() {
       .gte('sale_date', filter.from)
       .lte('sale_date', filter.to)
 
-    const { data: allRetail } = await retailQ
-
-    // Filter out rider retail sales
-    const factoryRetail = riderIds.length > 0
-      ? (allRetail ?? []).filter((s: any) =>
-          !s.salesperson_id || !riderIds.includes(s.salesperson_id))
-      : (allRetail ?? [])
-
-    const allRevenueSales = [...factoryRetail, ...(bulkSales ?? [])]
+    const allRevenueSales = bulkSales ?? []
+    const factoryRetail: any[] = []   // retail excluded from revenue
 
     // ── All outstanding (overdue if > 30 days past sale date) ─────────────
     const { data: allOutstanding } = await supabase
@@ -100,8 +86,8 @@ function ReconciliationPageInner() {
     const totalInvoiced    = allRevenueSales.reduce((a: number, s: any) => a + s.total_amount, 0)
     const totalCollected   = allRevenueSales.reduce((a: number, s: any) => a + s.amount_paid, 0)
     const totalUncollected = allRevenueSales.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
-    const factoryRetailAmt = factoryRetail.reduce((a: number, s: any) => a + s.total_amount, 0)
-    const bulkAmt          = (bulkSales ?? []).reduce((a: number, s: any) => a + s.total_amount, 0)
+    const factoryRetailAmt = 0  // retail excluded from revenue
+    const bulkAmt          = allRevenueSales.reduce((a: number, s: any) => a + s.total_amount, 0)
     const totalExpenses    = (expenses ?? []).reduce((a: number, e: any) => a + e.amount, 0)
     const totalDeposited   = (depositRows ?? []).reduce((a: number, d: any) => a + d.amount, 0)
     const undepositedCash  = totalCollected - totalDeposited
@@ -246,7 +232,7 @@ function ReconciliationPageInner() {
                   A. Revenue (Factory Sales Only)
                 </div>
                 {[
-                  ['Factory Direct Retail Sales',  data.factoryRetailAmt, 'text-[#1F4E79]'],
+                  ['Factory Direct Retail Sales',  data.factoryRetailAmt, 'text-gray-300'],  // excluded
                   ['Bulk Dispatches to Riders',    data.bulkAmt,          'text-[#1F4E79]'],
                 ].map(([l, v, c]) => (
                   <div key={l as string}

@@ -339,10 +339,8 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
         : Promise.resolve({ data: null }),
     ])
 
-    // Exclude rider retail from revenue
-    const allSales = (salesRaw ?? []).filter((s: any) =>
-      !(s.sale_type === 'retail' && riderIds.includes(s.salesperson_id))
-    )
+    // Revenue = bulk sales ONLY; ALL retail excluded from revenue figures
+    const allSales = (salesRaw ?? []).filter((s: any) => s.sale_type === 'bulk')
     const retail    = allSales.filter((s: any) => s.sale_type !== 'bulk')
     const bulk      = allSales.filter((s: any) => s.sale_type === 'bulk')
 

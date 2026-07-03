@@ -60,22 +60,9 @@ export default function DepositsAccountPage() {
     // Exclude rider retail — not company revenue
     const riderIds = await getRiderEmployeeIds()
 
-    // ── A. Factory Retail Sales ─────────────────────────────────────────
-    const { data: retail } = await supabase
-      .from('sales')
-      .select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,customers(name),employees!salesperson_id(full_name,id)')
-      .eq('sale_type', 'retail')
-      .gte('sale_date', dateFrom)
-      .order('sale_date', { ascending: false })
-
-    // Exclude rider retail
-    const factoryRetail = (retail ?? []).filter((s: any) =>
-      !s.salesperson_id || !riderIds.includes(s.salesperson_id)
-    )
-    // Non-admin: only show records linked to them (if salesperson or created by them)
-    const filteredRetail = isAdmin ? factoryRetail
-      : factoryRetail.filter((s: any) =>
-          !s.employees?.id || s.employees?.id === userId)
+    // ── A. Retail excluded from Deposits Account (revenue = bulk only) ─────
+    // All retail sales are tracking-only; only bulk drives company revenue
+    const filteredRetail: any[] = []
 
     // ── B. Bulk Dispatch Sales ──────────────────────────────────────────
     const { data: bulk } = await supabase
