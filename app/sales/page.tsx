@@ -231,17 +231,36 @@ function SalesPageInner() {
         label: `Retail sale — ${custName} (${bags} bags)`,
         userId: userId ?? ''
       })
-      // Queue inventory update too
-      await offlineSave({
-        table: 'finished_inventory', operation: 'insert',
-        payload: { bags_in:0, bags_out: bags+proto,
-          transaction_date: retailForm.sale_date,
-          reference_type:'sale', notes:`Retail sale to ${custName}` },
-        label: `Stock out — ${bags+proto} bags`,
-        userId: userId ?? ''
-      })
+
+      // Only deduct factory stock for NON-rider sales.
+      // Rider sales come from the rider's own bulk stock —
+      // factory stock was already deducted at bulk dispatch.
+      if (!isRider) {
+        // Factory/admin retail: deduct from finished_inventory
+        await offlineSave({
+          table: 'finished_inventory', operation: 'insert',
+          payload: { bags_in:0, bags_out: bags,
+            transaction_date: retailForm.sale_date,
+            reference_type:'sale', notes:`Factory retail sale to ${custName}` },
+          label: `Stock out — ${bags} bags`,
+          userId: userId ?? ''
+        })
+      }
+
+      // Protocol bags: always write-off from inventory regardless of who sold
+      // (they are gifts — reduce stock but don't appear in revenue)
+      if (proto > 0) {
+        await offlineSave({
+          table: 'finished_inventory', operation: 'insert',
+          payload: { bags_in:0, bags_out: proto,
+            transaction_date: retailForm.sale_date,
+            reference_type:'write-off', notes:`Protocol bags — ${custName}` },
+          label: `Protocol write-off — ${proto} bags`,
+          userId: userId ?? ''
+        })
+      }
+
       if (offline) {
-        // Show optimistic confirmation
         alert(`📵 Offline — sale saved locally.\nWill sync to server when internet is restored.`)
       }
     }
