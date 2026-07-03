@@ -122,7 +122,17 @@ function PersonnelPageInner() {
   }
 
   const saveEmployee = async () => {
-    const payload = { ...empForm, salary: parseFloat(empForm.salary)||0, sales_target_daily: parseInt(empForm.sales_target_daily)||250, working_days: parseInt(empForm.working_days)||26, base_pay: parseFloat(empForm.base_pay)||parseFloat(empForm.salary)||0, feeding_fee: parseFloat(empForm.feeding_fee)||300, monthly_target: parseInt(empForm.monthly_target)||6500 } as any
+    // Destructure out selling_price — it's UI-only, not a DB column
+    const { selling_price: _sp, ...formData } = empForm
+    const payload = {
+      ...formData,
+      salary: parseFloat(empForm.salary)||0,
+      sales_target_daily: parseInt(empForm.sales_target_daily)||250,
+      working_days: parseInt(empForm.working_days)||26,
+      base_pay: parseFloat(empForm.base_pay)||parseFloat(empForm.salary)||0,
+      feeding_fee: parseFloat(empForm.feeding_fee)||300,
+      monthly_target: parseInt(empForm.monthly_target)||6500,
+    } as any
     if (editEmp) await supabase.from('employees').update(payload).eq('id', editEmp.id)
     else await supabase.from('employees').insert(payload)
     setShowEmpForm(false); loadAll()
