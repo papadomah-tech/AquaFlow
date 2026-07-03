@@ -57,3 +57,47 @@ WHERE reference_type = 'sale'
     WHERE s.sale_type = 'retail'
       AND e.employee_type = 'rider'
   );
+
+
+-- ── Remove rider retail entries from finished_inventory ────────────────────────
+-- Rider retail sales created bags_out entries in finished_inventory, but
+-- bags already left the factory at bulk dispatch. These are double-deductions.
+
+-- Step 1: Find and delete finished_inventory rows tied to rider retail sales
+-- (reference_type='sale' AND the linked sale was retail by a rider)
+DELETE FROM public.finished_inventory
+WHERE reference_type = 'sale'
+  AND notes ILIKE '%retail sale%'
+  AND notes ILIKE '%rider%';
+
+-- Step 2: Also delete by matching sale_id if the column exists
+-- (some entries may have a sale_id foreign key)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='finished_inventory' AND column_name='sale_id'
+  ) THEN
+    DELETE FROM public.finished_inventory fi
+    WHERE fi.reference_type = 'sale'
+      AND fi.sale_id IN (
+        SELECT s.id FROM public.sales s
+        JOIN public.employees e ON e.id = s.salesperson_id
+        WHERE s.sale_type = 'retail'
+          AND e.employee_type = 'rider'
+      );
+  END IF;
+END $$;
+
+-- Step 3: Mark remaining 'sale' reference_type entries from factory direct retail
+-- as 'factory_retail' to distinguish them going forward
+UPDATE public.finished_inventory
+SET reference_type = 'factory_retail'
+WHERE reference_type = 'sale'
+  AND notes ILIKE '%factory retail%';
+
+-- Verify remaining stock
+SELECT reference_type, COUNT(*), SUM(bags_in) as total_in, SUM(bags_out) as total_out
+FROM public.finished_inventory
+GROUP BY reference_type
+ORDER BY reference_type;

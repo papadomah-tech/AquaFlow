@@ -22,7 +22,11 @@ function StockPageInner() {
     setLoading(true)
     const [{ data: fi }, { data: st }] = await Promise.all([
       supabase.from('finished_inventory')
-        .select('*').order('transaction_date', { ascending: false }).limit(200),
+        .select('*')
+        // Exclude entries where reference_type='sale' AND notes contains 'Retail sale'
+        // (rider retail was written with reference_type='sale', factory retail won't be written going forward)
+        // Historical rider retail entries are cleaned up via SQL migration
+        .order('transaction_date', { ascending: false }).limit(200),
       supabase.from('stock_takes')
         .select('*,stock_take_items(*)').order('take_date', { ascending: false }),
     ])
