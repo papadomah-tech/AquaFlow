@@ -60,6 +60,8 @@ function SalesPageInner() {
   const blankBulk = () => ({
     sale_date: today(), buyer_employee_id: '',
     teammate_employee_id: '',
+    buyer_type: 'rider',          // 'rider' | 'external'
+    external_customer_id: '',     // for external bulk customers
     bags_sold: '', unit_price: '', amount_paid: '', notes: ''
   })
   const [retailForm, setRetailForm] = useState(blankRetail())
@@ -263,29 +265,35 @@ function SalesPageInner() {
       }
     }
 
-    // For bulk: use a special "Riders/Sales Reps" customer bucket
-    // OR use the rider's employee record as the "customer"
-    const riderId = parseInt(bulkForm.buyer_employee_id)
-    const rider   = riders.find((r: any) => r.id === riderId)
-
-    // Get or create customer record for this rider
     let custId: number
-    const riderCustName = rider ? `[Rider] ${rider.full_name}` : 'Bulk Sale'
-    const { data: existCust } = await supabase.from('customers')
-      .select('id').eq('name', riderCustName).single()
-    if (existCust) {
-      custId = existCust.id
+    let riderId: number | null = null
+
+    if (bulkForm.buyer_type === 'external') {
+      // External bulk customer — use CustomerSelect value
+      custId = parseInt(bulkForm.external_customer_id)
+      if (!custId) { alert('Please select or add the external customer.'); return }
     } else {
-      const { data: newCust } = await supabase.from('customers')
-        .insert({ name: riderCustName, address: 'Internal — Rider/Sales Rep' }).select().single()
-      custId = newCust?.id ?? 1
+      // Internal rider/employee buyer
+      riderId = parseInt(bulkForm.buyer_employee_id) || null
+      const rider = riders.find((r: any) => r.id === riderId)
+      const riderCustName = rider ? `[Rider] ${rider.full_name}` : 'Bulk Sale'
+      const { data: existCust } = await supabase.from('customers')
+        .select('id').eq('name', riderCustName).single()
+      if (existCust) {
+        custId = existCust.id
+      } else {
+        const { data: newCust } = await supabase.from('customers')
+          .insert({ name: riderCustName, address: 'Internal — Rider/Sales Rep' }).select().single()
+        custId = newCust?.id ?? 1
+      }
     }
 
     const payload: any = {
       sale_date: bulkForm.sale_date,
       customer_id: custId,
       buyer_employee_id: riderId || null,
-      teammate_employee_id: bulkForm.teammate_employee_id ? parseInt(bulkForm.teammate_employee_id) : null,
+      teammate_employee_id: bulkForm.buyer_type === 'rider' && bulkForm.teammate_employee_id
+        ? parseInt(bulkForm.teammate_employee_id) : null,
       salesperson_id: employeeId,
       sale_type: 'bulk',
       bags_sold: bags, unit_price: price, total_amount: total,
@@ -304,7 +312,7 @@ function SalesPageInner() {
       bags_in: 0, bags_out: bags,
       transaction_date: bulkForm.sale_date, reference_type: 'sale',
       sale_id: editSale?.id ?? payload._id,
-      notes: `Bulk dispatch to ${rider?.full_name ?? 'Rider'}`,
+      notes: `Bulk dispatch to ${bulkForm.buyer_type === 'external' ? 'External Customer' : (riders.find((r:any)=>r.id===riderId)?.full_name ?? 'Rider')}`,
     })
     setShowForm(false); load()
   }
@@ -627,7 +635,7 @@ function SalesPageInner() {
                       <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
-                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
+                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
                         <button onClick={() => {
@@ -749,55 +757,90 @@ function SalesPageInner() {
             <div className="modal-header">
               <div>
                 <h2 className="font-bold text-orange-700">
-                  {editSale ? 'Edit Bulk Dispatch' : '📦 Bulk Dispatch to Rider'}
+                  {editSale ? 'Edit Bulk Dispatch'
+                    : bulkForm.buyer_type === 'external'
+                    ? '🏪 Bulk Sale to External Customer'
+                    : '📦 Bulk Dispatch to Rider'}
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">Factory → Rider / Sales Rep</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {bulkForm.buyer_type === 'external'
+                    ? 'Factory → Wholesale / External bulk customer'
+                    : 'Factory → Rider / Sales Rep'}
+                </p>
               </div>
               <button onClick={() => setShowForm(false)} className="text-gray-400 text-xl">✕</button>
             </div>
             <div className="modal-body space-y-3">
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700">
-                📦 This records bags dispatched from the factory to a Rider or Sales Rep in bulk.
-                The rider will then sell individually to customers.
+              {/* Buyer type toggle */}
+              <div className="flex gap-2 mb-1">
+                {[['rider','🛵 Rider / Sales Rep'],['external','🏪 External Bulk Customer']].map(([k,l]) => (
+                  <button key={k} type="button"
+                    onClick={() => setBulkForm(f => ({...f, buyer_type: k as 'rider'|'external'}))}
+                    className={'flex-1 py-2 rounded-xl text-sm font-medium border-2 transition-all '
+                      + (bulkForm.buyer_type === k
+                        ? 'border-orange-500 bg-orange-50 text-orange-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                    {l}
+                  </button>
+                ))}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="form-label">Date</label>
-                  <input type="date" value={bulkForm.sale_date}
-                    onChange={e => setBulkForm(f => ({...f, sale_date:e.target.value}))}
-                    className="form-input" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Rider / Sales Rep *</label>
-                  <select value={bulkForm.buyer_employee_id}
-                    onChange={e => setBulkForm(f => ({...f, buyer_employee_id:e.target.value}))}
-                    className="form-select">
-                    <option value="">Select rider...</option>
-                    {(riders.length > 0 ? riders : employees).map((e: any) => (
-                      <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {/* Teammate field */}
+
               <div className="form-group">
-                <label className="form-label">Teammate / Rider's Mate
-                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
-                </label>
-                <select value={bulkForm.teammate_employee_id}
-                  onChange={e => setBulkForm(f => ({...f, teammate_employee_id: e.target.value}))}
-                  className="form-select">
-                  <option value="">— No teammate —</option>
-                  {(riders.length > 0 ? riders : employees)
-                    .filter((e: any) => String(e.id) !== bulkForm.buyer_employee_id)
-                    .map((e: any) => (
-                      <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
-                    ))}
-                </select>
-                <div className="text-xs text-gray-400 mt-1">
-                  The full bag count will credit both the rider and teammate for performance pay.
-                </div>
+                <label className="form-label">Date</label>
+                <input type="date" value={bulkForm.sale_date}
+                  onChange={e => setBulkForm(f => ({...f, sale_date:e.target.value}))}
+                  className="form-input" />
               </div>
+
+              {/* Rider buyer fields */}
+              {bulkForm.buyer_type === 'rider' && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Rider / Sales Rep *</label>
+                    <select value={bulkForm.buyer_employee_id}
+                      onChange={e => setBulkForm(f => ({...f, buyer_employee_id:e.target.value}))}
+                      className="form-select">
+                      <option value="">Select rider...</option>
+                      {(riders.length > 0 ? riders : employees).map((e: any) => (
+                        <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Teammate / Rider's Mate
+                      <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                    </label>
+                    <select value={bulkForm.teammate_employee_id}
+                      onChange={e => setBulkForm(f => ({...f, teammate_employee_id: e.target.value}))}
+                      className="form-select">
+                      <option value="">— No teammate —</option>
+                      {(riders.length > 0 ? riders : employees)
+                        .filter((e: any) => String(e.id) !== bulkForm.buyer_employee_id)
+                        .map((e: any) => (
+                          <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
+                        ))}
+                    </select>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Full bag count credits both for performance pay.
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* External bulk customer fields */}
+              {bulkForm.buyer_type === 'external' && (
+                <div className="form-group">
+                  <label className="form-label">Bulk Customer *</label>
+                  <CustomerSelect
+                    value={bulkForm.external_customer_id}
+                    onChange={(id) => setBulkForm(f => ({...f, external_customer_id: id}))}
+                  />
+                  <div className="text-xs text-gray-400 mt-1">
+                    Select an existing customer or add a new one. External bulk sales are not
+                    linked to performance pay calculations.
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Bags Dispatched *</label>
