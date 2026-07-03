@@ -16,40 +16,34 @@ import { supabase, fmtGhc, fmtNum, today, fmtDate} from '@/lib/supabase'
 //   • Deposit button → writes to bank_deposits
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Get Mon–Sat weeks for a given month
+// Weeks always start from the 1st of the month.
+// Week 1: 1st → first Saturday. Subsequent weeks: Monday → Saturday.
 function getWeeks(year: number, month: number) {
   const weeks: { from: string; to: string; label: string }[] = []
-  const firstDay = new Date(year, month - 1, 1)
-  const lastDay  = new Date(year, month, 0)
+  const lastDay = new Date(year, month, 0)   // last day of month
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
 
-  let cur = new Date(firstDay)
-  // Advance to first Monday
-  while (cur.getDay() !== 1) cur.setDate(cur.getDate() + 1)
-  // If first Monday is past the 7th, include the partial week from the 1st
-  if (cur.getDate() > 7) cur = new Date(firstDay)
-
+  let cur = new Date(year, month - 1, 1)     // always start from 1st
   let weekNum = 1
+
   while (cur <= lastDay) {
     const from = new Date(cur)
-    // Saturday = day 6; advance to Saturday
-    const to   = new Date(cur)
-    while (to.getDay() !== 6 && to <= lastDay) to.setDate(to.getDate() + 1)
-    const toFinal = to > lastDay ? lastDay : to
+    // Find end of this week: next Saturday or end of month
+    const to = new Date(cur)
+    while (to.getDay() !== 6 && to < lastDay) to.setDate(to.getDate() + 1)
+    const toFinal = to > lastDay ? new Date(lastDay) : to
 
-    const fmt = (d: Date) => d.toISOString().slice(0, 10)
-    weeks.push({
-      from:  fmt(from),
-      to:    fmt(toFinal),
-      label: `Week ${weekNum} (${fmt(from)} → ${fmt(toFinal)})`,  // internal label uses ISO
-    })
+    weeks.push({ from: fmt(from), to: fmt(toFinal), label: `Week ${weekNum}` })
     weekNum++
-    // Move to next Monday
+
+    // Next week starts the Monday after this Saturday
     cur = new Date(toFinal)
-    cur.setDate(cur.getDate() + (toFinal.getDay() === 6 ? 2 : 1))
-    if (cur.getDay() !== 1) { while (cur.getDay() !== 1) cur.setDate(cur.getDate() + 1) }
+    cur.setDate(cur.getDate() + 1)           // Sunday
+    cur.setDate(cur.getDate() + 1)           // Monday
   }
   return weeks
 }
+
 
 function WeeklyReportInner() {
   const now   = new Date()
