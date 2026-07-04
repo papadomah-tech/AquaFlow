@@ -331,7 +331,7 @@ function RawMaterialsPageInner() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="form-group col-span-2"><label className="form-label">Roll Label (auto-generated if blank)</label><input value={rollForm.label} onChange={e => setRollForm(f => ({...f,label:e.target.value}))} className="form-input" placeholder="e.g. ROLL-20260425-001" /></div>
-                    <div className="form-group"><label className="form-label">Purchase Date</label><input type="date" value={fmtDate(rollForm.purchase_date)} onChange={e => setRollForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
+                    <div className="form-group"><label className="form-label">Purchase Date</label><input type="date" value={rollForm.purchase_date} onChange={e => setRollForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
                     <div className="form-group"><label className="form-label">Supplier</label><input value={rollForm.supplier} onChange={e => setRollForm(f => ({...f,supplier:e.target.value}))} className="form-input" /></div>
                     <div className="form-group"><label className="form-label">Weight (Kg) *</label><input type="number" step="0.01" value={rollForm.weight_kg} onChange={e => setRollForm(f => ({...f,weight_kg:e.target.value}))} className="form-input" /></div>
                     <div className="form-group"><label className="form-label">Cost per Kg (GHc)</label><input type="number" step="0.01" value={rollForm.cost_per_kg} onChange={e => setRollForm(f => ({...f,cost_per_kg:e.target.value}))} className="form-input" /></div>
@@ -388,7 +388,7 @@ function RawMaterialsPageInner() {
                       <option value="">Select...</option>
                       {materials.map((m: any) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
                     </select></div>
-                  <div className="form-group"><label className="form-label">Date</label><input type="date" value={fmtDate(purchForm.purchase_date)} onChange={e => setPurchForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
+                  <div className="form-group"><label className="form-label">Date</label><input type="date" value={purchForm.purchase_date} onChange={e => setPurchForm(f => ({...f,purchase_date:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Supplier *</label><input value={purchForm.supplier_name} onChange={e => setPurchForm(f => ({...f,supplier_name:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Quantity *</label><input type="number" step="0.01" value={purchForm.quantity} onChange={e => setPurchForm(f => ({...f,quantity:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Unit Price (GHc)</label><input type="number" step="0.01" value={purchForm.unit_price} onChange={e => setPurchForm(f => ({...f,unit_price:e.target.value}))} className="form-input" /></div>

@@ -484,7 +484,7 @@ function StockPageInner() {
               gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
               <div className="form-group col-span-2" style={{gridColumn:'1/-1'}}>
                 <label className="form-label">Date</label>
-                <input type="date" value={fmtDate(editForm.transaction_date)}
+                <input type="date" value={editForm.transaction_date}
                   onChange={e => setEditForm(f => ({...f,transaction_date:e.target.value}))}
                   className="form-input" />
               </div>

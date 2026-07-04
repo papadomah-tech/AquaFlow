@@ -597,7 +597,7 @@ export default function DepositsAccountPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={fmtDate(form.deposit_date)}
+                  <input type="date" value={form.deposit_date}
                     onChange={e => setForm(f => ({...f, deposit_date: e.target.value}))}
                     className="form-input" />
                 </div>

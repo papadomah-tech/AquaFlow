@@ -305,7 +305,7 @@ function ProductionPageInner() {
 
               <div className="form-group">
                 <label className="form-label">Date</label>
-                <input type="date" value={fmtDate(form.batch_date)} onChange={e=>setForm(f=>({...f,batch_date:e.target.value}))} className="form-input" />
+                <input type="date" value={form.batch_date} onChange={e=>setForm(f=>({...f,batch_date:e.target.value}))} className="form-input" />
               </div>
 
               <div className="form-group">

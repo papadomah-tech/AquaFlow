@@ -690,7 +690,7 @@ function SalesPageInner() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={fmtDate(retailForm.sale_date)}
+                  <input type="date" value={retailForm.sale_date}
                     onChange={e => setRetailForm(f => ({...f, sale_date:e.target.value}))}
                     className="form-input" />
                 </div>
@@ -806,7 +806,7 @@ function SalesPageInner() {
 
               <div className="form-group">
                 <label className="form-label">Date</label>
-                <input type="date" value={fmtDate(bulkForm.sale_date)}
+                <input type="date" value={bulkForm.sale_date}
                   onChange={e => setBulkForm(f => ({...f, sale_date:e.target.value}))}
                   className="form-input" />
               </div>
@@ -963,7 +963,7 @@ function SalesPageInner() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Return Date</label>
-                  <input type="date" value={fmtDate(returnForm.return_date)}
+                  <input type="date" value={returnForm.return_date}
                     onChange={e => setReturnForm(f => ({...f, return_date: e.target.value}))}
                     className="form-input" />
                 </div>

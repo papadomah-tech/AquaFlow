@@ -656,7 +656,7 @@ function PersonnelPageInner() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Hire Date</label>
-                  <input type="date" value={fmtDate(empForm.hire_date)}
+                  <input type="date" value={empForm.hire_date}
                     onChange={e => setEmpForm(f => ({...f, hire_date: e.target.value}))}
                     className="form-input" />
                 </div>

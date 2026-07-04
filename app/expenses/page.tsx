@@ -107,7 +107,7 @@ function ExpensesPageInner() {
             </div>
             <div className="modal-body space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div className="form-group"><label className="form-label">Date</label><input type="date" value={fmtDate(form.expense_date)} onChange={e=>setForm(f=>({...f,expense_date:e.target.value}))} className="form-input" /></div>
+                <div className="form-group"><label className="form-label">Date</label><input type="date" value={form.expense_date} onChange={e=>setForm(f=>({...f,expense_date:e.target.value}))} className="form-input" /></div>
                 <div className="form-group"><label className="form-label">Category</label>
                   <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} className="form-select">
                     {CATS.map(c=><option key={c}>{c}</option>)}

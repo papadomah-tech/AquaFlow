@@ -415,7 +415,7 @@ function ImprestPageInner() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={fmtDate(advanceForm.advance_date)}
+                  <input type="date" value={advanceForm.advance_date}
                     onChange={e => setAdvanceForm(f => ({...f, advance_date: e.target.value}))}
                     className="form-input" />
                 </div>
@@ -461,7 +461,7 @@ function ImprestPageInner() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
                 <div className="form-group">
                   <label className="form-label">Date</label>
-                  <input type="date" value={fmtDate(entryForm.entry_date)}
+                  <input type="date" value={entryForm.entry_date}
                     onChange={e => setEntryForm(f => ({...f, entry_date: e.target.value}))}
                     className="form-input" />
                 </div>
