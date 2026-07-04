@@ -133,6 +133,18 @@ function StockPageInner() {
     loadAll()
   }
 
+  const deleteTake = async (t: any) => {
+    if (!confirm(
+      `Delete this stock take?\n\n` +
+      `Date: ${fmtDate(t.take_date)}\n` +
+      `Status: ${t.status}\n` +
+      `Physical count: ${t.stock_take_items?.[0]?.counted_qty ?? '—'} bags\n\n` +
+      `Note: any adjustment entry made when this was finalised will NOT be automatically reversed.`
+    )) return
+    await supabase.from('stock_takes').delete().eq('id', t.id)
+    loadAll()
+  }
+
   const BADGE: Record<string,[string,string]> = {
     production: ['badge-green',  'Production'],
     sale:       ['badge-red',    'Sale'      ],
@@ -311,12 +323,13 @@ function StockPageInner() {
                       <th className="text-right w-28">Physical Count</th>
                       <th className="text-right w-28">Variance</th>
                       <th>Notes</th>
+                      <th className="w-16">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {takes.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-gray-400">
+                        <td colSpan={8} className="text-center py-12 text-gray-400">
                           No stock takes yet. Click "📋 Stock Take" to begin.
                         </td>
                       </tr>
@@ -338,6 +351,10 @@ function StockPageInner() {
                             {v >= 0 ? '+' : ''}{fmtNum(v)}
                           </td>
                           <td className="text-xs text-gray-500 max-w-xs truncate">{t.notes ?? '—'}</td>
+                          <td>
+                            <button onClick={() => deleteTake(t)}
+                              className="btn btn-sm btn-danger">Del</button>
+                          </td>
                         </tr>
                       )
                     })}
