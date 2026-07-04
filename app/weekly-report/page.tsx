@@ -59,6 +59,7 @@ function WeeklyReportInner() {
   const [deposited, setDeposited] = useState<Record<string, any>>({})
   const [depositing, setDepositing] = useState<string | null>(null)
   const [depRef, setDepRef]     = useState<Record<string, string>>({})
+  const [opDesc, setOpDesc]     = useState<Record<string, string>>({})  // op expense description
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -139,6 +140,36 @@ function WeeklyReportInner() {
 
   useEffect(() => { load() }, [load])
 
+  // ── Reverse a deposit ─────────────────────────────────────────────────────
+  const reverseDeposit = async (week: any) => {
+    const dep = deposited[week.from]
+    if (!dep) return
+
+    const confirmed = confirm(
+      `Reverse this deposit?\n\n` +
+      `Amount: ${fmtGhc(dep.amount)}\n` +
+      `Date: ${fmtDate(dep.deposit_date)}\n\n` +
+      `This will:\n` +
+      `• Delete the bank deposit record\n` +
+      `• Delete the linked operational expense (if any)\n` +
+      `• Unlock this week for re-deposit`
+    )
+    if (!confirmed) return
+
+    // Delete the deposit
+    await supabase.from('bank_deposits').delete().eq('id', dep.id)
+
+    // Delete matching operational expense from same day (if exists)
+    const weekLabel = week.from
+    await supabase.from('expenses')
+      .delete()
+      .eq('category', 'Operational Expense')
+      .eq('expense_date', dep.deposit_date)
+      .ilike('description', `%${weekLabel}%`)
+
+    load()
+  }
+
   const recordDeposit = async (week: any) => {
     const wd   = weekData[week.from]
     const op   = parseFloat(opCash[week.from] || '0') || 0
@@ -148,6 +179,9 @@ function WeeklyReportInner() {
     const ref  = depRef[week.from] || ''
     setDepositing(week.from)
 
+    const desc = opDesc[week.from] || `Operational cash — week ${fmtDate(week.from)} to ${fmtDate(week.to)}`
+
+    // Record deposit + operational expense simultaneously
     await supabase.from('bank_deposits').insert({
       deposit_date:  today(),
       bank_name:     'Revenue Collection Account',
@@ -157,6 +191,16 @@ function WeeklyReportInner() {
       notes:         `Weekly Report — ${week.from} | Collected: ${fmtGhc(wd.totalCollected)} − Ops: ${fmtGhc(op)} = ${fmtGhc(amt)}`,
     })
 
+    // Record operational cash as expense if > 0
+    if (op > 0) {
+      await supabase.from('expenses').insert({
+        expense_date: today(),
+        category:     'Operational Expense',
+        description:  desc,
+        amount:       op,
+        paid_to:      null,
+      })
+    }
     setDepositing(null)
     load()
   }
@@ -351,7 +395,8 @@ function WeeklyReportInner() {
                   </div>
 
                   {isDeposited ? (
-                    <div className="grid grid-cols-3 gap-3 text-center">
+                    <>
+                    <div className="grid grid-cols-3 gap-3 text-center mb-3">
                       {[
                         ['Collected',   fmtGhc(wd.totalCollected),  '#1B5E20'],
                         ['Deposited',   fmtGhc(dep.amount),          '#1F4E79'],
@@ -363,6 +408,15 @@ function WeeklyReportInner() {
                         </div>
                       ))}
                     </div>
+                    <button
+                      onClick={() => reverseDeposit(week)}
+                      className="btn btn-danger btn-sm w-full">
+                      🔄 Reverse / Correct this Deposit
+                    </button>
+                    <div className="text-xs text-red-400 mt-1 text-center">
+                      This will delete the deposit and linked expense. You can then re-deposit correctly.
+                    </div>
+                    </>
                   ) : (
                     <>
                       <div className="space-y-2 mb-3">
