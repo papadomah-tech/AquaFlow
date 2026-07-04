@@ -438,6 +438,96 @@ function WeeklyReportInner() {
                   <div className="text-xs text-gray-400 mb-4 italic">No bulk dispatches this week.</div>
                 )}
 
+
+                {/* ── Stock & Revenue Reconciliation ─────────────────────── */}
+                <div className="mb-4">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                    📊 Stock &amp; Revenue Reconciliation
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                    {/* Stock movement */}
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                      <div className="text-xs font-semibold text-gray-500 mb-2">🧮 Bag Movement</div>
+                      <div className="space-y-1.5">
+                        {([
+                          ['Opening Stock',         fmtNum(wd.openingStock ?? 0),   'text-gray-600'],
+                          ['+ Produced this week',  fmtNum(wd.weekProdIn ?? 0),     'text-green-700'],
+                          ['− Dispatched (ledger)', fmtNum(wd.weekDispOut ?? 0),    'text-red-600'],
+                          ['= System Closing Stock',fmtNum(wd.systemClosing ?? 0),  'text-[#1F4E79] font-bold'],
+                        ] as [string,string,string][]).map(([l,v,c]) => (
+                          <div key={l} className="flex justify-between text-xs">
+                            <span className="text-gray-600">{l}</span>
+                            <span className={'tabular-nums font-medium ' + c}>{v}</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-gray-200 pt-1.5 mt-1">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-gray-600">Physical Count (enter)</span>
+                            <input
+                              type="number" placeholder="0"
+                              value={physCount[week.from] || ''}
+                              onChange={e => setPhysCount(p => ({...p, [week.from]: e.target.value}))}
+                              className="form-input w-24 text-right"
+                              style={{padding:'0.2rem 0.4rem',fontSize:'0.75rem'}}
+                            />
+                          </div>
+                          {physCount[week.from] && (() => {
+                            const phys = parseInt(physCount[week.from]) || 0
+                            const diff = phys - (wd.systemClosing ?? 0)
+                            return (
+                              <div className={'flex justify-between text-xs font-bold mt-1 '
+                                + (Math.abs(diff) < 5 ? 'text-green-600' : 'text-red-600')}>
+                                <span>Stock Variance</span>
+                                <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
+                                  {Math.abs(diff) < 5 ? ' ✅' : ' ⚠️'}</span>
+                              </div>
+                            )
+                          })()}
+                          {Math.abs(wd.stockVarianceBags ?? 0) > 0 && (
+                            <div className={'flex justify-between text-xs mt-1 '
+                              + (Math.abs(wd.stockVarianceBags ?? 0) < 5 ? 'text-gray-500' : 'text-orange-600')}>
+                              <span>Ledger vs Bulk Records</span>
+                              <span className="font-medium">
+                                {(wd.stockVarianceBags??0) >= 0 ? '+' : ''}{fmtNum(wd.stockVarianceBags ?? 0)} bags
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Revenue reconciliation */}
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                      <div className="text-xs font-semibold text-gray-500 mb-2">💰 Revenue Check</div>
+                      <div className="space-y-1.5">
+                        {([
+                          ['Estimated Revenue',  fmtGhc(wd.estRevenue ?? 0),      'text-[#1F4E79]'],
+                          ['Actual Invoiced',    fmtGhc(wd.totalInvoiced ?? 0),   'text-gray-600'],
+                          ['Actual Collected',   fmtGhc(wd.totalCollected ?? 0),  'text-green-700'],
+                          ['Outstanding',        fmtGhc(wd.totalOutstanding ?? 0),'text-red-600'],
+                        ] as [string,string,string][]).map(([l,v,c]) => (
+                          <div key={l} className="flex justify-between text-xs">
+                            <span className="text-gray-600">{l}</span>
+                            <span className={'tabular-nums font-medium ' + c}>{v}</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-gray-200 pt-1.5 mt-1">
+                          <div className={'flex justify-between text-xs font-bold '
+                            + (Math.abs(wd.collectionVariance ?? 0) < 50 ? 'text-green-600' : 'text-orange-600')}>
+                            <span>Est. vs Collected Gap</span>
+                            <span>{(wd.collectionVariance??0) >= 0 ? '+' : ''}{fmtGhc(Math.abs(wd.collectionVariance ?? 0))}
+                              {Math.abs(wd.collectionVariance ?? 0) < 50 ? ' ✅' : ' ⚠️'}</span>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            Riders/Reps GHc {PRICE_RIDER}/bag · External GHc {PRICE_EXTERNAL}/bag
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Deposit section */}
                 <div className={'rounded-xl p-4 overflow-hidden '
                   + (isDeposited ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200')}>
