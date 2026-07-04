@@ -45,6 +45,11 @@ function getWeeks(year: number, month: number) {
 }
 
 
+// Price tiers (GHc per bag)
+const PRICE_RIDER    = 6.0   // Bulk to riders / sales reps
+const PRICE_EXTERNAL = 4.8   // Bulk to outside / wholesale customers
+const PRICE_WALKIN   = 6.0   // Walk-in / direct retail
+
 function WeeklyReportInner() {
   const now   = new Date()
   const [selYear,  setSelYear]  = useState(now.getFullYear())
@@ -59,7 +64,8 @@ function WeeklyReportInner() {
   const [deposited, setDeposited] = useState<Record<string, any>>({})
   const [depositing, setDepositing] = useState<string | null>(null)
   const [depRef, setDepRef]     = useState<Record<string, string>>({})
-  const [opDesc, setOpDesc]     = useState<Record<string, string>>({})  // op expense description
+  const [opDesc, setOpDesc]     = useState<Record<string, string>>({})
+  const [physCount, setPhysCount] = useState<Record<string, string>>({})  // physical stock count per week
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -76,6 +82,7 @@ function WeeklyReportInner() {
       { data: batches },
       { data: bulkSales },
       { data: existingDeps },
+      { data: allInventory },
     ] = await Promise.all([
       supabase.from('production_batches')
         .select('batch_date, bags_produced, roll_ref')
@@ -88,6 +95,11 @@ function WeeklyReportInner() {
         .select('*')
         .gte('deposit_date', monthFrom).lte('deposit_date', monthTo)
         .ilike('notes', '%Weekly Report%'),
+      // All inventory up to end of month for running stock calc
+      supabase.from('finished_inventory')
+        .select('bags_in, bags_out, transaction_date')
+        .lte('transaction_date', monthTo)
+        .order('transaction_date'),
     ])
 
     // Build per-week data
@@ -115,6 +127,38 @@ function WeeklyReportInner() {
       const totalCollected  = wBulk.reduce((a: number, s: any) => a + s.amount_paid, 0)
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
+      // ── Stock reconciliation ─────────────────────────────────────────────
+      // Opening stock = all inventory movement before this week
+      const openingStock = (allInventory ?? [])
+        .filter((r: any) => r.transaction_date < w.from)
+        .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
+
+      // Production this week (bags_in)
+      const weekProdIn = (allInventory ?? [])
+        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to && r.bags_in > 0)
+        .reduce((a: number, r: any) => a + r.bags_in, 0)
+
+      // Dispatches this week from inventory (bags_out)
+      const weekDispOut = (allInventory ?? [])
+        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to && r.bags_out > 0)
+        .reduce((a: number, r: any) => a + r.bags_out, 0)
+
+      // System closing stock at end of week
+      const systemClosing = openingStock + weekProdIn - weekDispOut
+
+      // Bags dispatched per bulk records this week (for revenue estimate)
+      let estRevenue = 0
+      wBulk.forEach((s: any) => {
+        const isRiderBuyer = !!s.buyer?.full_name && !s.customers?.name
+        const isExternal   = !!s.customers?.name
+        const price = isExternal ? PRICE_EXTERNAL : PRICE_RIDER
+        estRevenue += s.bags_sold * price
+      })
+
+      // Variance: expected dispatch from stock vs actual bulk records
+      const stockVarianceBags = weekDispOut - wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
+      const collectionVariance = estRevenue - totalCollected
+
       // Check if already deposited this week
       const wDep = (existingDeps ?? []).find((d: any) =>
         d.notes?.includes(w.from)
@@ -125,6 +169,9 @@ function WeeklyReportInner() {
         riders: Object.values(riderMap),
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
+        // Stock reconciliation
+        openingStock, weekProdIn, weekDispOut, systemClosing,
+        estRevenue, stockVarianceBags, collectionVariance,
       }
     })
 
