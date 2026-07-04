@@ -9,7 +9,7 @@ import { supabase, fmtGhc, fmtNum, fmtDate, today, monthStart } from '@/lib/supa
 // CASH BOOK — Complete Casebook
 // ─────────────────────────────────────────────────────────────────────────────
 // Entries (Dr = cash in, Cr = cash out):
-//   Dr: Bulk dispatch collections, other receipts
+//   Dr: Bulk dispatch collections ONLY (to riders + external customers)
 //   Cr: Bank deposits, all expenses (incl. performance pay, operational)
 //
 // Running balance = Opening + Σ Dr − Σ Cr
@@ -77,8 +77,9 @@ function ReconciliationPageInner() {
         .is('expense_id', null)   // only those NOT already in expenses
         .order('payment_date'),
 
-      // Outstanding invoices (all time)
+      // Outstanding invoices — bulk only (revenue = bulk dispatches only)
       supabase.from('sales').select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,sale_type,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .eq('sale_type', 'bulk')
         .gt('outstanding_balance', 0)
         .order('sale_date'),
     ])
