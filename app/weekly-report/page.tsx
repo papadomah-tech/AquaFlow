@@ -280,7 +280,7 @@ function WeeklyReportInner() {
                     </div>
                     <div className="text-xs text-gray-400">{fmtDate(week.from)} → {fmtDate(week.to)}</div>
                   </div>
-                  <div className="flex gap-3 text-center">
+                  <div className="flex gap-2 flex-wrap text-center">
                     {[
                       ['Produced', fmtNum(wd.totalProduced ?? 0), '#1F4E79'],
                       ['Invoiced', fmtGhc(wd.totalInvoiced ?? 0), '#BF4D00'],
@@ -300,6 +300,7 @@ function WeeklyReportInner() {
                     <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
                       🏭 Production
                     </div>
+                    <div className="overflow-x-auto">
                     <table className="data-table">
                       <colgroup>
                         <col style={{width:'100px'}} /><col />
@@ -328,6 +329,7 @@ function WeeklyReportInner() {
                         </tr>
                       </tfoot>
                     </table>
+                    </div>
                   </div>
                 )}
 
@@ -337,6 +339,7 @@ function WeeklyReportInner() {
                     <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
                       📦 Bulk Dispatches
                     </div>
+                    <div className="overflow-x-auto">
                     <table className="data-table">
                       <colgroup>
                         <col /><col style={{width:'80px'}} />
@@ -382,13 +385,14 @@ function WeeklyReportInner() {
                         </tr>
                       </tfoot>
                     </table>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-xs text-gray-400 mb-4 italic">No bulk dispatches this week.</div>
                 )}
 
                 {/* Deposit section */}
-                <div className={'rounded-xl p-4 '
+                <div className={'rounded-xl p-4 overflow-hidden '
                   + (isDeposited ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200')}>
                   <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
                     {isDeposited ? '✅ Deposit Recorded' : '💰 Deposit Calculation'}
