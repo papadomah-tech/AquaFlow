@@ -169,11 +169,11 @@ function WeeklyReportInner() {
         .filter((r: any) => r.bags_in > 0 && r.reference_type !== 'production')
         .reduce((a: number, r: any) => a + r.bags_in, 0)
 
-      // Bags OUT this week — ALL (dispatches + write-offs etc)
-      const weekDispOut = weekEntries.reduce((a: number, r: any) => a + (r.bags_out||0), 0)
+      // Bags OUT this week from bulk dispatches — read from sales records directly
+      // This avoids stale/duplicate finished_inventory entries (e.g. old retail entries)
+      const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Closing = opening + all bags_in this week − all bags_out this week
-      // This EXACTLY matches the Stock module's current stock calculation
+      // Closing = opening + ALL bags_in this week (production + adj) − actual dispatches
       const systemClosing = openingStock + weekAllBagsIn - weekDispOut
 
       // weekAdjOut kept for compat — already included in weekDispOut
@@ -183,6 +183,7 @@ function WeeklyReportInner() {
       prevWeekClosing = systemClosing
 
       // Week's Closing Stock Balance = Opening + Produced − Dispatched (pure, no adjustments)
+      // weekClosingBalance = pure: opening + produced - dispatched (from sales records)
       const weekClosingBalance = openingStock + weekProdIn - weekDispOut
 
       // Reconciliation check: systemClosing should equal Stock module current stock
