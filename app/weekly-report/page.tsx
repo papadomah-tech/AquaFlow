@@ -88,6 +88,7 @@ function WeeklyReportInner() {
       { data: existingDeps },
       { data: allInventory },
       { data: allStockRaw },
+      { data: allBulkSales },
     ] = await Promise.all([
       supabase.from('production_batches')
         .select('batch_date, bags_produced, roll_ref')
@@ -108,6 +109,10 @@ function WeeklyReportInner() {
       // Current total stock (same as Stock module)
       supabase.from('finished_inventory')
         .select('bags_in, bags_out'),
+      // All-time bulk sales for opening stock calculation (not month-filtered)
+      supabase.from('sales')
+        .select('sale_date, bags_sold')
+        .eq('sale_type', 'bulk'),
     ])
 
     // Total current stock (matches Stock module exactly)
@@ -162,8 +167,8 @@ function WeeklyReportInner() {
         const prevAdjIn = (allInventory ?? [])
           .filter((r: any) => r.transaction_date < w.from && r.reference_type === 'adjustment')
           .reduce((a: number, r: any) => a + (r.bags_in||0), 0)
-        // Previous dispatches from SALES records (not finished_inventory — avoids stale retail)
-        const prevBulkOut = (bulkSales ?? [])
+        // Previous dispatches from ALL-TIME bulk sales (bulkSales is month-filtered)
+        const prevBulkOut = (allBulkSales ?? [])
           .filter((s: any) => s.sale_date < w.from)
           .reduce((a: number, s: any) => a + s.bags_sold, 0)
         openingStock = prevBatchesIn + prevAdjIn - prevBulkOut
