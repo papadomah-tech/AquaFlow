@@ -180,17 +180,20 @@ function WeeklyReportInner() {
       // Reconciliation check: systemClosing should equal Stock module current stock
       // at the end of this week (for the last/current week, this IS current stock)
 
-      // Revenue estimate per dispatch:
-      // buyer_employee_id set → rider/rep → GHc 6
-      // no buyer_employee_id → external/walk-in bulk customer → GHc 4.8
+      // Revenue estimate per dispatch (per bag price tiers):
+      // • Rider/rep (buyer_employee_id set)  → GHc 6.00
+      // • Walk-in Customer (no employee, customer name = 'Walk-in Customer') → GHc 6.00
+      // • Registered external/wholesale customer → GHc 4.80
       let estRevenue = 0
-      let estRiderBags = 0, estExternalBags = 0
+      let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0
       wBulk.forEach((s: any) => {
-        const isRider = !!s.buyer   // buyer = employees!buyer_employee_id join
-        const price   = isRider ? PRICE_RIDER : PRICE_EXTERNAL
-        estRevenue   += s.bags_sold * price
-        if (isRider) estRiderBags    += s.bags_sold
-        else         estExternalBags += s.bags_sold
+        const isRider   = !!s.buyer
+        const isWalkin  = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
+        const price     = (isRider || isWalkin) ? PRICE_RIDER : PRICE_EXTERNAL
+        estRevenue     += s.bags_sold * price
+        if (isRider)       estRiderBags    += s.bags_sold
+        else if (isWalkin) estWalkinBags   += s.bags_sold
+        else               estExternalBags += s.bags_sold
       })
 
       // Variance: expected dispatch from stock vs actual bulk records
@@ -208,7 +211,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing, estRiderBags, estExternalBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing, estRiderBags, estWalkinBags, estExternalBags,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -688,13 +691,19 @@ function WeeklyReportInner() {
                           <div className="font-semibold text-blue-700 mb-1">Estimated Revenue Breakdown</div>
                           {(wd.estRiderBags ?? 0) > 0 && (
                             <div className="flex justify-between">
-                              <span className="text-gray-600">Riders/Reps ({fmtNum(wd.estRiderBags)} bags × GHc {PRICE_RIDER})</span>
+                              <span className="text-gray-600">Riders/Reps ({fmtNum(wd.estRiderBags)} × GHc {PRICE_RIDER})</span>
                               <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estRiderBags ?? 0) * PRICE_RIDER)}</span>
+                            </div>
+                          )}
+                          {(wd.estWalkinBags ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Walk-in ({fmtNum(wd.estWalkinBags)} × GHc {PRICE_RIDER})</span>
+                              <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estWalkinBags ?? 0) * PRICE_RIDER)}</span>
                             </div>
                           )}
                           {(wd.estExternalBags ?? 0) > 0 && (
                             <div className="flex justify-between">
-                              <span className="text-gray-600">External/Walk-in ({fmtNum(wd.estExternalBags)} bags × GHc {PRICE_EXTERNAL})</span>
+                              <span className="text-gray-600">Wholesale/External ({fmtNum(wd.estExternalBags)} × GHc {PRICE_EXTERNAL})</span>
                               <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estExternalBags ?? 0) * PRICE_EXTERNAL)}</span>
                             </div>
                           )}
