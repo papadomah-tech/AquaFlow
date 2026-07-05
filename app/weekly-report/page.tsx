@@ -588,15 +588,15 @@ function WeeklyReportInner() {
                           )}
                         </div>
 
-                        {/* Week's Closing Stock Balance — pure: opening + produced - dispatched */}
-                        <div className="bg-[#1F4E79] rounded-lg px-3 py-2 mt-2">
-                          <div className="text-xs text-blue-200 mb-0.5">
-                            Week{"'"}s Closing Stock Balance
-                            <span className="ml-1 opacity-70">
+                        {/* Week's Closing Stock Balance */}
+                        <div style={{background:'#1F4E79',borderRadius:'0.5rem',padding:'0.5rem 0.75rem',marginTop:'0.5rem'}}>
+                          <div style={{fontSize:'0.7rem',color:'#93c5fd',marginBottom:'0.15rem'}}>
+                            Week&#39;s Closing Stock Balance
+                            <span style={{opacity:0.75,marginLeft:'0.25rem'}}>
                               ({fmtNum(wd.openingStock ?? 0)} + {fmtNum(wd.weekProdIn ?? 0)} − {fmtNum(wd.weekDispOut ?? 0)})
                             </span>
                           </div>
-                          <div className="text-xl font-bold text-white tabular-nums">
+                          <div style={{fontSize:'1.25rem',fontWeight:'bold',color:'white',fontVariantNumeric:'tabular-nums'}}>
                             {fmtNum(wd.weekClosingBalance ?? 0)} bags
                           </div>
                         </div>
