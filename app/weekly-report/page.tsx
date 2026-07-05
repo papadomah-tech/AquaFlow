@@ -69,7 +69,8 @@ function WeeklyReportInner() {
   const [prodOpen, setProdOpen]       = useState<Record<string, boolean>>({})
   const [dispOpen, setDispOpen]       = useState<Record<string, boolean>>({})
   const [actualStock, setActualStock]   = useState<number>(0)
-  const [registering, setRegistering]   = useState<string|null>(null)  // week.from being registered
+  const [registering, setRegistering]   = useState<string|null>(null)
+  const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -276,6 +277,30 @@ function WeeklyReportInner() {
       .eq('expense_date', dep.deposit_date)
       .ilike('description', `%${weekLabel}%`)
 
+    load()
+  }
+
+  // ── Adjust weekly closing to match stock module total ─────────────────────
+  const adjustWeeklyClosing = async (week: any, weeklyClosing: number, stockModuleTotal: number) => {
+    const diff = stockModuleTotal - weeklyClosing
+    if (diff === 0) return
+    if (!confirm(
+      `Adjust Weekly Closing Stock to match Stock Module?\n\n` +
+      `Weekly Closing Stock: ${fmtNum(weeklyClosing)} bags\n` +
+      `Stock Module Total:   ${fmtNum(stockModuleTotal)} bags\n` +
+      `Adjustment:           ${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags\n\n` +
+      `An adjustment entry will be posted to the stock ledger dated ${fmtDate(week.to)}.`
+    )) return
+
+    setAdjusting(week.from)
+    await supabase.from('finished_inventory').insert({
+      bags_in:          diff > 0 ? diff : 0,
+      bags_out:         diff < 0 ? Math.abs(diff) : 0,
+      transaction_date: week.to,
+      reference_type:   'adjustment',
+      notes:            `Weekly closing stock adjustment — ${week.from} to ${week.to}: Weekly ${fmtNum(weeklyClosing)} → Stock Module ${fmtNum(stockModuleTotal)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags)`,
+    })
+    setAdjusting(null)
     load()
   }
 
