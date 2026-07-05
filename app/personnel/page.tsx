@@ -133,12 +133,27 @@ function PersonnelPageInner() {
       feeding_fee: parseFloat(empForm.feeding_fee)||300,
       monthly_target: parseInt(empForm.monthly_target)||6500,
     } as any
-    const { error } = editEmp
-      ? await supabase.from('employees').update(payload).eq('id', editEmp.id)
-      : await supabase.from('employees').insert(payload)
+    const { data, error } = editEmp
+      ? await supabase.from('employees').update(payload).eq('id', editEmp.id).select()
+      : await supabase.from('employees').insert(payload).select()
     if (error) {
-      alert(`Save failed: ${error.message}\n\nIf this mentions a missing column (base_pay, feeding_fee, monthly_target), run supabase/fix-employee-pay-columns.sql in the Supabase SQL editor.`)
+      alert(`Save failed: ${error.message} (code: ${error.code ?? 'n/a'})\n\nIf this mentions a missing column, run supabase/fix-employee-pay-columns.sql in the Supabase SQL editor.`)
       return
+    }
+    if (!data || data.length === 0) {
+      // PostgREST returns success with 0 rows when RLS silently blocks the write
+      const { data: { session } } = await supabase.auth.getSession()
+      alert(
+        `Save was accepted by the server but 0 rows were written.\n\n` +
+        `This means Row Level Security blocked the write.\n` +
+        `Session: ${session ? 'active (uid ' + session.user.id.slice(0,8) + '…, expires ' + new Date((session.expires_at ?? 0) * 1000).toLocaleTimeString() + ')' : 'MISSING — you are not authenticated. Log out and log back in.'}`
+      )
+      return
+    }
+    // Confirm what was actually written
+    const saved = data[0]
+    if (editEmp && (Number(saved.base_pay) !== payload.base_pay || Number(saved.feeding_fee) !== payload.feeding_fee)) {
+      alert(`Warning: database returned different values than submitted.\nSubmitted base_pay ${payload.base_pay} / feeding_fee ${payload.feeding_fee}\nStored base_pay ${saved.base_pay} / feeding_fee ${saved.feeding_fee}\n\nA database trigger or default may be overriding your input.`)
     }
     setShowEmpForm(false); loadAll()
   }
