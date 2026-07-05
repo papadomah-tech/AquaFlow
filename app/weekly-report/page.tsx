@@ -97,7 +97,7 @@ function WeeklyReportInner() {
         .ilike('notes', '%Weekly Report%'),
       // All inventory up to end of month for running stock calc
       supabase.from('finished_inventory')
-        .select('bags_in, bags_out, transaction_date')
+        .select('bags_in, bags_out, transaction_date, reference_type, notes')
         .lte('transaction_date', monthTo)
         .order('transaction_date'),
     ])
@@ -128,57 +128,37 @@ function WeeklyReportInner() {
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
       // ── Stock reconciliation ─────────────────────────────────────────────
-      // Opening stock = verified inventory movements before this week
-      // Uses all entries (production, sales, adjustments) for accurate opening
+      // Opening stock = ALL inventory before this week (matches Stock module logic)
       const openingStock = (allInventory ?? [])
         .filter((r: any) => r.transaction_date < w.from)
         .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
 
-      // Production this week — ONLY production batches (reference_type='production')
-      // Exclude adjustments, stock takes and other bags_in entries
-      const weekProdIn = (allInventory ?? [])
-        .filter((r: any) =>
-          r.transaction_date >= w.from &&
-          r.transaction_date <= w.to &&
-          r.bags_in > 0 &&
-          r.reference_type === 'production'
-        )
-        .reduce((a: number, r: any) => a + r.bags_in, 0)
+      // Opening stock detail — entries that make up the opening balance
+      const openingEntries = (allInventory ?? [])
+        .filter((r: any) => r.transaction_date < w.from)
 
-      // Dispatches this week — ONLY bulk sale entries (reference_type='sale')
-      // Excludes write-offs, protocol bags, adjustments
+      // Produced this week — directly from production_batches (already calculated as totalProduced)
+      // This matches exactly what Production module shows
+      const weekProdIn = totalProduced  // from wBatches above
+
+      // Dispatched this week — ALL bags_out from inventory in this week
       const weekDispOut = (allInventory ?? [])
-        .filter((r: any) =>
-          r.transaction_date >= w.from &&
-          r.transaction_date <= w.to &&
-          r.bags_out > 0 &&
-          (r.reference_type === 'sale' || r.reference_type === 'factory_retail')
-        )
+        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to && r.bags_out > 0)
         .reduce((a: number, r: any) => a + r.bags_out, 0)
 
-      // Non-production bags_in this week (adjustments, stock takes, etc.)
+      // Any non-production bags_in this week (adjustments etc)
       const weekAdjIn = (allInventory ?? [])
         .filter((r: any) =>
-          r.transaction_date >= w.from &&
-          r.transaction_date <= w.to &&
-          r.bags_in > 0 &&
-          r.reference_type !== 'production'
+          r.transaction_date >= w.from && r.transaction_date <= w.to &&
+          r.bags_in > 0 && r.reference_type !== 'production'
         )
         .reduce((a: number, r: any) => a + r.bags_in, 0)
 
-      // Non-dispatch bags_out this week (write-offs, protocol, adjustments)
-      const weekAdjOut = (allInventory ?? [])
-        .filter((r: any) =>
-          r.transaction_date >= w.from &&
-          r.transaction_date <= w.to &&
-          r.bags_out > 0 &&
-          r.reference_type !== 'sale' &&
-          r.reference_type !== 'factory_retail'
-        )
-        .reduce((a: number, r: any) => a + r.bags_out, 0)
+      const weekAdjOut = 0  // included in weekDispOut already
 
-      // System closing = opening + produced + adj_in − dispatched − adj_out
-      const systemClosing = openingStock + totalProduced + weekAdjIn - weekDispOut - weekAdjOut
+      // Closing = opening + produced + any adj_in - all bags_out
+      // This will match the Stock module's current stock figure
+      const systemClosing = openingStock + weekProdIn + weekAdjIn - weekDispOut
 
       // Bags dispatched per bulk records this week (for revenue estimate)
       let estRevenue = 0
@@ -204,7 +184,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing,
+        openingStock, openingEntries, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -484,13 +464,43 @@ function WeeklyReportInner() {
                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
                       <div className="text-xs font-semibold text-gray-500 mb-2">🧮 Bag Movement</div>
                       <div className="space-y-1.5">
+                        {/* Opening stock — clickable to show breakdown */}
+                        {(() => {
+                          const [showOpen, setShowOpen] = ([useState(false)] as any)
+                          return (
+                            <>
+                              <div className="flex justify-between text-xs items-center">
+                                <button
+                                  onClick={() => setShowOpen((v: boolean) => !v)}
+                                  className="text-blue-600 hover:underline text-left">
+                                  Opening Stock {showOpen ? '▲' : '▼'}
+                                </button>
+                                <span className="tabular-nums font-medium text-gray-600">
+                                  {fmtNum(wd.openingStock ?? 0)}
+                                </span>
+                              </div>
+                              {showOpen && (
+                                <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 max-h-40 overflow-y-auto">
+                                  {(wd.openingEntries ?? []).length === 0
+                                    ? <div className="text-gray-400">No entries before this week</div>
+                                    : (wd.openingEntries ?? []).map((e: any, i: number) => (
+                                      <div key={i} className="flex justify-between gap-2">
+                                        <span className="text-gray-500">{fmtDate(e.transaction_date)} · {e.reference_type}</span>
+                                        <span className={e.bags_in > 0 ? 'text-green-600' : 'text-red-600'}>
+                                          {e.bags_in > 0 ? `+${e.bags_in}` : `-${e.bags_out}`}
+                                        </span>
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
+                            </>
+                          )
+                        })()}
                         {([
-                          ['Opening Stock',         fmtNum(wd.openingStock ?? 0),   'text-gray-600'],
-                          ['+ Produced this week',  fmtNum(wd.totalProduced ?? 0),   'text-green-700'],
+                          ['+ Produced this week',  fmtNum(wd.weekProdIn ?? 0),     'text-green-700'],
                           ...((wd.weekAdjIn ?? 0) > 0 ? [['+ Adjustments In', fmtNum(wd.weekAdjIn ?? 0), 'text-blue-600'] as [string,string,string]] : []),
-                          ['− Dispatched (ledger)', fmtNum(wd.weekDispOut ?? 0),    'text-red-600'],
-                          ...((wd.weekAdjOut ?? 0) > 0 ? [['− Adjustments Out', fmtNum(wd.weekAdjOut ?? 0), 'text-orange-600'] as [string,string,string]] : []),
-                          ['= System Closing Stock',fmtNum(wd.systemClosing ?? 0),  'text-[#1F4E79] font-bold'],
+                          ['− Dispatched (all out)', fmtNum(wd.weekDispOut ?? 0),   'text-red-600'],
+                          ['= System Closing Stock', fmtNum(wd.systemClosing ?? 0), 'text-[#1F4E79] font-bold'],
                         ] as [string,string,string][]).map(([l,v,c]) => (
                           <div key={l} className="flex justify-between text-xs">
                             <span className="text-gray-600">{l}</span>
