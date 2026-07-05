@@ -587,38 +587,59 @@ function WeeklyReportInner() {
                           <span className="font-bold text-[#1F4E79]">= System Closing Stock</span>
                           <span className="tabular-nums font-bold text-[#1F4E79]">{fmtNum(wd.systemClosing ?? 0)}</span>
                         </div>
-                        {/* For the active/last week — compare against Stock module */}
-                        {wi === weeks.length - 1 || (week.to >= today()) ? (() => {
+                        {/* Stock reconciliation — shown on active/current week only */}
+                        {(week.from <= today() && week.to >= today()) || wi === weeks.length - 1 ? (() => {
                           const gap = actualStock - (wd.systemClosing ?? 0)
                           const reconciled = Math.abs(gap) < 2
                           return (
-                            <div className={'rounded-lg p-2 text-xs mt-2 '
-                              + (reconciled ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200')}>
-                              <div className="flex justify-between font-semibold mb-1">
-                                <span className={reconciled ? 'text-green-700' : 'text-red-700'}>
-                                  {reconciled ? '✅ Stock Reconciled' : '⚠️ Stock Discrepancy'}
-                                </span>
-                                <span className={reconciled ? 'text-green-700' : 'text-red-700'}>
-                                  {gap >= 0 ? '+' : ''}{fmtNum(gap)} bags
-                                </span>
+                            <div className={'rounded-lg p-3 text-xs mt-3 border-2 '
+                              + (reconciled
+                                ? 'bg-green-50 border-green-400'
+                                : 'bg-red-50 border-red-400')}>
+                              <div className={'text-xs font-bold uppercase tracking-wide mb-2 '
+                                + (reconciled ? 'text-green-700' : 'text-red-700')}>
+                                🔍 Active Week Stock Verification
                               </div>
-                              <div className="space-y-0.5">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Stock Module (actual)</span>
-                                  <span className="tabular-nums font-medium">{fmtNum(actualStock)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500">Weekly Reconciliation</span>
-                                  <span className="tabular-nums font-medium">{fmtNum(wd.systemClosing ?? 0)}</span>
-                                </div>
-                                {!reconciled && (
-                                  <div className="text-red-500 mt-1">
-                                    {gap > 0
-                                      ? `${fmtNum(gap)} bags in Stock module not accounted for in weekly records`
-                                      : `${fmtNum(Math.abs(gap))} bags in weekly records not in Stock module`}
+                              {/* Big comparison display */}
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div className={'rounded-lg p-2 text-center '
+                                  + (reconciled ? 'bg-green-100' : 'bg-red-100')}>
+                                  <div className="text-xs text-gray-500 mb-0.5">Weekly Closing Stock</div>
+                                  <div className={'text-xl font-bold tabular-nums '
+                                    + (reconciled ? 'text-green-700' : 'text-red-700')}>
+                                    {fmtNum(wd.systemClosing ?? 0)}
                                   </div>
-                                )}
+                                  <div className="text-xs text-gray-400">from reconciliation</div>
+                                </div>
+                                <div className={'rounded-lg p-2 text-center '
+                                  + (reconciled ? 'bg-green-100' : 'bg-orange-100')}>
+                                  <div className="text-xs text-gray-500 mb-0.5">Stock Module Total</div>
+                                  <div className={'text-xl font-bold tabular-nums '
+                                    + (reconciled ? 'text-green-700' : 'text-orange-700')}>
+                                    {fmtNum(actualStock)}
+                                  </div>
+                                  <div className="text-xs text-gray-400">live from stock ledger</div>
+                                </div>
                               </div>
+                              {/* Verdict */}
+                              <div className={'flex items-center justify-between rounded-lg p-2 '
+                                + (reconciled ? 'bg-green-200' : 'bg-red-200')}>
+                                <span className={'font-bold '
+                                  + (reconciled ? 'text-green-800' : 'text-red-800')}>
+                                  {reconciled ? '✅ All bags accounted for' : '⚠️ Unaccounted bags detected'}
+                                </span>
+                                <span className={'font-bold tabular-nums text-lg '
+                                  + (reconciled ? 'text-green-800' : 'text-red-800')}>
+                                  {gap === 0 ? '0' : (gap > 0 ? '+' : '')}{fmtNum(gap)} bags
+                                </span>
+                              </div>
+                              {!reconciled && (
+                                <div className="text-red-600 mt-2 text-xs">
+                                  {gap > 0
+                                    ? `${fmtNum(gap)} bags appear in the Stock module but are not captured in this week's production or dispatch records. Check for missing batch entries or unrecorded dispatches.`
+                                    : `${fmtNum(Math.abs(gap))} bags are in this week's records but not in the Stock module. Check for duplicate entries or missing inventory postings.`}
+                                </div>
+                              )}
                             </div>
                           )
                         })() : null}
