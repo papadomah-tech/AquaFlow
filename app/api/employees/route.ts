@@ -30,9 +30,10 @@ export async function PUT(req: NextRequest) {
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { id, ...payload } = body
+    const { id: rawId, ...payload } = body
+    const id = parseInt(String(rawId), 10)
 
-    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    if (!id || isNaN(id)) return NextResponse.json({ error: 'id is required and must be a number' }, { status: 400 })
 
     // Sanitize numerics
     const clean: Record<string, any> = { ...payload }
@@ -45,14 +46,21 @@ export async function PUT(req: NextRequest) {
     // Never persist UI-only field
     delete clean.selling_price
 
-    const { data, error } = await adminClient()
+    const { data, error, count } = await adminClient()
       .from('employees')
       .update(clean)
       .eq('id', id)
       .select()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    if (!data || data.length === 0) return NextResponse.json({ error: 'No rows updated — employee not found' }, { status: 404 })
+    if (error) return NextResponse.json({ error: error.message, debug: { id, clean } }, { status: 400 })
+    if (!data || data.length === 0) {
+      // Double-check: does this row actually exist?
+      const { data: existing } = await adminClient().from('employees').select('id').eq('id', id)
+      return NextResponse.json({
+        error: `No rows updated — employee id ${id} not found`,
+        debug: { id, idType: typeof rawId, existingRows: existing }
+      }, { status: 404 })
+    }
 
     return NextResponse.json({ success: true, employee: data[0] })
   } catch (err: any) {
