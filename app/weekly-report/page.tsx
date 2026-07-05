@@ -277,7 +277,7 @@ function WeeklyReportInner() {
 
       {/* Month summary hero */}
       {!loading && weeks.length > 0 && (() => {
-        const totalProd = weeks.reduce((a,w) => a + (weekData[w.from]?.totalProduced||0), 0)
+        const totalProd = weeks.reduce((a,w) => a + (weekData[w.from]?.riders?.reduce((a2:number,r:any)=>a2+r.bags,0)||0), 0)
         const totalInv  = weeks.reduce((a,w) => a + (weekData[w.from]?.totalInvoiced||0), 0)
         const totalColl = weeks.reduce((a,w) => a + (weekData[w.from]?.totalCollected||0), 0)
         const totalDep  = weeks.reduce((a,w) => a + (weekData[w.from]?.deposit?.amount||0), 0)
@@ -288,7 +288,7 @@ function WeeklyReportInner() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
               {[
-                ['Bags Produced',    fmtNum(totalProd)],
+                ['Bags Dispatched',  fmtNum(totalProd)],
                 ['Total Invoiced',   fmtGhc(totalInv)],
                 ['Total Collected',  fmtGhc(totalColl)],
                 ['Total Deposited',  fmtGhc(totalDep)],
@@ -329,7 +329,7 @@ function WeeklyReportInner() {
                   </div>
                   <div className="flex gap-2 flex-wrap text-center">
                     {[
-                      ['Produced', fmtNum(wd.totalProduced ?? 0), '#1F4E79'],
+                      ['Dispatched', fmtNum(wd.riders?.reduce((a:number,r:any)=>a+r.bags,0) ?? 0), '#1F4E79'],
                       ['Invoiced', fmtGhc(wd.totalInvoiced ?? 0), '#BF4D00'],
                       ['Collected', fmtGhc(wd.totalCollected ?? 0), '#1B5E20'],
                     ].map(([l,v,c]) => (
