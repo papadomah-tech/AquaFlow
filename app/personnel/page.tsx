@@ -155,7 +155,33 @@ function PersonnelPageInner() {
       return
     }
 
-    setShowEmpForm(false); loadAll()
+    setShowEmpForm(false)
+
+    // Immediately update local state from the saved values so display is correct
+    // even if the service worker returns stale data from loadAll
+    if (editEmp && json.success) {
+      setEmployees(prev => prev.map(emp =>
+        emp.id === editEmp.id
+          ? {
+              ...emp,
+              full_name:          body.full_name,
+              role:               body.role,
+              phone:              body.phone,
+              hire_date:          body.hire_date,
+              employee_type:      body.employee_type,
+              salary:             parseFloat(body.salary) || 0,
+              base_pay:           parseFloat(body.base_pay) || 0,
+              feeding_fee:        body.feeding_fee !== '' ? parseFloat(body.feeding_fee) : 0,
+              monthly_target:     parseInt(body.monthly_target) || 6500,
+              sales_target_daily: parseInt(body.sales_target_daily) || 250,
+              working_days:       parseInt(body.working_days) || 26,
+            }
+          : emp
+      ))
+    }
+
+    // Also do a background refresh to sync any other changes
+    setTimeout(() => loadAll(), 500)
   }
 
   const saveLoss = async () => {
