@@ -56,16 +56,26 @@ function ProductionPageInner() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    // Only the currently active (in_use) roll can be used in production
-    supabase.from('roll_films').select('*')
-      .eq('status', 'in_use').order('purchase_date', { ascending: true })
-      .then(({data}) => {
-        setRolls(data ?? [])
-        // Auto-select the active roll if there's exactly one
-        if (data && data.length === 1) {
-          setForm(f => ({ ...f, roll_film_id: String(data[0].id) }))
+    // Load the active roll; if none in_use, auto-activate the oldest available one
+    ;(async () => {
+      let { data: inUse } = await supabase.from('roll_films').select('*')
+        .eq('status', 'in_use').order('purchase_date', { ascending: true })
+
+      if (!inUse || inUse.length === 0) {
+        // No active roll — promote the oldest available one
+        const { data: nextAvail } = await supabase.from('roll_films').select('*')
+          .eq('status', 'available').order('purchase_date', { ascending: true }).limit(1)
+        if (nextAvail && nextAvail.length > 0) {
+          await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', nextAvail[0].id)
+          inUse = nextAvail.map((r: any) => ({ ...r, status: 'in_use' }))
         }
-      })
+      }
+
+      setRolls(inUse ?? [])
+      if (inUse && inUse.length === 1) {
+        setForm(f => ({ ...f, roll_film_id: String(inUse![0].id) }))
+      }
+    })()
     supabase.from('raw_materials').select('*')
       .gt('usage_per_bag', 0).order('name')
       .then(({data}) => setMaterials(data ?? []))

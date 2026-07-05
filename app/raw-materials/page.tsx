@@ -146,6 +146,23 @@ function RawMaterialsPageInner() {
     loadAll()
   }
 
+  const activateNextRoll = async () => {
+    // Safety check: only run if no roll is currently in_use
+    const { data: active } = await supabase.from('roll_films')
+      .select('id').eq('status', 'in_use').limit(1)
+    if (active && active.length > 0) {
+      alert('A roll is already active (in_use). No action needed.')
+      return
+    }
+    const { data: next } = await supabase.from('roll_films')
+      .select('id, label').eq('status', 'available')
+      .order('purchase_date', { ascending: true }).limit(1).single()
+    if (!next) { alert('No available rolls to activate.'); return }
+    await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+    alert(`Roll ${next.label} is now active.`)
+    loadAll()
+  }
+
   const deleteRoll = async (roll: any) => {
     if (!confirm('Delete roll ' + roll.label + '? This will remove its Kg from Roll Film stock.')) return
     const rollFilmMat = materials.find((m: any) => m.name.toLowerCase() === 'roll film')
@@ -245,6 +262,17 @@ function RawMaterialsPageInner() {
 
           {/* ROLLS TAB */}
           {tab === 'rolls' && (
+            <>
+            {!rolls.some((r: any) => r.status === 'in_use') && rolls.some((r: any) => r.status === 'available') && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3 flex items-center justify-between">
+                <div className="text-sm text-orange-800">
+                  ⚠️ <strong>No active roll.</strong> Available rolls exist but none is active. Production is blocked.
+                </div>
+                <button onClick={activateNextRoll} className="btn btn-sm btn-warning ml-4 whitespace-nowrap">
+                  Activate Next Roll
+                </button>
+              </div>
+            )}
             <div className="card">
               <table className="data-table">
                 <colgroup>
@@ -295,6 +323,7 @@ function RawMaterialsPageInner() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* PURCHASES TAB */}
