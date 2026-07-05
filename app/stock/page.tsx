@@ -47,25 +47,41 @@ function StockPageInner() {
   const variance = physical !== '' ? parseInt(physical||'0') - stock : null
   const varColor = variance === null ? 'text-gray-500'
     : variance < 0 ? 'text-red-600'
-    : variance > 0 ? 'text-orange-600'
+    : variance > 0 ? 'text-green-600'
     : 'text-green-600'
 
   const saveStockTake = async () => {
     if (!physical) return
     const counted  = parseInt(physical)
-    const diff     = counted - stock
-    if (!confirm(
-      `Confirm stock take?\n\nSystem: ${stock.toLocaleString()} bags\n` +
-      `Physical: ${counted.toLocaleString()} bags\n` +
-      `Variance: ${diff >= 0 ? '+' : ''}${diff.toLocaleString()} bags\n\n` +
-      `System stock will be adjusted to match physical count.`
-    )) return
+    const diff     = counted - stock   // positive = surplus, negative = shortage
+
+    // Build confirmation message based on variance direction
+    let confirmMsg = `Confirm stock take?\n\n`
+      + `System stock:    ${stock.toLocaleString()} bags\n`
+      + `Physical count:  ${counted.toLocaleString()} bags\n`
+      + `Variance:        ${diff >= 0 ? '+' : ''}${diff.toLocaleString()} bags\n\n`
+
+    if (diff === 0) {
+      confirmMsg += `✅ Stock is fully reconciled. No adjustment needed.`
+    } else if (diff > 0) {
+      confirmMsg += `📦 Surplus detected: ${diff} more bags physically present than system records.\n`
+        + `Action: System stock will be increased by ${diff} bags.\n`
+        + `An adjustment entry (reference: "adjustment") will be posted to the stock ledger.\n`
+        + `No financial entry will be made.`
+    } else {
+      confirmMsg += `⚠️ Shortage detected: ${Math.abs(diff)} fewer bags than system records.\n`
+        + `Action: System stock will be reduced by ${Math.abs(diff)} bags.\n`
+        + `An adjustment entry will be posted to the stock ledger.\n`
+        + `No financial entry will be made.`
+    }
+
+    if (!confirm(confirmMsg)) return
 
     const { data: st } = await supabase.from('stock_takes').insert({
       take_date: takeDate,
       taken_by:  takenBy ? parseInt(takenBy) : null,
-      notes:     takeNotes || `System ${stock} → Physical ${counted}`,
-      status:    'draft',
+      notes:     takeNotes || `System ${stock} → Physical ${counted} (${diff >= 0 ? '+' : ''}${diff} bags)`,
+      status:    'finalised',
     }).select().single()
     if (!st) return
 
@@ -75,13 +91,19 @@ function StockPageInner() {
       system_qty: stock, counted_qty: counted, variance: diff,
     })
 
+    // Post adjustment to finished_inventory regardless of direction
+    // surplus (diff > 0) → bags_in; shortage (diff < 0) → bags_out
     if (diff !== 0) {
+      const adjNotes = diff > 0
+        ? `Stock Take #${st.id}: Surplus +${diff} bags — physical (${counted}) > system (${stock}). Adjusted upward.`
+        : `Stock Take #${st.id}: Shortage ${diff} bags — physical (${counted}) < system (${stock}). Adjusted downward.`
+
       await supabase.from('finished_inventory').insert({
-        bags_in:          Math.max(0, diff),
-        bags_out:         Math.max(0, -diff),
+        bags_in:          diff > 0 ? diff : 0,
+        bags_out:         diff < 0 ? Math.abs(diff) : 0,
         transaction_date: takeDate,
         reference_type:   'adjustment',
-        notes: `Stock Take #${st.id}: System ${stock} → Physical ${counted} (${diff >= 0 ? '+' : ''}${diff})`,
+        notes:            adjNotes,
       })
     }
 
