@@ -33,7 +33,7 @@ function PersonnelPageInner() {
   const loadAll = useCallback(async () => {
     setLoading(true)
     const [{ data: emp }, { data: el }, { data: sp }] = await Promise.all([
-      supabase.from('employees').select('*').order('full_name'),
+      supabase.from('employees').select('*').order('full_name').gt('id', 0),
       supabase.from('employee_losses').select('*,employees(full_name)').order('loss_date', { ascending: false }),
       supabase.from('salary_payments').select('*,employees(full_name)').order('payment_date', { ascending: false }).limit(100),
     ])

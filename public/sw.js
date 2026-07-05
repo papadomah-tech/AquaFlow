@@ -1,4 +1,4 @@
-const CACHE = 'aquaflow-v1'
+const CACHE = 'aquaflow-v2'
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -19,7 +19,13 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
+  const url = e.request.url
+
+  // NEVER cache Supabase API calls — always go to network
+  if (url.includes('supabase.co') || url.includes('/api/')) return
+
   if (e.request.method !== 'GET') return
+
   e.respondWith(
     fetch(e.request)
       .then(res => {
