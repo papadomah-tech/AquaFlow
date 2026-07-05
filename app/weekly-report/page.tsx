@@ -177,6 +177,9 @@ function WeeklyReportInner() {
       // weekAdjOut kept for compat — already included in weekDispOut
       const weekAdjOut = 0
 
+      // Week's Closing Stock Balance = Opening + Produced − Dispatched (pure, no adjustments)
+      const weekClosingBalance = openingStock + weekProdIn - weekDispOut
+
       // Reconciliation check: systemClosing should equal Stock module current stock
       // at the end of this week (for the last/current week, this IS current stock)
 
@@ -211,7 +214,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing, estRiderBags, estWalkinBags, estExternalBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
