@@ -276,10 +276,14 @@ function ProductionPageInner() {
         <div className="overflow-x-auto">
           <table className="data-table">
             <colgroup>
-              <col style={{width:'145px'}} /><col style={{width:'85px'}} />
-              <col style={{width:'135px'}} /><col style={{width:'60px'}} />
-              <col style={{width:'72px'}} /><col style={{width:'80px'}} />
-              <col /><col style={{width:'150px'}} />
+              <col style={{width:'160px'}} />
+              <col style={{width:'95px'}} />
+              <col style={{width:'150px'}} />
+              <col style={{width:'65px'}} />
+              <col style={{width:'80px'}} />
+              <col style={{width:'95px'}} />
+              <col style={{width:'80px'}} />
+              <col style={{width:'200px'}} />
             </colgroup>
             <thead><tr>
               <th>Batch #</th><th>Date</th><th>Roll Film</th>
@@ -298,7 +302,7 @@ function ProductionPageInner() {
                   <td className="num">{(b.roll_kg_used ?? 0).toFixed(2)}</td>
                   <td className="num" style={{color:'#BF4D00'}}>{fmtGhc((b.bags_produced/100)*OP_FEE)}</td>
                   <td className="muted">{b.notes||'—'}</td>
-                  <td><div className="flex gap-1 flex-wrap">
+                  <td><div className="flex gap-1 items-center flex-nowrap">
                     {paidFees.has(b.batch_number)
                       ? <span className="badge badge-green text-xs">✅ Fee Paid</span>
                       : <button onClick={() => payOperatorFee(b)}
