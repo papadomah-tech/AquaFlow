@@ -17,7 +17,7 @@ import { supabase, fmtGhc, fmtNum, today, fmtDate} from '@/lib/supabase'
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Weeks always start from the 1st of the month.
-// Week 1: 1st → first Saturday. Subsequent weeks: Monday → Saturday.
+// Week 1: 1st → first Sunday. Subsequent weeks: Monday → Sunday.
 function getWeeks(year: number, month: number) {
   const weeks: { from: string; to: string; label: string }[] = []
   const lastDay = new Date(year, month, 0)   // last day of month
@@ -28,17 +28,16 @@ function getWeeks(year: number, month: number) {
 
   while (cur <= lastDay) {
     const from = new Date(cur)
-    // Find end of this week: next Saturday or end of month
+    // Find end of this week: next Sunday (day 0) or end of month
     const to = new Date(cur)
-    while (to.getDay() !== 6 && to < lastDay) to.setDate(to.getDate() + 1)
+    while (to.getDay() !== 0 && to < lastDay) to.setDate(to.getDate() + 1)
     const toFinal = to > lastDay ? new Date(lastDay) : to
 
     weeks.push({ from: fmt(from), to: fmt(toFinal), label: `Week ${weekNum}` })
     weekNum++
 
-    // Next week starts the Monday after this Saturday
+    // Next week starts the Monday after this Sunday
     cur = new Date(toFinal)
-    cur.setDate(cur.getDate() + 1)           // Sunday
     cur.setDate(cur.getDate() + 1)           // Monday
   }
   return weeks
@@ -69,7 +68,8 @@ function WeeklyReportInner() {
   const [openingOpen, setOpeningOpen] = useState<Record<string, boolean>>({})
   const [prodOpen, setProdOpen]       = useState<Record<string, boolean>>({})
   const [dispOpen, setDispOpen]       = useState<Record<string, boolean>>({})
-  const [actualStock, setActualStock] = useState<number>(0)
+  const [actualStock, setActualStock]   = useState<number>(0)
+  const [registering, setRegistering]   = useState<string|null>(null)  // week.from being registered
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -276,6 +276,39 @@ function WeeklyReportInner() {
       .eq('expense_date', dep.deposit_date)
       .ilike('description', `%${weekLabel}%`)
 
+    load()
+  }
+
+  // ── Register physical count as stock adjustment ───────────────────────────
+  const registerPhysicalCount = async (week: any, systemClosing: number, physical: number) => {
+    const diff = physical - systemClosing
+    if (!confirm(
+      `Register physical count?\n\n` +
+      `System Closing Stock: ${fmtNum(systemClosing)} bags\n` +
+      `Physical Count:       ${fmtNum(physical)} bags\n` +
+      `Variance:             ${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags\n\n` +
+      (diff === 0
+        ? '✅ Stock reconciled — no adjustment needed.'
+        : diff > 0
+        ? `📦 Surplus: ${fmtNum(diff)} bags will be added to stock as an adjustment entry.`
+        : `⚠️ Shortage: ${fmtNum(Math.abs(diff))} bags will be deducted from stock as an adjustment entry.`)
+    )) return
+
+    setRegistering(week.from)
+
+    if (diff !== 0) {
+      await supabase.from('finished_inventory').insert({
+        bags_in:          diff > 0 ? diff : 0,
+        bags_out:         diff < 0 ? Math.abs(diff) : 0,
+        transaction_date: week.to,  // post on the last day of the week
+        reference_type:   'adjustment',
+        notes:            `Weekly Report — ${week.from} to ${week.to}: Physical ${fmtNum(physical)} vs System ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags)`,
+      })
+    }
+
+    setRegistering(null)
+    // Clear the physical count input and reload
+    setPhysCount(p => ({...p, [week.from]: ''}))
     load()
   }
 
@@ -697,14 +730,30 @@ function WeeklyReportInner() {
                           </div>
                           {physCount[week.from] && (() => {
                             const phys = parseInt(physCount[week.from]) || 0
-                            const diff = phys - (wd.systemClosing ?? 0)
+                            const diff = phys - (wd.weekClosingBalance ?? 0)
+                            const reconciled = Math.abs(diff) < 2
                             return (
-                              <div className={'flex justify-between text-xs font-bold mt-1 '
-                                + (Math.abs(diff) < 5 ? 'text-green-600' : 'text-red-600')}>
-                                <span>Stock Variance</span>
-                                <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
-                                  {Math.abs(diff) < 5 ? ' ✅' : ' ⚠️'}</span>
-                              </div>
+                              <>
+                                <div className={'flex justify-between text-xs font-bold mt-1 '
+                                  + (reconciled ? 'text-green-600' : 'text-red-600')}>
+                                  <span>Stock Variance</span>
+                                  <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
+                                    {reconciled ? ' ✅' : ' ⚠️'}</span>
+                                </div>
+                                <button
+                                  onClick={() => registerPhysicalCount(week, wd.weekClosingBalance ?? 0, phys)}
+                                  disabled={registering === week.from}
+                                  className={'btn btn-sm w-full mt-2 '
+                                    + (reconciled ? 'btn-secondary' : diff > 0 ? 'btn-primary' : 'btn-danger')}>
+                                  {registering === week.from
+                                    ? '⏳ Registering...'
+                                    : reconciled
+                                    ? '✅ Register (no adjustment needed)'
+                                    : diff > 0
+                                    ? `📦 Register Surplus (+${fmtNum(diff)} bags)`
+                                    : `⚠️ Register Shortage (${fmtNum(diff)} bags)`}
+                                </button>
+                              </>
                             )
                           })()}
                           {Math.abs(wd.stockVarianceBags ?? 0) > 0 && (
