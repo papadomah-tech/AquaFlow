@@ -86,17 +86,12 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
     setLoading(true)
 
     const [
-      { data: bulkIn }, { data: retailOut }, { data: bagReturns },
+      { data: bulkIn }, { data: bagReturns },
       { data: teammateBulk }, { data: empRec },
     ] = await Promise.all([
       supabase.from('sales')
         .select('bags_sold, sale_date, unit_price, amount_paid, outstanding_balance, payment_status')
         .eq('sale_type', 'bulk').eq('buyer_employee_id', employeeId)
-        .order('sale_date', { ascending: false }),
-      supabase.from('sales')
-        .select('bags_sold, total_amount, amount_paid, outstanding_balance, sale_date, customers(name)')
-        .eq('sale_type', 'retail').eq('salesperson_id', employeeId)
-        .gte('sale_date', dateFrom)
         .order('sale_date', { ascending: false }),
       supabase.from('bulk_returns')
         .select('bags_returned, return_date, total_credit')
@@ -112,13 +107,13 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
     const primaryBags   = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
     const mateBags       = (teammateBulk ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
     const totalReceived  = primaryBags + mateBags
-    const totalSold       = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
+    const totalSold       = 0  // retail removed
     const totalReturned   = (bagReturns ?? []).reduce((a: number, r: any) => a + r.bags_returned, 0)
     const bagsOnHand      = Math.max(0, primaryBags - totalSold - totalReturned)
 
-    const revenue       = (retailOut ?? []).reduce((a: number, s: any) => a + s.total_amount, 0)
-    const collected     = (retailOut ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
-    const outstanding   = (retailOut ?? []).reduce((a: number, s: any) => a + s.outstanding_balance, 0)
+    const revenue       = 0  // retail removed
+    const collected     = 0
+    const outstanding   = 0
     const owedToFactory = (bulkIn ?? []).reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
     const basePay    = empRec?.base_pay || empRec?.salary || 0
@@ -129,7 +124,7 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
     const grossPay   = Math.round((earnedBase + feedingFee) * 100) / 100
 
     setRiderData({
-      bulkIn: bulkIn ?? [], retailOut: retailOut ?? [], bagReturns: bagReturns ?? [],
+      bulkIn: bulkIn ?? [], retailOut: [], bagReturns: bagReturns ?? [],
       totalReceived, totalSold, bagsOnHand,
       revenue, collected, outstanding, owedToFactory,
       basePay, feedingFee, monthlyTgt, perfPct, earnedBase, grossPay,
@@ -271,38 +266,6 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
             </div>
           </div>
 
-          {/* Recent retail sales */}
-          <div className="card">
-            <div className="font-semibold text-[#1F4E79] mb-3 flex items-center justify-between">
-              <span>🛍️ My Retail Sales</span>
-              <Link href="/sales" className="text-xs text-blue-600 hover:underline">View all →</Link>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <colgroup>
-                  <col style={{width:'90px'}} /><col />
-                  <col style={{width:'70px'}} /><col style={{width:'100px'}} />
-                  <col style={{width:'85px'}} />
-                </colgroup>
-                <thead>
-                  <tr><th>Date</th><th>Customer</th><th className="right">Bags</th><th className="right">Total</th><th>Status</th></tr>
-                </thead>
-                <tbody>
-                  {riderData.retailOut.length === 0
-                    ? <tr><td colSpan={5} className="text-center py-6 text-gray-400">No sales this period.</td></tr>
-                    : riderData.retailOut.slice(0, 10).map((s: any, i: number) => (
-                    <tr key={i}>
-                      <td className="muted">{fmtDate(s.sale_date)}</td>
-                      <td className="font-medium">{s.customers?.name}</td>
-                      <td className="num">{fmtNum(s.bags_sold)}</td>
-                      <td className="num">{fmtGhc(s.total_amount)}</td>
-                      <td><span className={'badge ' + (s.payment_status==='paid'?'badge-green':s.payment_status==='partial'?'badge-yellow':'badge-red')}>{s.payment_status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </>
       )}
     </AppLayout>
@@ -339,7 +302,7 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
         : Promise.resolve({ data: null }),
     ])
 
-    // Revenue = bulk sales ONLY; ALL retail excluded from revenue figures
+    // Revenue = bulk sales ONLY
     const allSales = (salesRaw ?? []).filter((s: any) => s.sale_type === 'bulk')
     const retail    = allSales.filter((s: any) => s.sale_type !== 'bulk')
     const bulk      = allSales.filter((s: any) => s.sale_type === 'bulk')
