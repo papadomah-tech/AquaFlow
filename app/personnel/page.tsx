@@ -122,39 +122,39 @@ function PersonnelPageInner() {
   }
 
   const saveEmployee = async () => {
-    // Destructure out selling_price — it's UI-only, not a DB column
-    const { selling_price: _sp, ...formData } = empForm
-    const payload = {
-      ...formData,
-      salary: parseFloat(empForm.salary)||0,
-      sales_target_daily: parseInt(empForm.sales_target_daily)||250,
-      working_days: parseInt(empForm.working_days)||26,
-      base_pay: parseFloat(empForm.base_pay)||parseFloat(empForm.salary)||0,
-      feeding_fee: parseFloat(empForm.feeding_fee)||300,
-      monthly_target: parseInt(empForm.monthly_target)||6500,
-    } as any
-    const { data, error } = editEmp
-      ? await supabase.from('employees').update(payload).eq('id', editEmp.id).select()
-      : await supabase.from('employees').insert(payload).select()
-    if (error) {
-      alert(`Save failed: ${error.message} (code: ${error.code ?? 'n/a'})\n\nIf this mentions a missing column, run supabase/fix-employee-pay-columns.sql in the Supabase SQL editor.`)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { alert('Session expired — please log out and log back in.'); return }
+
+    const body: Record<string, any> = {
+      full_name:          empForm.full_name,
+      role:               empForm.role,
+      phone:              empForm.phone,
+      hire_date:          empForm.hire_date,
+      employee_type:      empForm.employee_type,
+      salary:             empForm.salary,
+      base_pay:           empForm.base_pay || empForm.salary,
+      feeding_fee:        empForm.feeding_fee,
+      monthly_target:     empForm.monthly_target,
+      sales_target_daily: empForm.sales_target_daily,
+      working_days:       empForm.working_days,
+    }
+    if (editEmp) body.id = editEmp.id
+
+    const res = await fetch('/api/employees', {
+      method: editEmp ? 'PUT' : 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const json = await res.json()
+    if (!res.ok || json.error) {
+      alert(`Save failed: ${json.error ?? res.statusText}`)
       return
     }
-    if (!data || data.length === 0) {
-      // PostgREST returns success with 0 rows when RLS silently blocks the write
-      const { data: { session } } = await supabase.auth.getSession()
-      alert(
-        `Save was accepted by the server but 0 rows were written.\n\n` +
-        `This means Row Level Security blocked the write.\n` +
-        `Session: ${session ? 'active (uid ' + session.user.id.slice(0,8) + '…, expires ' + new Date((session.expires_at ?? 0) * 1000).toLocaleTimeString() + ')' : 'MISSING — you are not authenticated. Log out and log back in.'}`
-      )
-      return
-    }
-    // Confirm what was actually written
-    const saved = data[0]
-    if (editEmp && (Number(saved.base_pay) !== payload.base_pay || Number(saved.feeding_fee) !== payload.feeding_fee)) {
-      alert(`Warning: database returned different values than submitted.\nSubmitted base_pay ${payload.base_pay} / feeding_fee ${payload.feeding_fee}\nStored base_pay ${saved.base_pay} / feeding_fee ${saved.feeding_fee}\n\nA database trigger or default may be overriding your input.`)
-    }
+
     setShowEmpForm(false); loadAll()
   }
 
