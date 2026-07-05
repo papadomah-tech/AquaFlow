@@ -140,9 +140,6 @@ function PersonnelPageInner() {
     }
     if (editEmp) body.id = editEmp.id
 
-    // DEBUG: show exactly what will be sent
-    if (!confirm(`Sending to DB:\nbase_pay: ${body.base_pay}\nfeeding_fee: ${body.feeding_fee}\nsalary: ${body.salary}\nid: ${body.id ?? 'NEW'}\n\nClick OK to save.`)) return
-
     const res = await fetch('/api/employees', {
       method: editEmp ? 'PUT' : 'POST',
       headers: {

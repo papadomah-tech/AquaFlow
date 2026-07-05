@@ -26,8 +26,8 @@ export async function PUT(req: NextRequest) {
     const id = parseInt(String(body.id), 10)
     if (!id || isNaN(id)) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-    const bp  = parseFloat(body.base_pay)    || 0
-    const ff  = parseFloat(body.feeding_fee) || 300
+    const bp  = body.base_pay !== undefined && body.base_pay !== '' ? parseFloat(body.base_pay) : 0
+    const ff  = body.feeding_fee !== undefined && body.feeding_fee !== '' ? parseFloat(body.feeding_fee) : 300
     const sal = parseFloat(body.salary)      || 0
     const mt  = parseInt(body.monthly_target)   || 6500
     const std = parseInt(body.sales_target_daily) || 250
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const clean: Record<string, any> = { ...body }
     clean.salary             = parseFloat(clean.salary)             || 0
-    clean.base_pay           = parseFloat(clean.base_pay)           || 0
-    clean.feeding_fee        = parseFloat(clean.feeding_fee)        || 300
+    if (clean.base_pay !== undefined && clean.base_pay !== '') clean.base_pay = parseFloat(clean.base_pay)
+    if (clean.feeding_fee !== undefined && clean.feeding_fee !== '') clean.feeding_fee = parseFloat(clean.feeding_fee)
     clean.monthly_target     = parseInt(clean.monthly_target)       || 6500
     clean.sales_target_daily = parseInt(clean.sales_target_daily)   || 250
     clean.working_days       = parseInt(clean.working_days)         || 26
