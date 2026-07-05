@@ -897,7 +897,11 @@ function SalesPageInner() {
             <div className="modal-footer">
               <button onClick={() => setShowForm(false)} className="btn btn-secondary">Cancel</button>
               <button onClick={saveBulkSale}
-                disabled={!bulkForm.bags_sold || !bulkForm.unit_price || !bulkForm.buyer_employee_id}
+                disabled={
+                  !bulkForm.bags_sold || !bulkForm.unit_price ||
+                  (bulkForm.buyer_type === 'rider' && !bulkForm.buyer_employee_id) ||
+                  (bulkForm.buyer_type === 'external' && !bulkForm.external_customer_id)
+                }
                 className="btn btn-warning">📦 Record Dispatch</button>
             </div>
           </div>
