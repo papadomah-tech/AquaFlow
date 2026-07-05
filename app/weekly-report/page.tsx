@@ -588,10 +588,23 @@ function WeeklyReportInner() {
                           )}
                         </div>
 
-                        {/* Closing stock + reconciliation check */}
-                        <div className="flex justify-between text-xs items-center border-t border-gray-200 pt-1.5 mt-1">
-                          <span className="font-bold text-[#1F4E79]">= System Closing Stock</span>
-                          <span className="tabular-nums font-bold text-[#1F4E79]">{fmtNum(wd.systemClosing ?? 0)}</span>
+                        {/* Week's Closing Stock Balance — pure: opening + produced - dispatched */}
+                        <div className="bg-[#1F4E79] rounded-lg px-3 py-2 mt-2">
+                          <div className="text-xs text-blue-200 mb-0.5">
+                            Week{"'"}s Closing Stock Balance
+                            <span className="ml-1 opacity-70">
+                              ({fmtNum(wd.openingStock ?? 0)} + {fmtNum(wd.weekProdIn ?? 0)} − {fmtNum(wd.weekDispOut ?? 0)})
+                            </span>
+                          </div>
+                          <div className="text-xl font-bold text-white tabular-nums">
+                            {fmtNum(wd.weekClosingBalance ?? 0)} bags
+                          </div>
+                        </div>
+
+                        {/* System Closing Stock (includes adjustments from ledger) */}
+                        <div className="flex justify-between text-xs items-center border-t border-gray-200 pt-1.5 mt-2">
+                          <span className="font-medium text-gray-500">= System Closing Stock (incl. adjustments)</span>
+                          <span className="tabular-nums font-medium text-gray-500">{fmtNum(wd.systemClosing ?? 0)}</span>
                         </div>
                         {/* Stock reconciliation — shown on active/current week only */}
                         {(week.from <= today() && week.to >= today()) || wi === weeks.length - 1 ? (() => {
