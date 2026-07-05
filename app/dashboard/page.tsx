@@ -304,15 +304,15 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
 
     // Revenue = bulk sales ONLY
     const allSales = (salesRaw ?? []).filter((s: any) => s.sale_type === 'bulk')
-    const retail    = allSales.filter((s: any) => s.sale_type !== 'bulk')
+    const retail: any[] = []  // retail removed
     const bulk      = allSales.filter((s: any) => s.sale_type === 'bulk')
 
-    const retailRevenue  = retail.reduce((a: number, s: any) => a + s.total_amount, 0)
+    const retailRevenue  = 0  // retail removed
     const bulkRevenue    = bulk.reduce((a: number, s: any) => a + s.total_amount, 0)
-    const totalRevenue   = retailRevenue + bulkRevenue   // both count as company revenue
+    const totalRevenue   = bulkRevenue  // bulk only
     const cashCollected  = allSales.reduce((a: number, s: any) => a + s.amount_paid, 0)
     const outstanding    = allSales.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
-    const bagsSold        = retail.reduce((a: number, s: any) => a + s.bags_sold, 0)
+    const bagsSold        = 0  // retail removed
     const bulkDispatched  = bulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
     const totalExpenses  = (exp ?? []).reduce((a: number, e: any) => a + e.amount, 0)
     const bagsInStock     = (fi ?? []).reduce((a: number, r: any) => a + r.bags_in - r.bags_out, 0)
@@ -394,7 +394,7 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
                 {fmtGhc(stats.totalRevenue)}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                Retail {fmtGhc(stats.retailRevenue)} + Bulk {fmtGhc(stats.bulkRevenue)}
+                All bulk dispatches
               </div>
             </div>
             <div className="card border-l-4"
@@ -413,7 +413,7 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
           {/* ── Secondary stat cards ───────────────────────────────────── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {([
-              ['Bags Sold (Retail)', fmtNum(stats.bagsSold),       '#2E75B6'],
+              ['Bags Dispatched',    fmtNum(stats.bulkDispatched), '#2E75B6'],
               ['Bulk Dispatched',    fmtNum(stats.bulkDispatched), '#BF4D00'],
               ['Bags in Stock',      fmtNum(stats.bagsInStock),    '#4A148C'],
               ['Outstanding',        fmtGhc(stats.outstanding),    '#C00000'],
@@ -462,7 +462,7 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
                       <td className="muted">{fmtDate(s.sale_date)}</td>
                       <td>
                         <span className={'badge ' + (s.sale_type==='bulk' ? 'badge-yellow' : 'badge-blue')}>
-                          {s.sale_type === 'bulk' ? '📦 Bulk' : '🛍️ Retail'}
+                          📦 Bulk
                         </span>
                       </td>
                       <td className="font-medium">

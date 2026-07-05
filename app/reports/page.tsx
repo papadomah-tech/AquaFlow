@@ -7,7 +7,7 @@ import { supabase, fmtGhc, fmtNum, monthStart, today, fmtDate} from '@/lib/supab
 import { exportToCSV, exportSalesToCSV, exportExpensesToCSV } from '@/lib/exportExcel'
 
 function ReportsPageInner() {
-  const [tab, setTab]     = useState<'pl'|'salesperson'|'expenses'>('pl')
+  const [tab, setTab]     = useState<'pl'|'expenses'>('pl')
   const [filter, setFilter] = useState({ from: monthStart(), to: today() })
   const [plData, setPlData] = useState<any>(null)
   const [spData, setSpData] = useState<any[]>([])
@@ -23,14 +23,14 @@ function ReportsPageInner() {
       supabase.from('raw_material_purchases').select('total_cost').gte('purchase_date', filter.from).lte('purchase_date', filter.to),
     ])
     const allSales  = sales ?? []
-    const retail    = allSales.filter((s:any) => s.sale_type !== 'bulk')
-    const bulk      = allSales.filter((s:any) => s.sale_type === 'bulk')
+    const retail: any[] = []  // retail removed
+    const bulk      = allSales  // already bulk-only from query
     setRawSales(allSales)
 
-    const totalRevenue  = retail.reduce((a:number,s:any) => a + s.total_amount, 0)
-    const cashCollected = retail.reduce((a:number,s:any) => a + s.amount_paid, 0)
-    const outstanding   = retail.reduce((a:number,s:any) => a + s.outstanding_balance, 0)
-    const bagsSold      = retail.reduce((a:number,s:any) => a + s.bags_sold, 0)
+    const totalRevenue  = bulk.reduce((a:number,s:any) => a + s.total_amount, 0)
+    const cashCollected = bulk.reduce((a:number,s:any) => a + s.amount_paid, 0)
+    const outstanding   = bulk.reduce((a:number,s:any) => a + s.outstanding_balance, 0)
+    const bagsSold      = bulk.reduce((a:number,s:any) => a + s.bags_sold, 0)
     const bulkRev       = bulk.reduce((a:number,s:any) => a + s.total_amount, 0)
     const totalExpenses = (exp ?? []).reduce((a:number,e:any) => a + e.amount, 0)
     const rmCost        = (rm_cost ?? []).reduce((a:number,r:any) => a + r.total_cost, 0)
@@ -65,10 +65,10 @@ function ReportsPageInner() {
   const downloadPL = () => {
     if (!plData) return
     exportToCSV('profit_and_loss', [
-      { Section:'REVENUE', Item:'Total Retail Revenue', 'Amount (GHc)': plData.totalRevenue },
+      { Section:'REVENUE', Item:'Total Bulk Revenue', 'Amount (GHc)': plData.totalRevenue },
       { Section:'REVENUE', Item:'Cash Collected', 'Amount (GHc)': plData.cashCollected },
       { Section:'REVENUE', Item:'Outstanding', 'Amount (GHc)': plData.outstanding },
-      { Section:'REVENUE', Item:'Retail Bags Sold', 'Amount (GHc)': plData.bagsSold },
+      { Section:'REVENUE', Item:'Bags Dispatched', 'Amount (GHc)': plData.bagsSold },
       { Section:'REVENUE', Item:'Bulk Dispatch Revenue', 'Amount (GHc)': plData.bulkRev },
       { Section:'EXPENSES', Item:'Raw Materials', 'Amount (GHc)': plData.rmCost },
       { Section:'EXPENSES', Item:'Operator Fees', 'Amount (GHc)': plData.opFee },
@@ -110,7 +110,7 @@ function ReportsPageInner() {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 mb-4">
-        {([['pl','Profit & Loss'],['salesperson','Salesperson'],['expenses','Expenses']] as const).map(([t,l]) => (
+        {([['pl','Profit & Loss'],['expenses','Expenses']] as const).map(([t,l]) => (
           <button key={t} onClick={()=>setTab(t)}
             className={'px-5 py-2.5 text-sm font-medium border-b-2 transition-colors '
               + (tab===t ? 'border-[#1F4E79] text-[#1F4E79]' : 'border-transparent text-gray-500 hover:text-gray-700')}>
@@ -130,7 +130,7 @@ function ReportsPageInner() {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 {[
-                  ['Retail Revenue',   fmtGhc(plData.totalRevenue),  '#1F4E79'],
+                  ['Bulk Revenue',     fmtGhc(plData.totalRevenue),  '#1F4E79'],
                   ['Cash Collected',   fmtGhc(plData.cashCollected), '#1B5E20'],
                   ['Outstanding',      fmtGhc(plData.outstanding),   '#C00000'],
                   ['Bags Sold',        fmtNum(plData.bagsSold),      '#2E75B6'],
@@ -169,7 +169,7 @@ function ReportsPageInner() {
           )}
 
           {/* SALESPERSON TAB */}
-          {tab === 'salesperson' && (
+          {false && (
             <>
               <div className="flex gap-2 mb-4">
                 <button onClick={downloadSalesperson} className="btn btn-secondary btn-sm">⬇ Download Salesperson Report (Excel)</button>
