@@ -23,8 +23,10 @@ function ProductionPageInner() {
   const [form, setForm] = useState({
     batch_date: today(), roll_film_id: '', bags_produced: '', notes: ''
   })
-  const [saving, setSaving] = useState(false)
-  const [warnings, setWarnings] = useState<string[]>([])
+  const [saving, setSaving]       = useState(false)
+  const [warnings, setWarnings]   = useState<string[]>([])
+  const [payingFee, setPayingFee] = useState<string|null>(null)
+  const [paidFees, setPaidFees]   = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -156,11 +158,7 @@ function ProductionPageInner() {
         reference_type:'production', notes:'Batch ' + batchNum },
       label: `Stock in — ${bags} bags`, userId: userId ?? '',
     })
-    await supabase.from('expenses').insert({
-      expense_date: form.batch_date, category:'Operator Fee',
-      description:'Operator fee - ' + batchNum + ' (' + bags + ' bags)',
-      amount: (bags/100)*OP_FEE,
-    })
+    // Operator fee is NOT auto-posted — admin must click Pay on the batch row
 
     setWarnings(newWarnings)
     setSaving(false)
@@ -173,6 +171,34 @@ function ProductionPageInner() {
       .then(({data}) => setRolls(data ?? []))
     supabase.from('raw_materials').select('*').gt('usage_per_bag', 0).order('name')
       .then(({data}) => setMaterials(data ?? []))
+  }
+
+  // ── Pay operator fee for a batch ──────────────────────────────────────────
+  const payOperatorFee = async (b: any) => {
+    const fee = (b.bags_produced / 100) * OP_FEE
+    // Check if already paid
+    const { data: existing } = await supabase.from('expenses')
+      .select('id').eq('category', 'Operator Fee')
+      .like('description', '%' + b.batch_number + '%').maybeSingle()
+    if (existing) {
+      alert('Operator fee for this batch has already been posted to Expenses.')
+      return
+    }
+    if (!confirm(
+      `Post operator fee to Expenses?\n\n` +
+      `Batch: ${b.batch_number}\n` +
+      `Bags: ${b.bags_produced}\n` +
+      `Fee: GH₵ ${fee.toFixed(2)}\n\n` +
+      `This will record GH₵ ${fee.toFixed(2)} as an Operator Fee expense.`
+    )) return
+    setPayingFee(b.batch_number)
+    await supabase.from('expenses').insert({
+      expense_date: b.batch_date, category: 'Operator Fee',
+      description: `Operator fee - ${b.batch_number} (${b.bags_produced} bags)`,
+      amount: fee,
+    })
+    setPayingFee(null)
+    load()
   }
 
   const deleteBatch = async (b: any) => {
