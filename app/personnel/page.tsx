@@ -133,8 +133,13 @@ function PersonnelPageInner() {
       feeding_fee: parseFloat(empForm.feeding_fee)||300,
       monthly_target: parseInt(empForm.monthly_target)||6500,
     } as any
-    if (editEmp) await supabase.from('employees').update(payload).eq('id', editEmp.id)
-    else await supabase.from('employees').insert(payload)
+    const { error } = editEmp
+      ? await supabase.from('employees').update(payload).eq('id', editEmp.id)
+      : await supabase.from('employees').insert(payload)
+    if (error) {
+      alert(`Save failed: ${error.message}\n\nIf this mentions a missing column (base_pay, feeding_fee, monthly_target), run supabase/fix-employee-pay-columns.sql in the Supabase SQL editor.`)
+      return
+    }
     setShowEmpForm(false); loadAll()
   }
 
@@ -536,7 +541,7 @@ function PersonnelPageInner() {
                   <input type="number" value={empForm.monthly_target}
                     onChange={e => setEmpForm(f => ({
                       ...f, monthly_target: e.target.value,
-                      sales_target_daily: String(Math.ceil(parseInt(e.target.value)||0 / 26))
+                      sales_target_daily: String(Math.ceil((parseInt(e.target.value)||0) / 26))
                     }))}
                     className="form-input" placeholder="6500" />
                   <div className="text-xs text-gray-400 mt-1">
