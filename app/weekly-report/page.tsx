@@ -65,7 +65,8 @@ function WeeklyReportInner() {
   const [depositing, setDepositing] = useState<string | null>(null)
   const [depRef, setDepRef]     = useState<Record<string, string>>({})
   const [opDesc, setOpDesc]     = useState<Record<string, string>>({})
-  const [physCount, setPhysCount] = useState<Record<string, string>>({})  // physical stock count per week
+  const [physCount, setPhysCount] = useState<Record<string, string>>({})
+  const [openingOpen, setOpeningOpen] = useState<Record<string, boolean>>({})  // drill-down toggle per week
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -464,38 +465,38 @@ function WeeklyReportInner() {
                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
                       <div className="text-xs font-semibold text-gray-500 mb-2">🧮 Bag Movement</div>
                       <div className="space-y-1.5">
-                        {/* Opening stock — clickable to show breakdown */}
-                        {(() => {
-                          const [showOpen, setShowOpen] = ([useState(false)] as any)
-                          return (
-                            <>
-                              <div className="flex justify-between text-xs items-center">
-                                <button
-                                  onClick={() => setShowOpen((v: boolean) => !v)}
-                                  className="text-blue-600 hover:underline text-left">
-                                  Opening Stock {showOpen ? '▲' : '▼'}
-                                </button>
-                                <span className="tabular-nums font-medium text-gray-600">
-                                  {fmtNum(wd.openingStock ?? 0)}
-                                </span>
-                              </div>
-                              {showOpen && (
-                                <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 max-h-40 overflow-y-auto">
-                                  {(wd.openingEntries ?? []).length === 0
-                                    ? <div className="text-gray-400">No entries before this week</div>
-                                    : (wd.openingEntries ?? []).map((e: any, i: number) => (
-                                      <div key={i} className="flex justify-between gap-2">
-                                        <span className="text-gray-500">{fmtDate(e.transaction_date)} · {e.reference_type}</span>
-                                        <span className={e.bags_in > 0 ? 'text-green-600' : 'text-red-600'}>
-                                          {e.bags_in > 0 ? `+${e.bags_in}` : `-${e.bags_out}`}
-                                        </span>
-                                      </div>
-                                    ))}
+                        {/* Opening stock — clickable drill-down */}
+                        <div className="flex justify-between text-xs items-center">
+                          <button
+                            onClick={() => setOpeningOpen(p => ({...p, [week.from]: !p[week.from]}))}
+                            className="text-blue-600 hover:underline text-left font-medium">
+                            Opening Stock {openingOpen[week.from] ? '▲' : '▼'}
+                          </button>
+                          <span className="tabular-nums font-medium text-gray-600">
+                            {fmtNum(wd.openingStock ?? 0)}
+                          </span>
+                        </div>
+                        {openingOpen[week.from] && (
+                          <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 max-h-48 overflow-y-auto mb-1">
+                            {(wd.openingEntries ?? []).length === 0
+                              ? <div className="text-gray-400 py-1">No entries before this week</div>
+                              : (wd.openingEntries ?? []).map((e: any, i: number) => (
+                                <div key={i} className="flex justify-between gap-2 py-0.5 border-b border-gray-50 last:border-0">
+                                  <span className="text-gray-500">
+                                    {fmtDate(e.transaction_date)}
+                                    <span className="ml-1 text-gray-400 capitalize">{e.reference_type}</span>
+                                  </span>
+                                  <span className={e.bags_in > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                                    {e.bags_in > 0 ? `+${fmtNum(e.bags_in)}` : `-${fmtNum(e.bags_out)}`}
+                                  </span>
                                 </div>
-                              )}
-                            </>
-                          )
-                        })()}
+                              ))}
+                            <div className="flex justify-between pt-1 border-t border-gray-200 font-semibold">
+                              <span className="text-gray-600">Total Opening</span>
+                              <span className="text-[#1F4E79]">{fmtNum(wd.openingStock ?? 0)}</span>
+                            </div>
+                          </div>
+                        )}
                         {([
                           ['+ Produced this week',  fmtNum(wd.weekProdIn ?? 0),     'text-green-700'],
                           ...((wd.weekAdjIn ?? 0) > 0 ? [['+ Adjustments In', fmtNum(wd.weekAdjIn ?? 0), 'text-blue-600'] as [string,string,string]] : []),
