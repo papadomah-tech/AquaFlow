@@ -128,23 +128,57 @@ function WeeklyReportInner() {
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
       // ── Stock reconciliation ─────────────────────────────────────────────
-      // Opening stock = all inventory movement before this week
+      // Opening stock = verified inventory movements before this week
+      // Uses all entries (production, sales, adjustments) for accurate opening
       const openingStock = (allInventory ?? [])
         .filter((r: any) => r.transaction_date < w.from)
         .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
 
-      // Production this week (bags_in)
+      // Production this week — ONLY production batches (reference_type='production')
+      // Exclude adjustments, stock takes and other bags_in entries
       const weekProdIn = (allInventory ?? [])
-        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to && r.bags_in > 0)
+        .filter((r: any) =>
+          r.transaction_date >= w.from &&
+          r.transaction_date <= w.to &&
+          r.bags_in > 0 &&
+          r.reference_type === 'production'
+        )
         .reduce((a: number, r: any) => a + r.bags_in, 0)
 
-      // Dispatches this week from inventory (bags_out)
+      // Dispatches this week — ONLY bulk sale entries (reference_type='sale')
+      // Excludes write-offs, protocol bags, adjustments
       const weekDispOut = (allInventory ?? [])
-        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to && r.bags_out > 0)
+        .filter((r: any) =>
+          r.transaction_date >= w.from &&
+          r.transaction_date <= w.to &&
+          r.bags_out > 0 &&
+          (r.reference_type === 'sale' || r.reference_type === 'factory_retail')
+        )
         .reduce((a: number, r: any) => a + r.bags_out, 0)
 
-      // System closing stock at end of week
-      const systemClosing = openingStock + weekProdIn - weekDispOut
+      // Non-production bags_in this week (adjustments, stock takes, etc.)
+      const weekAdjIn = (allInventory ?? [])
+        .filter((r: any) =>
+          r.transaction_date >= w.from &&
+          r.transaction_date <= w.to &&
+          r.bags_in > 0 &&
+          r.reference_type !== 'production'
+        )
+        .reduce((a: number, r: any) => a + r.bags_in, 0)
+
+      // Non-dispatch bags_out this week (write-offs, protocol, adjustments)
+      const weekAdjOut = (allInventory ?? [])
+        .filter((r: any) =>
+          r.transaction_date >= w.from &&
+          r.transaction_date <= w.to &&
+          r.bags_out > 0 &&
+          r.reference_type !== 'sale' &&
+          r.reference_type !== 'factory_retail'
+        )
+        .reduce((a: number, r: any) => a + r.bags_out, 0)
+
+      // System closing = opening + produced + adj_in − dispatched − adj_out
+      const systemClosing = openingStock + totalProduced + weekAdjIn - weekDispOut - weekAdjOut
 
       // Bags dispatched per bulk records this week (for revenue estimate)
       let estRevenue = 0
@@ -170,7 +204,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, weekProdIn, weekDispOut, systemClosing,
+        openingStock, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -452,8 +486,10 @@ function WeeklyReportInner() {
                       <div className="space-y-1.5">
                         {([
                           ['Opening Stock',         fmtNum(wd.openingStock ?? 0),   'text-gray-600'],
-                          ['+ Produced this week',  fmtNum(wd.weekProdIn ?? 0),     'text-green-700'],
+                          ['+ Produced this week',  fmtNum(wd.totalProduced ?? 0),   'text-green-700'],
+                          ...((wd.weekAdjIn ?? 0) > 0 ? [['+ Adjustments In', fmtNum(wd.weekAdjIn ?? 0), 'text-blue-600'] as [string,string,string]] : []),
                           ['− Dispatched (ledger)', fmtNum(wd.weekDispOut ?? 0),    'text-red-600'],
+                          ...((wd.weekAdjOut ?? 0) > 0 ? [['− Adjustments Out', fmtNum(wd.weekAdjOut ?? 0), 'text-orange-600'] as [string,string,string]] : []),
                           ['= System Closing Stock',fmtNum(wd.systemClosing ?? 0),  'text-[#1F4E79] font-bold'],
                         ] as [string,string,string][]).map(([l,v,c]) => (
                           <div key={l} className="flex justify-between text-xs">
