@@ -288,9 +288,20 @@ function SalesPageInner() {
     let riderId: number | null = null
 
     if (bulkForm.buyer_type === 'external') {
-      // External bulk customer — use CustomerSelect value
-      custId = parseInt(bulkForm.external_customer_id)
-      if (!custId) { alert('Please select or add the external customer.'); return }
+      // Handle walk-in customer
+      if (!bulkForm.external_customer_id || bulkForm.external_customer_id === 'walk-in') {
+        const { data: wi } = await supabase.from('customers').select('id').eq('name','Walk-in Customer').single()
+        if (wi) {
+          custId = wi.id
+        } else {
+          const { data: newWi } = await supabase.from('customers')
+            .insert({ name: 'Walk-in Customer' }).select().single()
+          custId = newWi?.id ?? 1
+        }
+      } else {
+        custId = parseInt(bulkForm.external_customer_id)
+        if (!custId) { alert('Please select or add the external customer.'); return }
+      }
     } else {
       // Internal rider/employee buyer
       riderId = parseInt(bulkForm.buyer_employee_id) || null
@@ -855,8 +866,9 @@ function SalesPageInner() {
                     onChange={(id) => setBulkForm(f => ({...f, external_customer_id: id}))}
                   />
                   <div className="text-xs text-gray-400 mt-1">
-                    Select an existing customer or add a new one. External bulk sales are not
-                    linked to performance pay calculations.
+                    Select an existing customer or add a new one.
+                    Leave as <strong>Walk-in Customer</strong> for unregistered buyers.
+                    External bulk sales are not linked to performance pay.
                   </div>
                 </div>
               )}
@@ -899,8 +911,7 @@ function SalesPageInner() {
               <button onClick={saveBulkSale}
                 disabled={
                   !bulkForm.bags_sold || !bulkForm.unit_price ||
-                  (bulkForm.buyer_type === 'rider' && !bulkForm.buyer_employee_id) ||
-                  (bulkForm.buyer_type === 'external' && !bulkForm.external_customer_id)
+                  (bulkForm.buyer_type === 'rider' && !bulkForm.buyer_employee_id)
                 }
                 className="btn btn-warning">📦 Record Dispatch</button>
             </div>
