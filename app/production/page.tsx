@@ -298,7 +298,15 @@ function ProductionPageInner() {
                   <td className="num">{(b.roll_kg_used ?? 0).toFixed(2)}</td>
                   <td className="num" style={{color:'#BF4D00'}}>{fmtGhc((b.bags_produced/100)*OP_FEE)}</td>
                   <td className="muted">{b.notes||'—'}</td>
-                  <td><div className="flex gap-1">
+                  <td><div className="flex gap-1 flex-wrap">
+                    {paidFees.has(b.batch_number)
+                      ? <span className="badge badge-green text-xs">✅ Fee Paid</span>
+                      : <button onClick={() => payOperatorFee(b)}
+                          disabled={payingFee === b.batch_number}
+                          className="btn btn-sm btn-warning">
+                          {payingFee === b.batch_number ? '⏳' : '💳 Pay Fee'}
+                        </button>
+                    }
                     <button onClick={()=>{
                       setEditBatch(b); setWarnings([])
                       setForm({batch_date:b.batch_date,roll_film_id:String(b.roll_film_id??''),bags_produced:String(b.bags_produced),notes:b.notes??''})
