@@ -88,6 +88,25 @@ function ProductionPageInner() {
     if (!form.roll_film_id) { alert('You must select a Roll Film before saving a production batch.'); return }
     if (bags <= 0) { alert('Enter the number of bags produced.'); return }
 
+    // Over-expected warning
+    const checkRoll = rolls.find((r: any) => r.id === parseInt(form.roll_film_id))
+    if (checkRoll) {
+      const prevBags = editBatch ? (checkRoll.bags_produced - editBatch.bags_produced) : (checkRoll.bags_produced || 0)
+      const newTotal = prevBags + bags
+      if (newTotal > checkRoll.bags_expected) {
+        const over = newTotal - checkRoll.bags_expected
+        const proceed = confirm(
+          `⚠️ Over-Expected Warning\n\n` +
+          `Roll ${checkRoll.label} has an expected yield of ${checkRoll.bags_expected} bags.\n` +
+          `With this batch, total produced will be ${newTotal} bags (+${over} over expected).\n\n` +
+          `Are you sure these production records are correctly assigned to this roll?\n\n` +
+          `• Click OK to save and keep using this roll.\n` +
+          `• Click Cancel to go back — you may need to close this roll first.`
+        )
+        if (!proceed) return
+      }
+    }
+
     setSaving(true)
     const newWarnings: string[] = []
 

@@ -16,6 +16,9 @@ function RawMaterialsPageInner() {
   const [editItem, setEditItem] = useState<any>(null)
 
   const [rollForm, setRollForm] = useState({ label: '', weight_kg: '', purchase_date: today(), supplier: '', cost_per_kg: '' })
+  const [rollDetail, setRollDetail] = useState<any>(null)        // roll being inspected
+  const [rollBatches, setRollBatches] = useState<any[]>([])      // production batches for that roll
+  const [loadingBatches, setLoadingBatches] = useState(false)
   const [matForm, setMatForm] = useState({ name: '', unit: 'kg', low_stock_threshold: '0', usage_per_bag: '0' })
   const [purchForm, setPurchForm] = useState({ material_id: '', purchase_date: today(), supplier_name: '', quantity: '', unit_price: '', notes: '' })
 
@@ -166,6 +169,18 @@ function RawMaterialsPageInner() {
     setShowForm(false); loadAll()
   }
 
+  const openRollDetail = async (roll: any) => {
+    setRollDetail(roll)
+    setLoadingBatches(true)
+    const { data } = await supabase
+      .from('production_batches')
+      .select('batch_number, batch_date, bags_produced, notes')
+      .eq('roll_film_id', roll.id)
+      .order('batch_date', { ascending: true })
+    setRollBatches(data ?? [])
+    setLoadingBatches(false)
+  }
+
   const statusBadge = (s: string) => ({ available: 'badge-green', in_use: 'badge-blue', finished: 'badge-gray' }[s] ?? 'badge-gray')
 
   const TAB_BTN = (t: typeof tab, label: string) => (
@@ -254,7 +269,7 @@ function RawMaterialsPageInner() {
                     const util = r.bags_expected > 0 ? (r.bags_produced / r.bags_expected * 100).toFixed(1) : '0.0'
                     return (
                       <tr key={r.id}>
-                        <td className="font-mono text-xs font-medium whitespace-nowrap">{r.label}</td>
+                        <td className="font-mono text-xs font-medium whitespace-nowrap"><button onClick={() => openRollDetail(r)} className="text-blue-700 hover:underline text-left">{r.label}</button></td>
                         <td className="muted">{fmtDate(r.purchase_date)}</td>
                         <td className="muted">{r.supplier||'—'}</td>
                         <td className="num">{r.weight_kg}</td>
@@ -312,6 +327,96 @@ function RawMaterialsPageInner() {
             </div>
           )}
         </>
+      )}
+
+      {/* ROLL DETAIL MODAL */}
+      {rollDetail && (
+        <div className="modal-overlay" onClick={() => setRollDetail(null)}>
+          <div className="modal-box" style={{maxWidth:'580px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="font-bold text-[#1F4E79] font-mono">{rollDetail.label}</h2>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {rollDetail.weight_kg} Kg · {rollDetail.supplier || 'No supplier'} · {fmtDate(rollDetail.purchase_date)}
+                </div>
+              </div>
+              <button onClick={() => setRollDetail(null)} className="text-gray-400 text-xl">X</button>
+            </div>
+            <div className="modal-body">
+              {/* Summary row */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {[
+                  ['Expected Bags', fmtNum(rollDetail.bags_expected), 'text-[#1F4E79]'],
+                  ['Produced Bags', fmtNum(rollDetail.bags_produced), rollDetail.bags_produced > rollDetail.bags_expected ? 'text-orange-600 font-bold' : 'text-green-700'],
+                  ['Remaining', fmtNum(rollDetail.bags_expected - rollDetail.bags_produced), rollDetail.bags_produced > rollDetail.bags_expected ? 'text-red-600' : 'text-gray-700'],
+                ].map(([l,v,c]) => (
+                  <div key={l as string} className="bg-gray-50 rounded-xl p-3 text-center">
+                    <div className="text-xs text-gray-400 mb-1">{l}</div>
+                    <div className={'text-lg font-bold tabular-nums ' + c}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {rollDetail.bags_produced > rollDetail.bags_expected && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
+                  ⚠️ <strong>Over-expected:</strong> This roll has produced {fmtNum(rollDetail.bags_produced - rollDetail.bags_expected)} bags more than expected.
+                  If these production records are correct, you can close the roll below. If not, review the batches and remove any incorrectly assigned entries.
+                  {rollDetail.status !== 'finished' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Close roll ${rollDetail.label}?
+
+This marks it as finished and allows the next available roll to become active.`)) return
+                        await supabase.from('roll_films').update({ status: 'finished' }).eq('id', rollDetail.id)
+                        setRollDetail(null)
+                        loadAll()
+                      }}
+                      className="btn btn-sm btn-warning mt-2 w-full"
+                    >
+                      ✅ Records are correct — Close this Roll
+                    </button>
+                  )}
+                </div>
+              )}
+              {/* Production batches table */}
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Production Batches</div>
+              {loadingBatches ? (
+                <div className="text-center py-6 text-gray-400 text-sm">Loading batches...</div>
+              ) : rollBatches.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm italic">No production batches recorded for this roll.</div>
+              ) : (
+                <table className="data-table w-full table-fixed">
+                  <colgroup>
+                    <col style={{width:'45%'}} /><col style={{width:'25%'}} /><col style={{width:'20%'}} /><col style={{width:'10%'}} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Batch</th><th>Date</th><th className="right">Bags</th><th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rollBatches.map((b: any) => (
+                      <tr key={b.batch_number}>
+                        <td className="font-mono text-xs">{b.batch_number}</td>
+                        <td className="muted">{fmtDate(b.batch_date)}</td>
+                        <td className="num font-medium">{fmtNum(b.bags_produced)}</td>
+                        <td className="muted text-xs">{b.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-100">
+                      <td className="px-3 py-1.5 text-xs font-semibold text-gray-600" colSpan={2}>TOTAL</td>
+                      <td className="px-3 py-1.5 text-xs font-bold text-right tabular-nums">
+                        {fmtNum(rollBatches.reduce((a: number, b: any) => a + b.bags_produced, 0))}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL */}
