@@ -35,7 +35,7 @@ function SalesPageInner() {
   const [riders, setRiders]       = useState<any[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading]     = useState(true)
-  const [activeTab, setActiveTab] = useState<'retail'|'bulk'>('retail')
+  const [activeTab, setActiveTab] = useState<'bulk'>('bulk')
   const [riderBags, setRiderBags]   = useState<number | null>(null)  // bags on hand for rider
   const [returns, setReturns]         = useState<any[]>([])
   const [showReturnForm, setShowReturnForm] = useState(false)
@@ -43,7 +43,7 @@ function SalesPageInner() {
   const [returnForm, setReturnForm]         = useState({ return_date: '', bags_returned: '', notes: '' })
   const [savingReturn, setSavingReturn]     = useState(false)
   const [showForm, setShowForm]   = useState(false)
-  const [formType, setFormType]   = useState<'retail'|'bulk'>('retail')
+  const [formType, setFormType]   = useState<'bulk'>('bulk')
   const [editSale, setEditSale]   = useState<any>(null)
 
   const [filter, setFilter] = useState({
@@ -64,7 +64,7 @@ function SalesPageInner() {
     external_customer_id: '',     // for external bulk customers
     bags_sold: '', unit_price: '', amount_paid: '', notes: ''
   })
-  const [retailForm, setRetailForm] = useState(blankRetail())
+  // retailForm removed — retail sales disabled
   const [bulkForm, setBulkForm]     = useState(blankBulk())
 
   // ── Load sales ─────────────────────────────────────────────────────────────
@@ -152,122 +152,9 @@ function SalesPageInner() {
       })
   }, [])
 
-  // ── Save retail sale ───────────────────────────────────────────────────────
-  const saveRetailSale = async () => {
-    const bags  = parseInt(retailForm.bags_sold) || 0
-    const price = parseFloat(retailForm.unit_price) || 0
-    const paid  = parseFloat(retailForm.amount_paid) || 0
-    const proto = parseInt(retailForm.protocol_bags) || 0
-    const total = bags * price
-    const bal   = Math.max(0, total - paid)
-    const status = paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
+  // Retail sales removed
 
-    if (!editSale) {
-      // For riders: check their personal bag balance
-      if (isRider && employeeId) {
-        const [{ data: bulkIn }, { data: retailOut }, { data: riderRet2 }] = await Promise.all([
-          supabase.from('sales').select('bags_sold')
-            .eq('sale_type','bulk').eq('buyer_employee_id', employeeId),
-          supabase.from('sales').select('bags_sold')
-            .eq('sale_type','retail').eq('salesperson_id', employeeId),
-          supabase.from('bulk_returns').select('bags_returned')
-            .eq('employee_id', employeeId),
-        ])
-        const received = (bulkIn ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-        const sold     = (retailOut ?? []).reduce((a: number, s: any) => a + s.bags_sold, 0)
-        const returned2 = (riderRet2 ?? []).reduce((a: number, r: any) => a + r.bags_returned, 0)
-        const available = received - sold - returned2
-        setRiderBags(available)
-        if (bags + proto > available) {
-          alert(`Insufficient bags!\n\nYou have ${available} bag(s) available.\nYou are trying to sell ${bags + proto} bag(s).\n\nContact your manager for a bulk top-up.`)
-          return
-        }
-      } else {
-        // For admin/manager: check factory stock
-        const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
-        const stock = (fi ?? []).reduce((a: number, r: any) => a + r.bags_in - r.bags_out, 0)
-        if (bags + proto > stock) {
-          alert('Insufficient stock! Available: ' + stock + ' bags'); return
-        }
-      }
-    }
-
-    // Resolve walk-in customer
-    let customerId: number
-    if (retailForm.customer_id === 'walk-in' || !retailForm.customer_id) {
-      const { data: wi } = await supabase.from('customers').select('id').eq('name','Walk-in Customer').single()
-      if (wi) { customerId = wi.id }
-      else {
-        const { data: wic } = await supabase.from('customers')
-          .insert({ name: 'Walk-in Customer' }).select().single()
-        customerId = wic?.id ?? 1
-      }
-    } else {
-      customerId = parseInt(retailForm.customer_id)
-    }
-
-    // Non-rider: can assign any rep. Rider: always self
-    const spId = isRider ? employeeId
-      : (retailForm.salesperson_id ? parseInt(retailForm.salesperson_id) : null)
-
-    const payload: any = {
-      sale_date: retailForm.sale_date, customer_id: customerId,
-      salesperson_id: spId, sale_type: 'retail',
-      bags_sold: bags, unit_price: price, total_amount: total,
-      amount_paid: paid, outstanding_balance: bal,
-      payment_status: status,
-      protocol_bags: proto, notes: retailForm.notes,
-    }
-
-    const custName = retailForm.customer_id === 'walk-in' ? 'Walk-in Customer' : 'Customer'
-
-    if (editSale) {
-      await offlineSave({ table:'sales', operation:'update', payload,
-        recordId: editSale.id, label:`Sale update — ${custName}`,
-        userId: userId ?? '' })
-    } else {
-      const { data: ns, offline } = await offlineSave({
-        table:'sales', operation:'insert', payload,
-        label: `Retail sale — ${custName} (${bags} bags)`,
-        userId: userId ?? ''
-      })
-
-      // Only deduct factory stock for NON-rider sales.
-      // Rider sales come from the rider's own bulk stock —
-      // factory stock was already deducted at bulk dispatch.
-      if (!isRider) {
-        // Factory/admin retail: deduct from finished_inventory
-        await offlineSave({
-          table: 'finished_inventory', operation: 'insert',
-          payload: { bags_in:0, bags_out: bags,
-            transaction_date: retailForm.sale_date,
-            reference_type:'sale', notes:`Factory retail sale to ${custName}` },
-          label: `Stock out — ${bags} bags`,
-          userId: userId ?? ''
-        })
-      }
-
-      // Protocol bags: always write-off from inventory regardless of who sold
-      // (they are gifts — reduce stock but don't appear in revenue)
-      if (proto > 0) {
-        await offlineSave({
-          table: 'finished_inventory', operation: 'insert',
-          payload: { bags_in:0, bags_out: proto,
-            transaction_date: retailForm.sale_date,
-            reference_type:'write-off', notes:`Protocol bags — ${custName}` },
-          label: `Protocol write-off — ${proto} bags`,
-          userId: userId ?? ''
-        })
-      }
-
-      if (offline) {
-        alert(`📵 Offline — sale saved locally.\nWill sync to server when internet is restored.`)
-      }
-    }
-    setShowForm(false); load()
-  }
-
-  // ── Save bulk sale (factory → rider) ──────────────────────────────────────
+    // ── Save bulk sale (factory → rider) ──────────────────────────────────────
   const saveBulkSale = async () => {
     const bags  = parseInt(bulkForm.bags_sold) || 0
     const price = parseFloat(bulkForm.unit_price) || 0
@@ -421,8 +308,6 @@ function SalesPageInner() {
     collected: a.collected + s.amount_paid, outstanding: a.outstanding + s.outstanding_balance
   }), { bags: 0, revenue: 0, collected: 0, outstanding: 0 })
 
-  const retailTotal = parseFloat(retailForm.bags_sold||'0') * parseFloat(retailForm.unit_price||'0')
-  const retailBal   = Math.max(0, retailTotal - parseFloat(retailForm.amount_paid||'0'))
   const bulkTotal   = parseFloat(bulkForm.bags_sold||'0') * parseFloat(bulkForm.unit_price||'0')
   const bulkBal     = Math.max(0, bulkTotal - parseFloat(bulkForm.amount_paid||'0'))
 
@@ -434,9 +319,9 @@ function SalesPageInner() {
           <h1 className="page-title">💼 Sales</h1>
           <div className="text-xs text-gray-400 mt-0.5">
             {isAdmin
-              ? 'Admin — all transactions visible'
+              ? 'Admin — all bulk dispatches visible'
               : isRider
-              ? 'Your retail sales only'
+              ? 'Bulk dispatches — your deliveries'
               : 'Factory manager view'}
           </div>
         </div>
@@ -452,20 +337,7 @@ function SalesPageInner() {
               📦 Bulk Dispatch
             </button>
           )}
-          <button onClick={() => {
-            if (isRider && riderBags !== null && riderBags <= 0) {
-              alert('You have no bags available to sell.\nContact your manager for a bulk dispatch first.')
-              return
-            }
-            setFormType('retail')
-            setRetailForm(blankRetail())
-            setEditSale(null)
-            setShowForm(true)
-          }}
-          disabled={isRider && riderBags !== null && riderBags <= 0}
-          className="btn btn-primary">
-            + Retail Sale
-          </button>
+
         </div>
       </div>
 
@@ -485,27 +357,7 @@ function SalesPageInner() {
         </div>
       )}
 
-      {/* ── Tab bar — hide bulk tab for riders ───────────────────────── */}
-      <div className="flex border-b border-gray-200 mb-4">
-        <button onClick={() => setActiveTab('retail')}
-          className={'px-5 py-2.5 text-sm font-medium border-b-2 transition-colors '
-            + (activeTab === 'retail'
-              ? 'border-[#1F4E79] text-[#1F4E79]'
-              : 'border-transparent text-gray-500 hover:text-gray-700')}>
-          🛍️ Retail Sales
-          <span className="ml-2 text-xs text-gray-400">(to customers)</span>
-        </button>
-        {!isRider && (isAdmin || isFactoryManager) && (
-          <button onClick={() => setActiveTab('bulk')}
-            className={'px-5 py-2.5 text-sm font-medium border-b-2 transition-colors '
-              + (activeTab === 'bulk'
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700')}>
-            📦 Bulk Dispatches
-            <span className="ml-2 text-xs text-gray-400">(to riders)</span>
-          </button>
-        )}
-      </div>
+      {/* ── Bulk Dispatch only — retail removed ─────────────────────── */}
 
       {/* ── Filters ──────────────────────────────────────────────────── */}
       <div className="card mb-4 flex flex-wrap gap-3 items-end">
@@ -529,7 +381,7 @@ function SalesPageInner() {
         <div><label className="form-label">Search</label>
           <input value={filter.search}
             onChange={e => setFilter(f => ({...f, search: e.target.value}))}
-            placeholder={activeTab === 'retail' ? 'Customer...' : 'Rider...'}
+            placeholder='Rider...'
             className="form-input w-36" /></div>
       </div>
 
@@ -575,58 +427,7 @@ function SalesPageInner() {
       {/* ── Table ────────────────────────────────────────────────────── */}
       <div className="card p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          {activeTab === 'retail' ? (
-            /* RETAIL TABLE */
-            <table className="data-table">
-              <colgroup>
-                <col style={{width:'90px'}} /><col />
-                {isAdmin && <col style={{width:'120px'}} />}
-                <col style={{width:'70px'}} /><col style={{width:'105px'}} />
-                <col style={{width:'100px'}} /><col style={{width:'100px'}} />
-                <col style={{width:'72px'}} /><col style={{width:'120px'}} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Date</th><th>Customer</th>
-                  {isAdmin && <th>Rep</th>}
-                  <th className="right">Bags</th>
-                  <th className="right">Total</th>
-                  <th className="right">Paid</th>
-                  <th className="right">Balance</th>
-                  <th>Status</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading || roleLoading
-                  ? <tr><td colSpan={isAdmin ? 9 : 8} className="text-center py-8 text-gray-400">Loading...</td></tr>
-                  : sales.length === 0
-                  ? <tr><td colSpan={isAdmin ? 9 : 8} className="text-center py-8 text-gray-400">No retail sales found</td></tr>
-                  : sales.map((s: any) => (
-                  <tr key={s.id}>
-                    <td className="muted">{fmtDate(s.sale_date)}</td>
-                    <td className="font-medium">{s.customers?.name}</td>
-                    {isAdmin && <td className="muted">{s.employees?.full_name ?? '—'}</td>}
-                    <td className="num">{fmtNum(s.bags_sold)}</td>
-                    <td className="num">{fmtGhc(s.total_amount)}</td>
-                    <td className="num-green">{fmtGhc(s.amount_paid)}</td>
-                    <td className="num-red">{fmtGhc(s.outstanding_balance)}</td>
-                    <td><span className={'badge ' + (s.payment_status==='paid'?'badge-green':s.payment_status==='partial'?'badge-yellow':'badge-red')}>{s.payment_status}</span></td>
-                    <td>
-                      <div className="flex gap-1">
-                        <button onClick={() => {
-                          setEditSale(s); setFormType('retail')
-                          setRetailForm({ sale_date:s.sale_date, customer_id:String(s.customer_id), salesperson_id:String(s.salesperson_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), protocol_bags:String(s.protocol_bags??0), notes:s.notes??'' })
-                          setShowForm(true)
-                        }} className="btn btn-sm btn-secondary">Edit</button>
-                        <button onClick={() => deleteSale(s)} className="btn btn-sm btn-danger">Del</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            /* BULK TABLE */
+          /* BULK TABLE */
             <table className="data-table">
               <colgroup>
                 <col style={{width:'90px'}} /><col style={{width:'150px'}} />
@@ -680,105 +481,11 @@ function SalesPageInner() {
                 ))}
               </tbody>
             </table>
-          )}
+
         </div>
       </div>
 
-      {/* ── RETAIL SALE FORM ──────────────────────────────────────────── */}
-      {showForm && formType === 'retail' && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h2 className="font-bold text-[#1F4E79]">
-                  {editSale ? 'Edit Retail Sale' : '🛍️ New Retail Sale'}
-                </h2>
-                <p className="text-xs text-gray-400 mt-0.5">Sale to end customer</p>
-              </div>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 text-xl">✕</button>
-            </div>
-            <div className="modal-body space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="form-label">Date</label>
-                  <input type="date" value={retailForm.sale_date}
-                    onChange={e => setRetailForm(f => ({...f, sale_date:e.target.value}))}
-                    className="form-input" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Unit Price (GHc)</label>
-                  <input type="number" step="0.01" value={retailForm.unit_price}
-                    onChange={e => setRetailForm(f => ({...f, unit_price:e.target.value}))}
-                    className="form-input" />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Customer *</label>
-                <CustomerSelect value={retailForm.customer_id}
-                  onChange={id => setRetailForm(f => ({...f, customer_id:id}))} />
-              </div>
-              {/* Admin/Manager can assign a rep; riders always self */}
-              {!isRider && (isAdmin || isFactoryManager) && (
-                <div className="form-group">
-                  <label className="form-label">Sales Rep</label>
-                  <select value={retailForm.salesperson_id}
-                    onChange={e => setRetailForm(f => ({...f, salesperson_id:e.target.value}))}
-                    className="form-select">
-                    <option value="">None / Direct</option>
-                    {employees.map((e: any) => (
-                      <option key={e.id} value={e.id}>{e.full_name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {isRider && (
-                <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-700">
-                  Sales Rep: <strong>{employeeName}</strong> (you)
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="form-label">Bags Sold *</label>
-                  <input type="number" value={retailForm.bags_sold}
-                    onChange={e => setRetailForm(f => ({...f, bags_sold:e.target.value}))}
-                    className="form-input" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Protocol Bags</label>
-                  <input type="number" value={retailForm.protocol_bags}
-                    onChange={e => setRetailForm(f => ({...f, protocol_bags:e.target.value}))}
-                    className="form-input" />
-                </div>
-              </div>
-              {retailTotal > 0 && (
-                <div className="bg-blue-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm">
-                  <div><div className="text-xs text-gray-500">Total</div><div className="font-bold text-[#1F4E79]">{fmtGhc(retailTotal)}</div></div>
-                  <div><div className="text-xs text-gray-500">Balance</div><div className="font-bold text-red-600">{fmtGhc(retailBal)}</div></div>
-                  <div><div className="text-xs text-gray-500">Status</div><div className="font-bold">{parseFloat(retailForm.amount_paid||'0')>=retailTotal?'Paid':parseFloat(retailForm.amount_paid||'0')>0?'Partial':'Unpaid'}</div></div>
-                </div>
-              )}
-              <div className="form-group">
-                <label className="form-label">Amount Paid (GHc)</label>
-                <input type="number" step="0.01" value={retailForm.amount_paid}
-                  onChange={e => setRetailForm(f => ({...f, amount_paid:e.target.value}))}
-                  className="form-input" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Notes</label>
-                <textarea value={retailForm.notes} rows={2}
-                  onChange={e => setRetailForm(f => ({...f, notes:e.target.value}))}
-                  className="form-input" />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setShowForm(false)} className="btn btn-secondary">Cancel</button>
-              <button onClick={saveRetailSale}
-                disabled={!retailForm.bags_sold || !retailForm.unit_price}
-                className="btn btn-primary">💾 Save Sale</button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* ── BULK DISPATCH FORM ────────────────────────────────────────── */}
       {showForm && formType === 'bulk' && (
