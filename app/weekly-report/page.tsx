@@ -624,9 +624,13 @@ function WeeklyReportInner() {
                           <span className="font-medium text-gray-500">= System Closing Stock (incl. adjustments)</span>
                           <span className="tabular-nums font-medium text-gray-500">{fmtNum(wd.systemClosing ?? 0)}</span>
                         </div>
-                        {/* Stock reconciliation — shown on active/current week only */}
-                        {(week.from <= today() && week.to >= today()) || wi === weeks.length - 1 ? (() => {
-                          const gap = actualStock - (wd.systemClosing ?? 0)
+                        {/* Stock reconciliation — shown on ALL weeks */}
+                        {(() => {
+                          // Active/current week: compare vs live stock module
+                          // Past weeks: compare weekClosingBalance vs systemClosing
+                          const isActiveWeek = week.from <= today() && week.to >= today()
+                          const compareValue = isActiveWeek ? actualStock : (wd.systemClosing ?? 0)
+                          const gap = compareValue - (wd.weekClosingBalance ?? 0)
                           const reconciled = Math.abs(gap) < 2
                           return (
                             <div className={'rounded-lg p-3 text-xs mt-3 border-2 '
@@ -635,7 +639,7 @@ function WeeklyReportInner() {
                                 : 'bg-red-50 border-red-400')}>
                               <div className={'text-xs font-bold uppercase tracking-wide mb-2 '
                                 + (reconciled ? 'text-green-700' : 'text-red-700')}>
-                                🔍 Active Week Stock Verification
+                                🔍 Stock Verification
                               </div>
                               {/* Big comparison display */}
                               <div className="grid grid-cols-2 gap-2 mb-2">
@@ -679,7 +683,7 @@ function WeeklyReportInner() {
                               )}
                             </div>
                           )
-                        })() : null}
+                        })()}
                         <div className="border-t border-gray-200 pt-1.5 mt-1">
                           <div className="flex justify-between items-center text-xs">
                             <span className="text-gray-600">Physical Count (enter)</span>
