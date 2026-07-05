@@ -66,7 +66,9 @@ function WeeklyReportInner() {
   const [depRef, setDepRef]     = useState<Record<string, string>>({})
   const [opDesc, setOpDesc]     = useState<Record<string, string>>({})
   const [physCount, setPhysCount] = useState<Record<string, string>>({})
-  const [openingOpen, setOpeningOpen] = useState<Record<string, boolean>>({})  // drill-down toggle per week
+  const [openingOpen, setOpeningOpen] = useState<Record<string, boolean>>({})
+  const [prodOpen, setProdOpen]       = useState<Record<string, boolean>>({})
+  const [dispOpen, setDispOpen]       = useState<Record<string, boolean>>({})
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -161,13 +163,17 @@ function WeeklyReportInner() {
       // This will match the Stock module's current stock figure
       const systemClosing = openingStock + weekProdIn + weekAdjIn - weekDispOut
 
-      // Bags dispatched per bulk records this week (for revenue estimate)
+      // Revenue estimate per dispatch:
+      // buyer_employee_id set → rider/rep → GHc 6
+      // no buyer_employee_id → external/walk-in bulk customer → GHc 4.8
       let estRevenue = 0
+      let estRiderBags = 0, estExternalBags = 0
       wBulk.forEach((s: any) => {
-        const isRiderBuyer = !!s.buyer?.full_name && !s.customers?.name
-        const isExternal   = !!s.customers?.name
-        const price = isExternal ? PRICE_EXTERNAL : PRICE_RIDER
-        estRevenue += s.bags_sold * price
+        const isRider = !!s.buyer   // buyer = employees!buyer_employee_id join
+        const price   = isRider ? PRICE_RIDER : PRICE_EXTERNAL
+        estRevenue   += s.bags_sold * price
+        if (isRider) estRiderBags    += s.bags_sold
+        else         estExternalBags += s.bags_sold
       })
 
       // Variance: expected dispatch from stock vs actual bulk records
@@ -185,7 +191,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing,
+        openingStock, openingEntries, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing, estRiderBags, estExternalBags,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -497,17 +503,73 @@ function WeeklyReportInner() {
                             </div>
                           </div>
                         )}
-                        {([
-                          ['+ Produced this week',  fmtNum(wd.weekProdIn ?? 0),     'text-green-700'],
-                          ...((wd.weekAdjIn ?? 0) > 0 ? [['+ Adjustments In', fmtNum(wd.weekAdjIn ?? 0), 'text-blue-600'] as [string,string,string]] : []),
-                          ['− Dispatched (all out)', fmtNum(wd.weekDispOut ?? 0),   'text-red-600'],
-                          ['= System Closing Stock', fmtNum(wd.systemClosing ?? 0), 'text-[#1F4E79] font-bold'],
-                        ] as [string,string,string][]).map(([l,v,c]) => (
-                          <div key={l} className="flex justify-between text-xs">
-                            <span className="text-gray-600">{l}</span>
-                            <span className={'tabular-nums font-medium ' + c}>{v}</span>
+                        {/* Produced — clickable */}
+                        <div>
+                          <div className="flex justify-between text-xs items-center">
+                            <button onClick={() => setProdOpen(p => ({...p, [week.from]: !p[week.from]}))}
+                              className="text-green-700 hover:underline font-medium">
+                              + Produced this week {prodOpen[week.from] ? '▲' : '▼'}
+                            </button>
+                            <span className="tabular-nums font-medium text-green-700">{fmtNum(wd.weekProdIn ?? 0)}</span>
                           </div>
-                        ))}
+                          {prodOpen[week.from] && (
+                            <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 mt-1 mb-1">
+                              {(wd.batches ?? []).length === 0
+                                ? <div className="text-gray-400">No production this week</div>
+                                : (wd.batches ?? []).map((b: any, i: number) => (
+                                  <div key={i} className="flex justify-between">
+                                    <span className="text-gray-500">{fmtDate(b.batch_date)} · {b.roll_ref || 'No roll'}</span>
+                                    <span className="text-green-600 font-medium">+{fmtNum(b.bags_produced)}</span>
+                                  </div>
+                                ))}
+                              <div className="flex justify-between font-semibold border-t border-gray-200 pt-1">
+                                <span>Total Produced</span>
+                                <span className="text-green-700">{fmtNum(wd.totalProduced ?? 0)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Adjustments if any */}
+                        {(wd.weekAdjIn ?? 0) > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-600">+ Adjustments In</span>
+                            <span className="tabular-nums font-medium text-blue-600">{fmtNum(wd.weekAdjIn)}</span>
+                          </div>
+                        )}
+
+                        {/* Dispatched — clickable */}
+                        <div>
+                          <div className="flex justify-between text-xs items-center">
+                            <button onClick={() => setDispOpen(p => ({...p, [week.from]: !p[week.from]}))}
+                              className="text-red-600 hover:underline font-medium">
+                              − Dispatched (all out) {dispOpen[week.from] ? '▲' : '▼'}
+                            </button>
+                            <span className="tabular-nums font-medium text-red-600">{fmtNum(wd.weekDispOut ?? 0)}</span>
+                          </div>
+                          {dispOpen[week.from] && (
+                            <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 mt-1 mb-1">
+                              {(wd.riders ?? []).length === 0
+                                ? <div className="text-gray-400">No dispatches this week</div>
+                                : (wd.riders ?? []).map((r: any, i: number) => (
+                                  <div key={i} className="flex justify-between">
+                                    <span className="text-gray-500">{r.name}</span>
+                                    <span className="text-red-600 font-medium">−{fmtNum(r.bags)}</span>
+                                  </div>
+                                ))}
+                              <div className="flex justify-between font-semibold border-t border-gray-200 pt-1">
+                                <span>Total Dispatched</span>
+                                <span className="text-red-700">{fmtNum(wd.weekDispOut ?? 0)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Closing stock */}
+                        <div className="flex justify-between text-xs items-center border-t border-gray-200 pt-1.5 mt-1">
+                          <span className="font-bold text-[#1F4E79]">= System Closing Stock</span>
+                          <span className={'tabular-nums font-bold text-[#1F4E79]'}>{fmtNum(wd.systemClosing ?? 0)}</span>
+                        </div>
                         <div className="border-t border-gray-200 pt-1.5 mt-1">
                           <div className="flex justify-between items-center text-xs">
                             <span className="text-gray-600">Physical Count (enter)</span>
@@ -548,8 +610,27 @@ function WeeklyReportInner() {
                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
                       <div className="text-xs font-semibold text-gray-500 mb-2">💰 Revenue Check</div>
                       <div className="space-y-1.5">
+                        {/* Estimated revenue breakdown */}
+                        <div className="bg-blue-50 rounded-lg p-2 text-xs space-y-1 mb-1">
+                          <div className="font-semibold text-blue-700 mb-1">Estimated Revenue Breakdown</div>
+                          {(wd.estRiderBags ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Riders/Reps ({fmtNum(wd.estRiderBags)} bags × GHc {PRICE_RIDER})</span>
+                              <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estRiderBags ?? 0) * PRICE_RIDER)}</span>
+                            </div>
+                          )}
+                          {(wd.estExternalBags ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">External/Walk-in ({fmtNum(wd.estExternalBags)} bags × GHc {PRICE_EXTERNAL})</span>
+                              <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estExternalBags ?? 0) * PRICE_EXTERNAL)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between font-bold border-t border-blue-200 pt-1">
+                            <span className="text-blue-800">Total Estimated</span>
+                            <span className="tabular-nums text-[#1F4E79]">{fmtGhc(wd.estRevenue ?? 0)}</span>
+                          </div>
+                        </div>
                         {([
-                          ['Estimated Revenue',  fmtGhc(wd.estRevenue ?? 0),      'text-[#1F4E79]'],
                           ['Actual Invoiced',    fmtGhc(wd.totalInvoiced ?? 0),   'text-gray-600'],
                           ['Actual Collected',   fmtGhc(wd.totalCollected ?? 0),  'text-green-700'],
                           ['Outstanding',        fmtGhc(wd.totalOutstanding ?? 0),'text-red-600'],
@@ -565,9 +646,6 @@ function WeeklyReportInner() {
                             <span>Est. vs Collected Gap</span>
                             <span>{(wd.collectionVariance??0) >= 0 ? '+' : ''}{fmtGhc(Math.abs(wd.collectionVariance ?? 0))}
                               {Math.abs(wd.collectionVariance ?? 0) < 50 ? ' ✅' : ' ⚠️'}</span>
-                          </div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            Riders/Reps GHc {PRICE_RIDER}/bag · External GHc {PRICE_EXTERNAL}/bag
                           </div>
                         </div>
                       </div>
