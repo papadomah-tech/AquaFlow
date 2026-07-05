@@ -69,6 +69,7 @@ function WeeklyReportInner() {
   const [openingOpen, setOpeningOpen] = useState<Record<string, boolean>>({})
   const [prodOpen, setProdOpen]       = useState<Record<string, boolean>>({})
   const [dispOpen, setDispOpen]       = useState<Record<string, boolean>>({})
+  const [actualStock, setActualStock] = useState<number>(0)
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -86,6 +87,7 @@ function WeeklyReportInner() {
       { data: bulkSales },
       { data: existingDeps },
       { data: allInventory },
+      { data: allStockRaw },
     ] = await Promise.all([
       supabase.from('production_batches')
         .select('batch_date, bags_produced, roll_ref')
@@ -103,7 +105,15 @@ function WeeklyReportInner() {
         .select('bags_in, bags_out, transaction_date, reference_type, notes')
         .lte('transaction_date', monthTo)
         .order('transaction_date'),
+      // Current total stock (same as Stock module)
+      supabase.from('finished_inventory')
+        .select('bags_in, bags_out'),
     ])
+
+    // Total current stock (matches Stock module exactly)
+    const actualCurrentStock = (allStockRaw ?? [])
+      .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
+    setActualStock(actualCurrentStock)
 
     // Build per-week data
     const byWeek: Record<string, any> = {}
@@ -130,38 +140,45 @@ function WeeklyReportInner() {
       const totalCollected  = wBulk.reduce((a: number, s: any) => a + s.amount_paid, 0)
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
-      // ── Stock reconciliation ─────────────────────────────────────────────
-      // Opening stock = ALL inventory before this week (matches Stock module logic)
+      // ── Stock reconciliation — MIRRORS Stock module exactly ──────────────
+      // Stock module: bags_in - bags_out across ALL finished_inventory entries
+      // We split that into: before-week (opening) + this-week (movement)
+
+      // Opening stock = all inventory BEFORE this week
       const openingStock = (allInventory ?? [])
         .filter((r: any) => r.transaction_date < w.from)
         .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
 
-      // Opening stock detail — entries that make up the opening balance
       const openingEntries = (allInventory ?? [])
         .filter((r: any) => r.transaction_date < w.from)
 
-      // Produced this week — directly from production_batches (already calculated as totalProduced)
-      // This matches exactly what Production module shows
-      const weekProdIn = totalProduced  // from wBatches above
+      // This week's inventory entries — ALL of them (same as stock module)
+      const weekEntries = (allInventory ?? [])
+        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to)
 
-      // Dispatched this week — ALL bags_out from inventory in this week
-      const weekDispOut = (allInventory ?? [])
-        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to && r.bags_out > 0)
-        .reduce((a: number, r: any) => a + r.bags_out, 0)
+      // Bags IN this week from inventory (production + adjustments)
+      const weekAllBagsIn = weekEntries.reduce((a: number, r: any) => a + (r.bags_in||0), 0)
 
-      // Any non-production bags_in this week (adjustments etc)
-      const weekAdjIn = (allInventory ?? [])
-        .filter((r: any) =>
-          r.transaction_date >= w.from && r.transaction_date <= w.to &&
-          r.bags_in > 0 && r.reference_type !== 'production'
-        )
+      // Bags IN from production_batches (for display — matches Production module)
+      const weekProdIn = totalProduced  // shown in Produced label
+
+      // Bags IN from adjustments (non-production)
+      const weekAdjIn = weekEntries
+        .filter((r: any) => r.bags_in > 0 && r.reference_type !== 'production')
         .reduce((a: number, r: any) => a + r.bags_in, 0)
 
-      const weekAdjOut = 0  // included in weekDispOut already
+      // Bags OUT this week — ALL (dispatches + write-offs etc)
+      const weekDispOut = weekEntries.reduce((a: number, r: any) => a + (r.bags_out||0), 0)
 
-      // Closing = opening + produced + any adj_in - all bags_out
-      // This will match the Stock module's current stock figure
-      const systemClosing = openingStock + weekProdIn + weekAdjIn - weekDispOut
+      // Closing = opening + all bags_in this week − all bags_out this week
+      // This EXACTLY matches the Stock module's current stock calculation
+      const systemClosing = openingStock + weekAllBagsIn - weekDispOut
+
+      // weekAdjOut kept for compat — already included in weekDispOut
+      const weekAdjOut = 0
+
+      // Reconciliation check: systemClosing should equal Stock module current stock
+      // at the end of this week (for the last/current week, this IS current stock)
 
       // Revenue estimate per dispatch:
       // buyer_employee_id set → rider/rep → GHc 6
@@ -191,7 +208,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing, estRiderBags, estExternalBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, systemClosing, estRiderBags, estExternalBags,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -565,11 +582,46 @@ function WeeklyReportInner() {
                           )}
                         </div>
 
-                        {/* Closing stock */}
+                        {/* Closing stock + reconciliation check */}
                         <div className="flex justify-between text-xs items-center border-t border-gray-200 pt-1.5 mt-1">
                           <span className="font-bold text-[#1F4E79]">= System Closing Stock</span>
-                          <span className={'tabular-nums font-bold text-[#1F4E79]'}>{fmtNum(wd.systemClosing ?? 0)}</span>
+                          <span className="tabular-nums font-bold text-[#1F4E79]">{fmtNum(wd.systemClosing ?? 0)}</span>
                         </div>
+                        {/* For the active/last week — compare against Stock module */}
+                        {wi === weeks.length - 1 || (week.to >= today()) ? (() => {
+                          const gap = actualStock - (wd.systemClosing ?? 0)
+                          const reconciled = Math.abs(gap) < 2
+                          return (
+                            <div className={'rounded-lg p-2 text-xs mt-2 '
+                              + (reconciled ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200')}>
+                              <div className="flex justify-between font-semibold mb-1">
+                                <span className={reconciled ? 'text-green-700' : 'text-red-700'}>
+                                  {reconciled ? '✅ Stock Reconciled' : '⚠️ Stock Discrepancy'}
+                                </span>
+                                <span className={reconciled ? 'text-green-700' : 'text-red-700'}>
+                                  {gap >= 0 ? '+' : ''}{fmtNum(gap)} bags
+                                </span>
+                              </div>
+                              <div className="space-y-0.5">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">Stock Module (actual)</span>
+                                  <span className="tabular-nums font-medium">{fmtNum(actualStock)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">Weekly Reconciliation</span>
+                                  <span className="tabular-nums font-medium">{fmtNum(wd.systemClosing ?? 0)}</span>
+                                </div>
+                                {!reconciled && (
+                                  <div className="text-red-500 mt-1">
+                                    {gap > 0
+                                      ? `${fmtNum(gap)} bags in Stock module not accounted for in weekly records`
+                                      : `${fmtNum(Math.abs(gap))} bags in weekly records not in Stock module`}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })() : null}
                         <div className="border-t border-gray-200 pt-1.5 mt-1">
                           <div className="flex justify-between items-center text-xs">
                             <span className="text-gray-600">Physical Count (enter)</span>
