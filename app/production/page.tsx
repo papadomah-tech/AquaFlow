@@ -30,11 +30,27 @@ function ProductionPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('production_batches')
-      .select('*,roll_films(id,label,status,bags_expected,bags_produced,weight_kg,kg_remaining)')
-      .gte('batch_date', filter.from).lte('batch_date', filter.to)
-      .order('batch_date', { ascending: false })
+    const [{ data }, { data: opFeeExps }] = await Promise.all([
+      supabase.from('production_batches')
+        .select('*,roll_films(id,label,status,bags_expected,bags_produced,weight_kg,kg_remaining)')
+        .gte('batch_date', filter.from).lte('batch_date', filter.to)
+        .order('batch_date', { ascending: false }),
+      supabase.from('expenses')
+        .select('description')
+        .eq('category', 'Operator Fee'),
+    ])
     setBatches(data ?? [])
+    // Build set of batch numbers that have had operator fee paid
+    const paid = new Set<string>()
+    ;(opFeeExps ?? []).forEach((e: any) => {
+      const desc = e.description ?? ''
+      const start = desc.indexOf('BATCH-')
+      if (start >= 0) {
+        const end = desc.indexOf(' ', start)
+        paid.add(end > 0 ? desc.slice(start, end) : desc.slice(start))
+      }
+    })
+    setPaidFees(paid)
     setLoading(false)
   }, [filter])
 
