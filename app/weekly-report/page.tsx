@@ -115,9 +115,11 @@ function WeeklyReportInner() {
       .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
     setActualStock(actualCurrentStock)
 
-    // Build per-week data
+    // Build per-week data sequentially so each week's opening = previous week's closing
     const byWeek: Record<string, any> = {}
-    ws.forEach(w => {
+    let prevWeekClosing: number | null = null  // tracks rolling closing stock
+
+    ws.forEach((w, wi) => {
       const inRange = (d: string) => d >= w.from && d <= w.to
 
       // Production
@@ -176,6 +178,9 @@ function WeeklyReportInner() {
 
       // weekAdjOut kept for compat — already included in weekDispOut
       const weekAdjOut = 0
+
+      // Update rolling closing for next week's opening
+      prevWeekClosing = systemClosing
 
       // Week's Closing Stock Balance = Opening + Produced − Dispatched (pure, no adjustments)
       const weekClosingBalance = openingStock + weekProdIn - weekDispOut
