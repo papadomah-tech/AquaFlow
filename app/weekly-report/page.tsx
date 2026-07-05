@@ -142,49 +142,44 @@ function WeeklyReportInner() {
       const totalCollected  = wBulk.reduce((a: number, s: any) => a + s.amount_paid, 0)
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
-      // ── Stock reconciliation — MIRRORS Stock module exactly ──────────────
-      // Stock module: bags_in - bags_out across ALL finished_inventory entries
-      // We split that into: before-week (opening) + this-week (movement)
+      // ── Stock reconciliation ────────────────────────────────────────────────
+      // Opening stock:
+      //   Week 1: sum all finished_inventory before this week
+      //   Week 2+: previous week's closing (guarantees continuity)
+      const openingStock = prevWeekClosing !== null
+        ? prevWeekClosing
+        : (allInventory ?? [])
+            .filter((r: any) => r.transaction_date < w.from)
+            .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
 
-      // Opening stock = all inventory BEFORE this week
-      const openingStock = (allInventory ?? [])
-        .filter((r: any) => r.transaction_date < w.from)
-        .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
-
+      // Opening entries for drill-down (always from inventory for reference)
       const openingEntries = (allInventory ?? [])
         .filter((r: any) => r.transaction_date < w.from)
 
-      // This week's inventory entries — ALL of them (same as stock module)
+      // This week's inventory entries
       const weekEntries = (allInventory ?? [])
         .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to)
 
-      // Bags IN this week from inventory (production + adjustments)
-      const weekAllBagsIn = weekEntries.reduce((a: number, r: any) => a + (r.bags_in||0), 0)
-
-      // Bags IN from production_batches (for display — matches Production module)
-      const weekProdIn = totalProduced  // shown in Produced label
-
-      // Bags IN from adjustments (non-production)
-      const weekAdjIn = weekEntries
+      // Bags IN from production (for display)
+      const weekProdIn  = totalProduced
+      // Bags IN from non-production entries (adjustments)
+      const weekAdjIn   = weekEntries
         .filter((r: any) => r.bags_in > 0 && r.reference_type !== 'production')
         .reduce((a: number, r: any) => a + r.bags_in, 0)
+      const weekAllBagsIn = weekProdIn + weekAdjIn
 
-      // Bags OUT this week from bulk dispatches — read from sales records directly
-      // This avoids stale/duplicate finished_inventory entries (e.g. old retail entries)
+      // Bags OUT = bulk dispatches from sales records (authoritative, avoids stale inventory)
       const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Closing = opening + ALL bags_in this week (production + adj) − actual dispatches
-      const systemClosing = openingStock + weekAllBagsIn - weekDispOut
+      // Week's closing stock (pure formula — shown as Week's Closing Stock Balance)
+      const weekClosingBalance = openingStock + weekProdIn - weekDispOut
 
-      // weekAdjOut kept for compat — already included in weekDispOut
+      // System closing (includes adjustments) — feeds next week's opening
+      const systemClosing = openingStock + weekAllBagsIn - weekDispOut
       const weekAdjOut = 0
 
-      // Update rolling closing for next week's opening
+      // ← This is the KEY: next week's opening = this week's closing
       prevWeekClosing = systemClosing
-
-      // Week's Closing Stock Balance = Opening + Produced − Dispatched (pure, no adjustments)
-      // weekClosingBalance = pure: opening + produced - dispatched (from sales records)
-      const weekClosingBalance = openingStock + weekProdIn - weekDispOut
 
       // Reconciliation check: systemClosing should equal Stock module current stock
       // at the end of this week (for the last/current week, this IS current stock)
