@@ -34,6 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           // Redirect root path to role-appropriate landing page
           if (window.location.pathname === '/' || window.location.pathname === '') {
             if (r === 'admin') window.location.href = '/dashboard'
+            else if (perms.includes('rider-sales')) window.location.href = '/rider-sales'
             else if (perms.includes('customers')) window.location.href = '/customers'
             else if (perms.includes('sales')) window.location.href = '/sales'
             else window.location.href = '/customers'

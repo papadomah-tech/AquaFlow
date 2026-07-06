@@ -6,7 +6,7 @@ import { ALL_MODULES } from '@/lib/modules'
 
 // Priority order for bottom nav (show first 5 the user has access to)
 // customers first so operators land on their primary module
-const PRIORITY = ['customers','sales','dashboard','production','stock','personnel','expenses','reports']
+const PRIORITY = ['customers','rider-sales','sales','dashboard','production','stock','personnel','expenses','reports']
 
 export default function MobileNav() {
   const pathname   = usePathname()

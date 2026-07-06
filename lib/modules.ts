@@ -14,6 +14,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'stock',          label: 'Stock',          icon: '📦', href: '/stock',          adminOnly: false, description: 'Finished goods ledger, stock take, movements' },
   { key: 'pricing',        label: 'Pricing',        icon: '💰', href: '/pricing',        adminOnly: false, description: 'Cost calculator, revenue breakdown' },
   { key: 'customers',      label: 'Customers',      icon: '👤', href: '/customers',      adminOnly: false, description: 'Customer base — add, search, manage contacts' },
+  { key: 'rider-sales',    label: 'My Sales',       icon: '🛵', href: '/rider-sales',    adminOnly: false, description: 'Personal sales diary — deliveries, collections, outstanding' },
   { key: 'sales',          label: 'Sales',          icon: '💼', href: '/sales',          adminOnly: false, description: 'Sales records, customers, payments' },
   { key: 'expenses',       label: 'Expenses',       icon: '💸', href: '/expenses',       adminOnly: false, description: 'Record and manage all expenses' },
   { key: 'reconciliation', label: 'Cash & Bank',    icon: '🏦', href: '/reconciliation', adminOnly: false, description: 'Bank reconciliation, deposits' },
