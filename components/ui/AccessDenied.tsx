@@ -14,8 +14,8 @@ export default function AccessDenied({ message, moduleLabel }: { message?: strin
           <p className="text-gray-400 text-sm mb-6">
             Contact your administrator to request access.
           </p>
-          <Link href="/sales" className="btn btn-primary inline-flex">
-            ← Go to Sales
+          <Link href="/customers" className="btn btn-primary inline-flex">
+            ← Go to Customers
           </Link>
         </div>
       </div>

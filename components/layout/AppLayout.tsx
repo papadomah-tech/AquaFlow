@@ -27,7 +27,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         setUserId(session.user.id)
         if (profile) {
           setUserName(profile.full_name || session.user.email || 'User')
-          setUserRole(profile.role || 'operator')
+          const r = profile.role || 'operator'
+          setUserRole(r)
+          // Redirect root path to role-appropriate landing page
+          if (window.location.pathname === '/' || window.location.pathname === '' || window.location.pathname === '/sales') {
+            if (r !== 'admin') window.location.href = '/customers'
+            else window.location.href = '/dashboard'
+          }
         } else {
           // Auto-create missing profile
           const name = session.user.email?.split('@')[0] || 'User'

@@ -31,4 +31,4 @@ export const ALL_MODULES: AppModule[] = [
 ]
 
 export const ADMIN_ALWAYS: string[]     = ['dashboard', 'settings']
-export const DEFAULT_PERMISSIONS: string[] = ['sales', 'customers']
+export const DEFAULT_PERMISSIONS: string[] = ['customers']

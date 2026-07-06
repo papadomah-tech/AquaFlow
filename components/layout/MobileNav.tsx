@@ -5,7 +5,8 @@ import { useRole } from '@/hooks/useRole'
 import { ALL_MODULES } from '@/lib/modules'
 
 // Priority order for bottom nav (show first 5 the user has access to)
-const PRIORITY = ['dashboard','sales','production','stock','personnel','expenses','raw-materials','reports']
+// customers first so operators land on their primary module
+const PRIORITY = ['customers','sales','dashboard','production','stock','personnel','expenses','reports']
 
 export default function MobileNav() {
   const pathname   = usePathname()

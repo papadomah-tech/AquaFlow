@@ -29,9 +29,9 @@ export function useRole() {
           const name = session.user.email?.split('@')[0] ?? 'User'
           await supabase.from('profiles').upsert({
             id: session.user.id, full_name: name,
-            role: 'operator', is_active: true, permissions: ['sales'],
+            role: 'operator', is_active: true, permissions: ['customers', 'sales'],
           })
-          setRole('operator'); setPermissions(['sales'])
+          setRole('operator'); setPermissions(['customers', 'sales'])
           setLoading(false); return
         }
 
@@ -40,7 +40,7 @@ export function useRole() {
         setPermissions(r === 'admin'
           ? ALL_MODULES.map(m => m.key)
           : (Array.isArray(profile.permissions) && profile.permissions.length > 0
-              ? profile.permissions : ['sales']))
+              ? profile.permissions : ['customers', 'sales']))
 
         // Fetch linked employee + their type
         const { data: emp } = await supabase
@@ -56,7 +56,7 @@ export function useRole() {
         }
       } catch (err) {
         console.error('useRole error:', err)
-        setRole('operator'); setPermissions(['sales'])
+        setRole('operator'); setPermissions(['customers'])
       } finally {
         setLoading(false)
       }
