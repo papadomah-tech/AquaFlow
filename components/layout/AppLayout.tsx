@@ -28,11 +28,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         if (profile) {
           setUserName(profile.full_name || session.user.email || 'User')
           const r = profile.role || 'operator'
+          const perms: string[] = Array.isArray(profile.permissions) && profile.permissions.length > 0
+            ? profile.permissions : ['customers']
           setUserRole(r)
           // Redirect root path to role-appropriate landing page
-          if (window.location.pathname === '/' || window.location.pathname === '' || window.location.pathname === '/sales') {
-            if (r !== 'admin') window.location.href = '/customers'
-            else window.location.href = '/dashboard'
+          if (window.location.pathname === '/' || window.location.pathname === '') {
+            if (r === 'admin') window.location.href = '/dashboard'
+            else if (perms.includes('customers')) window.location.href = '/customers'
+            else if (perms.includes('sales')) window.location.href = '/sales'
+            else window.location.href = '/customers'
           }
         } else {
           // Auto-create missing profile
@@ -42,7 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             full_name:   name,
             role:        'operator',
             is_active:   true,
-            permissions: ['sales'],
+            permissions: ['customers'],
           })
           setUserName(name)
           setUserRole('operator')
