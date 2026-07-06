@@ -98,20 +98,45 @@ function ProductionPageInner() {
     if (!form.roll_film_id) { alert('You must select a Roll Film before saving a production batch.'); return }
     if (bags <= 0) { alert('Enter the number of bags produced.'); return }
 
-    // Over-expected warning
+    // Roll film production cap: cumulative total must not exceed 115% of expected
     const checkRoll = rolls.find((r: any) => r.id === parseInt(form.roll_film_id))
     if (checkRoll) {
-      const prevBags = editBatch ? (checkRoll.bags_produced - editBatch.bags_produced) : (checkRoll.bags_produced || 0)
-      const newTotal = prevBags + bags
-      if (newTotal > checkRoll.bags_expected) {
-        const over = newTotal - checkRoll.bags_expected
+      const prevBags  = editBatch
+        ? (checkRoll.bags_produced - editBatch.bags_produced)
+        : (checkRoll.bags_produced || 0)
+      const newTotal  = prevBags + bags
+      const hardCap   = Math.floor(checkRoll.bags_expected * 1.15)   // 115% — hard block
+      const softWarn  = checkRoll.bags_expected                       // 100% — soft warning
+
+      if (newTotal > hardCap) {
+        // HARD BLOCK — refuse save
+        alert(
+          `🚫 Production Limit Reached\n\n` +
+          `Roll ${checkRoll.label} cannot exceed 115% of its expected yield.\n\n` +
+          `Expected:    ${checkRoll.bags_expected} bags\n` +
+          `Hard cap:    ${hardCap} bags (115%)\n` +
+          `Current:     ${prevBags} bags produced\n` +
+          `This batch:  ${bags} bags\n` +
+          `New total:   ${newTotal} bags — exceeds cap by ${newTotal - hardCap}\n\n` +
+          `Close this roll first (click "Done" in Raw Materials → Roll Film), ` +
+          `then the next available roll will become active.`
+        )
+        return   // hard stop — do not save
+      }
+
+      if (newTotal > softWarn) {
+        // SOFT WARNING — allow user to confirm between 100%–115%
+        const over    = newTotal - checkRoll.bags_expected
+        const pct     = ((newTotal / checkRoll.bags_expected) * 100).toFixed(1)
+        const capLeft = hardCap - newTotal
         const proceed = confirm(
-          `⚠️ Over-Expected Warning\n\n` +
-          `Roll ${checkRoll.label} has an expected yield of ${checkRoll.bags_expected} bags.\n` +
-          `With this batch, total produced will be ${newTotal} bags (+${over} over expected).\n\n` +
-          `Are you sure these production records are correctly assigned to this roll?\n\n` +
-          `• Click OK to save and keep using this roll.\n` +
-          `• Click Cancel to go back — you may need to close this roll first.`
+          `⚠️ Over-Expected Warning (${pct}% of expected)\n\n` +
+          `Roll ${checkRoll.label} expected yield: ${checkRoll.bags_expected} bags.\n` +
+          `With this batch, total will be ${newTotal} bags (+${over} over expected).\n` +
+          `Hard cap remaining: ${capLeft} more bags before this roll is locked.\n\n` +
+          `Are you sure these batches are correctly assigned to this roll?\n\n` +
+          `• OK — save and continue using this roll.\n` +
+          `• Cancel — go back and review.`
         )
         if (!proceed) return
       }
