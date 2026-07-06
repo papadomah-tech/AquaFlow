@@ -1,4 +1,4 @@
 import { redirect } from 'next/navigation'
-// Non-admins land on sales; admins land on sales too (they can go to dashboard manually)
-// This prevents the "Access Restricted" flash on login
-export default function Home() { redirect('/sales') }
+// Admins land on dashboard; operators/others land on customers
+// Actual role check happens client-side; this is just a sensible default
+export default function Home() { redirect('/customers') }

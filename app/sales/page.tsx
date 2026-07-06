@@ -427,7 +427,6 @@ function SalesPageInner() {
       {/* ── Table ────────────────────────────────────────────────────── */}
       <div className="card p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          /* BULK TABLE */
             <table className="data-table">
               <colgroup>
                 <col style={{width:'90px'}} /><col style={{width:'150px'}} />
