@@ -210,27 +210,21 @@ function CustomersPageInner() {
                   autoFocus />
               </div>
               <div className="form-group">
-                <label className="form-label">Phone Number</label>
+                <label className="form-label">Phone Number *</label>
                 <input type="tel" value={form.phone}
                   onChange={e => setForm(f => ({...f, phone: e.target.value}))}
-                  className="form-input" placeholder="e.g. 0241234567" />
+                  className="form-input" placeholder="e.g. 0241234567" required />
               </div>
               <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <input type="email" value={form.email}
-                  onChange={e => setForm(f => ({...f, email: e.target.value}))}
-                  className="form-input" placeholder="optional" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Address / Location</label>
+                <label className="form-label">Address / Location *</label>
                 <input value={form.address}
                   onChange={e => setForm(f => ({...f, address: e.target.value}))}
-                  className="form-input" placeholder="e.g. Essikado, Sekondi" />
+                  className="form-input" placeholder="e.g. Pantang Village, Frafraha" required />
               </div>
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowForm(false)} className="btn btn-secondary">Cancel</button>
-              <button onClick={save} disabled={saving || !form.name.trim()}
+              <button onClick={save} disabled={saving || !form.name.trim() || !form.phone.trim() || !form.address.trim()}
                 className="btn btn-primary">
                 {saving ? 'Saving...' : '💾 Save Customer'}
               </button>
