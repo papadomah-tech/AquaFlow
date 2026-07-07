@@ -70,7 +70,8 @@ function RiderSalesInner() {
         .from('customers').select('id, name').eq('added_by_rider_id', employeeId).order('name')
       const usedIds = (riderCustIds ?? []).map((r: any) => r.customer_id).filter(Boolean)
       const ownIds  = (riderOwnCusts ?? []).map((r: any) => r.id)
-      const allIds  = [...new Set([...usedIds, ...ownIds])]
+      const combined = usedIds.concat(ownIds)
+      const allIds  = combined.filter((id: number, idx: number) => combined.indexOf(id) === idx)
       if (allIds.length > 0) {
         custQuery = supabase.from('customers').select('id, name').in('id', allIds).order('name')
       } else {
