@@ -204,6 +204,13 @@ function RawMaterialsPageInner() {
     <button onClick={() => setTab(t)} className={'btn btn-sm ' + (tab === t ? 'btn-primary' : 'btn-secondary')}>{label}</button>
   )
 
+  // Purchase form projections (computed before render)
+  const purchQty        = parseFloat(purchForm.quantity) || 0
+  const purchMatName    = materials.find((m: any) => m.id === parseInt(purchForm.material_id))?.name?.toLowerCase() || ''
+  const isRollFilmPurch = purchMatName.includes('roll')
+  const expBags         = isRollFilmPurch ? Math.floor(purchQty * 20) : 0
+  const expRevenue      = expBags * 6
+
   return (
     <AppLayout>
       <div className="page-header">
