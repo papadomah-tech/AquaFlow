@@ -20,7 +20,7 @@ function RawMaterialsPageInner() {
   const [rollBatches, setRollBatches] = useState<any[]>([])      // production batches for that roll
   const [loadingBatches, setLoadingBatches] = useState(false)
   const [matForm, setMatForm] = useState({ name: '', unit: 'kg', low_stock_threshold: '0', usage_per_bag: '0' })
-  const [purchForm, setPurchForm] = useState({ material_id: '', purchase_date: today(), supplier_name: '', quantity: '', unit_price: '', notes: '' })
+  const [purchForm, setPurchForm] = useState({ material_id: '', material_name: '', purchase_date: today(), supplier_name: '', quantity: '', unit_price: '', notes: '' })
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -221,7 +221,7 @@ function RawMaterialsPageInner() {
             setFormType('purchase'); setEditItem(null)
             // Auto-select Roll Film material if it exists
             const rfMat = materials.find((m: any) => m.name.toLowerCase().includes('roll'))
-            setPurchForm({material_id: rfMat ? String(rfMat.id) : '', purchase_date:today(), supplier_name:'', quantity:'', unit_price: rfMat ? String(rfMat.cost_per_kg || '') : '', notes:''})
+            setPurchForm({material_id: rfMat ? String(rfMat.id) : '', material_name: rfMat ? rfMat.name.toLowerCase() : '', purchase_date:today(), supplier_name:'', quantity:'', unit_price:'', notes:''})
             setShowForm(true)
           }} className="btn btn-secondary">+ Purchase</button>
           <button onClick={() => openMaterial()} className="btn btn-secondary">+ Add Material</button>
@@ -531,7 +531,12 @@ This marks it as finished and allows the next available roll to become active.`)
               {formType === 'purchase' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="form-group col-span-2"><label className="form-label">Material *</label>
-                    <select value={purchForm.material_id} onChange={e => setPurchForm(f => ({...f,material_id:e.target.value}))} className="form-select">
+                    <select value={purchForm.material_id}
+                      onChange={e => {
+                        const selText = e.target.options[e.target.selectedIndex].text.toLowerCase()
+                        setPurchForm(f => ({...f, material_id: e.target.value, material_name: selText}))
+                      }}
+                      className="form-select">
                       <option value="">Select...</option>
                       {materials.map((m: any) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
                     </select></div>
@@ -539,30 +544,39 @@ This marks it as finished and allows the next available roll to become active.`)
                   <div className="form-group"><label className="form-label">Supplier *</label><input value={purchForm.supplier_name} onChange={e => setPurchForm(f => ({...f,supplier_name:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Quantity *</label><input type="number" step="0.01" value={purchForm.quantity} onChange={e => setPurchForm(f => ({...f,quantity:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Unit Price (GHc)</label><input type="number" step="0.01" value={purchForm.unit_price} onChange={e => setPurchForm(f => ({...f,unit_price:e.target.value}))} className="form-input" /></div>
-                  {purchForm.quantity && (
-                    <div className="col-span-2 space-y-2">
-                      {purchForm.unit_price && (
-                        <div className="bg-blue-50 rounded p-2 text-center text-sm">
-                          <span className="text-gray-500">Total Cost: </span>
-                          <span className="font-bold text-[#1F4E79]">{fmtGhc(parseFloat(purchForm.quantity) * parseFloat(purchForm.unit_price))}</span>
-                        </div>
-                      )}
-                      {isRollFilmPurch && purchQty > 0 && (
+                  {(() => {
+                    const qty     = parseFloat(purchForm.quantity) || 0
+                    const price   = parseFloat(purchForm.unit_price) || 0
+                    const matName = (purchForm as any).material_name || ''
+                    const isRoll  = matName.includes('roll')
+                    const bags    = isRoll ? Math.floor(qty * 20) : 0
+                    const rev     = bags * 6
+                    if (!qty) return null
+                    return (
+                      <div className="col-span-2 space-y-2">
+                        {price > 0 && (
+                          <div className="bg-blue-50 rounded p-2 text-center text-sm">
+                            <span className="text-gray-500">Total Cost: </span>
+                            <span className="font-bold text-[#1F4E79]">{fmtGhc(qty * price)}</span>
+                          </div>
+                        )}
+                        {isRoll && bags > 0 && (
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-green-50 border border-green-100 rounded-lg p-3 text-center">
-                              <div className="text-xs text-gray-500 mb-0.5">Expected Bags</div>
-                              <div className="text-lg font-bold text-green-700 tabular-nums">{expBags.toLocaleString()}</div>
-                              <div className="text-xs text-gray-400">@ 20 bags / Kg</div>
+                            <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
+                              <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'2px'}}>Expected Bags</div>
+                              <div style={{fontSize:'20px',fontWeight:700,color:'#15803d'}}>{bags.toLocaleString()}</div>
+                              <div style={{fontSize:'11px',color:'#9ca3af'}}>@ 20 bags / Kg</div>
                             </div>
-                            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-center">
-                              <div className="text-xs text-gray-500 mb-0.5">Expected Revenue</div>
-                              <div className="text-lg font-bold text-emerald-700 tabular-nums">{fmtGhc(expRevenue)}</div>
-                              <div className="text-xs text-gray-400">@ GH₵6 / bag</div>
+                            <div style={{background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
+                              <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'2px'}}>Expected Revenue</div>
+                              <div style={{fontSize:'20px',fontWeight:700,color:'#065f46'}}>{fmtGhc(rev)}</div>
+                              <div style={{fontSize:'11px',color:'#9ca3af'}}>@ GH₵6 / bag</div>
                             </div>
                           </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    )
+                  })()}
                   <div className="form-group col-span-2"><label className="form-label">Notes</label><input value={purchForm.notes} onChange={e => setPurchForm(f => ({...f,notes:e.target.value}))} className="form-input" /></div>
                 </div>
               )}
