@@ -194,27 +194,6 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
       if (!active || active.length === 0) payload.status = 'in_use'
       await supabase.from('roll_films').insert(payload)
 
-      // Auto-create purchase record for this roll if cost was entered
-      if (rollTotalCost > 0 && rfMat) {
-        await supabase.from('raw_material_purchases').insert({
-          material_id:   rfMat.id,
-          purchase_date: rollForm.purchase_date,
-          supplier_name: rollForm.supplier || 'Unknown Supplier',
-          quantity:      wkg,
-          unit_price:    rollCpk,
-          total_cost:    rollTotalCost,
-          notes:         `Roll registration: ${autoLabel}`,
-        })
-
-        // Auto-post to cashbook as expense
-        await supabase.from('expenses').insert({
-          expense_date: rollForm.purchase_date,
-          category:     'Raw Materials',
-          description:  `Roll Film purchase — ${wkg} Kg @ GH₵${rollCpk}/Kg (${autoLabel})${rollForm.supplier ? ` from ${rollForm.supplier}` : ''}. Est. ${rollExpBags.toLocaleString()} bags, rev. ${fmtGhc(rollExpBags * PRICE_PER_BAG)}`,
-          amount:       rollTotalCost,
-          paid_to:      rollForm.supplier || 'Supplier',
-        })
-      }
     }
 
     // Always recalculate stock from available rolls — never manually increment
@@ -262,9 +241,12 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     // 1. Record the purchase
     await supabase.from('raw_material_purchases').insert(payload)
 
-    // 2. Update material stock
+    // 2. Update material stock — but NOT for Roll Film (stock managed via roll registration)
     const mat = materials.find(m => m.id === parseInt(purchForm.material_id))
-    if (mat) await supabase.from('raw_materials').update({ current_stock: (mat.current_stock || 0) + purchQty }).eq('id', mat.id)
+    const matIsRollFilm = mat?.name?.toLowerCase().includes('roll')
+    if (mat && !matIsRollFilm) {
+      await supabase.from('raw_materials').update({ current_stock: (mat.current_stock || 0) + purchQty }).eq('id', mat.id)
+    }
 
     // 3. Auto-post to cashbook (expenses) as Raw Materials / Purchases
     if (purchTotal > 0) {
