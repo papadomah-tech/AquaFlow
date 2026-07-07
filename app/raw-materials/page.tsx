@@ -65,6 +65,19 @@ function RawMaterialsInner() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  // ── Roll Film stock banner (computed before render) ──────────────────────
+  const rfMaterial  = materials.find(m => m.name.toLowerCase().includes('roll'))
+  const rfBannerData = rfMaterial && rfMaterial.current_stock > 0 ? (() => {
+    const kgOnHand  = rfMaterial.current_stock
+    const expBags   = Math.floor(kgOnHand * BAGS_PER_KG)
+    const expRev    = expBags * PRICE_PER_BAG
+    const validRolls = rolls.filter(r => r.weight_kg > 0 && r.cost > 0)
+    const avgCostPerKg = validRolls.length > 0
+      ? validRolls.reduce((sum, r) => sum + (r.cost / r.weight_kg), 0) / validRolls.length
+      : 0
+    return { kgOnHand, expBags, expRev, totalCost: kgOnHand * avgCostPerKg }
+  })() : null
+
   // ── Purchase projections (live, derived from form) ─────────────────────────
   const purchQty       = parseFloat(purchForm.quantity) || 0
   const purchPrice     = parseFloat(purchForm.unit_price) || 0
@@ -276,39 +289,28 @@ function RawMaterialsInner() {
           {/* ── STOCK TAB ── */}
           {tab === 'stock' && (
             <>
-            {/* Roll Film summary banner */}
-            {(() => {
-              const rf = materials.find(m => m.name.toLowerCase().includes('roll film') || m.name.toLowerCase() === 'roll film')
-              if (!rf || rf.current_stock <= 0) return null
-              const kgOnHand  = rf.current_stock
-              const expBags   = Math.floor(kgOnHand * BAGS_PER_KG)
-              const expRev    = expBags * PRICE_PER_BAG
-              const costPerKg = rolls.length > 0
-                ? rolls.reduce((sum, r) => sum + (r.cost / r.weight_kg), 0) / rolls.length
-                : 0
-              const totalCost = kgOnHand * costPerKg
-              return (
-                <div style={{background:'linear-gradient(135deg,#1F4E79 0%,#2563eb 100%)',borderRadius:'14px',padding:'16px 20px',marginBottom:'16px',color:'#fff'}}>
-                  <div style={{fontSize:'12px',fontWeight:600,letterSpacing:'0.08em',opacity:0.75,marginBottom:'10px',textTransform:'uppercase'}}>
-                    🎞️ Roll Film — Stock Projection
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px'}}>
-                    {[
-                      { label: 'Kg on Hand',       value: `${kgOnHand.toLocaleString()} Kg`,         sub: '@ 20 bags / Kg' },
-                      { label: 'Expected Bags',     value: expBags.toLocaleString(),                  sub: 'from current stock' },
-                      { label: 'Expected Revenue',  value: fmtGhc(expRev),                           sub: `@ GH₵${PRICE_PER_BAG} / bag` },
-                      { label: 'Est. Stock Value',  value: totalCost > 0 ? fmtGhc(totalCost) : '—',  sub: 'avg cost / Kg' },
-                    ].map(({ label, value, sub }) => (
-                      <div key={label} style={{background:'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
-                        <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>{label}</div>
-                        <div style={{fontSize:'18px',fontWeight:700,lineHeight:1}}>{value}</div>
-                        <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>{sub}</div>
-                      </div>
-                    ))}
-                  </div>
+            {/* Roll Film summary banner — computed before render, no IIFE */}
+            {rfBannerData && (
+              <div style={{background:'linear-gradient(135deg,#1F4E79 0%,#2563eb 100%)',borderRadius:'14px',padding:'16px 20px',marginBottom:'16px',color:'#fff'}}>
+                <div style={{fontSize:'12px',fontWeight:600,letterSpacing:'0.08em',opacity:0.75,marginBottom:'10px',textTransform:'uppercase'}}>
+                  🎞️ Roll Film — Stock Projection
                 </div>
-              )
-            })()}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px'}}>
+                  {([
+                    { label: 'Kg on Hand',      value: `${rfBannerData.kgOnHand.toLocaleString()} Kg`, sub: '@ 20 bags / Kg' },
+                    { label: 'Expected Bags',    value: rfBannerData.expBags.toLocaleString(),           sub: 'from current stock' },
+                    { label: 'Expected Revenue', value: fmtGhc(rfBannerData.expRev),                    sub: `@ GH₵${PRICE_PER_BAG} / bag` },
+                    { label: 'Est. Stock Value', value: rfBannerData.totalCost > 0 ? fmtGhc(rfBannerData.totalCost) : '—', sub: 'avg cost / Kg' },
+                  ] as const).map(({ label, value, sub }) => (
+                    <div key={label} style={{background:'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
+                      <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>{label}</div>
+                      <div style={{fontSize:'18px',fontWeight:700,lineHeight:1}}>{value}</div>
+                      <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>{sub}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="card p-0 overflow-hidden">
               <table className="data-table">
                 <colgroup>
