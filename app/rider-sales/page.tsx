@@ -145,6 +145,8 @@ function RiderSalesInner() {
 
   const saveNewCustomer = async () => {
     if (!newCustName.trim()) { alert('Customer name is required.'); return }
+    if (!newCustPhone.trim()) { alert('Phone number is required.'); return }
+    if (!newCustAddr.trim()) { alert('Address / location is required.'); return }
     setSavingCust(true)
     const { data, error } = await supabase.from('customers')
       .insert({ name: newCustName.trim(), phone: newCustPhone.trim(), address: newCustAddr.trim(), added_by_rider_id: employeeId })
@@ -417,19 +419,19 @@ function RiderSalesInner() {
                   className="form-input" placeholder="Customer name" autoFocus />
               </div>
               <div className="form-group">
-                <label className="form-label">Phone</label>
+                <label className="form-label">Phone *</label>
                 <input value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)}
                   className="form-input" placeholder="0241234567" type="tel" />
               </div>
               <div className="form-group">
-                <label className="form-label">Address / Location</label>
+                <label className="form-label">Address / Location *</label>
                 <input value={newCustAddr} onChange={e => setNewCustAddr(e.target.value)}
                   className="form-input" placeholder="e.g. Pantang Village, Frafraha" />
               </div>
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowAddCustomer(false)} className="btn btn-secondary">Cancel</button>
-              <button onClick={saveNewCustomer} disabled={savingCust || !newCustName.trim()} className="btn btn-primary">
+              <button onClick={saveNewCustomer} disabled={savingCust || !newCustName.trim() || !newCustPhone.trim() || !newCustAddr.trim()} className="btn btn-primary">
                 {savingCust ? 'Saving...' : '+ Add Customer'}
               </button>
             </div>
