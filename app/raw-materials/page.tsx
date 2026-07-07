@@ -534,14 +534,7 @@ This marks it as finished and allows the next available roll to become active.`)
                           <span className="font-bold text-[#1F4E79]">{fmtGhc(parseFloat(purchForm.quantity) * parseFloat(purchForm.unit_price))}</span>
                         </div>
                       )}
-                      {(() => {
-                        const selectedMat = materials.find((m: any) => m.id === parseInt(purchForm.material_id))
-                        const isRollFilm  = selectedMat?.name?.toLowerCase().includes('roll')
-                        if (!isRollFilm) return null
-                        const qty         = parseFloat(purchForm.quantity) || 0
-                        const expBags     = Math.floor(qty * 20)
-                        const expRevenue  = expBags * 6
-                        return (
+                      {isRollFilmPurch && purchQty > 0 && (
                           <div className="grid grid-cols-2 gap-2">
                             <div className="bg-green-50 border border-green-100 rounded-lg p-3 text-center">
                               <div className="text-xs text-gray-500 mb-0.5">Expected Bags</div>
@@ -554,8 +547,7 @@ This marks it as finished and allows the next available roll to become active.`)
                               <div className="text-xs text-gray-400">@ GH₵6 / bag</div>
                             </div>
                           </div>
-                        )
-                      })()}
+                      )}
                     </div>
                   )}
                   <div className="form-group col-span-2"><label className="form-label">Notes</label><input value={purchForm.notes} onChange={e => setPurchForm(f => ({...f,notes:e.target.value}))} className="form-input" /></div>
