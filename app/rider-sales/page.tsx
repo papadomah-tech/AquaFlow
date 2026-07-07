@@ -35,7 +35,12 @@ function RiderSalesInner() {
   const [saving, setSaving]         = useState(false)
   const [form, setForm]             = useState(emptyForm())
   const [custSearch, setCustSearch] = useState('')
-  const [showCustList, setShowCustList] = useState(false)
+  const [showCustList, setShowCustList]       = useState(false)
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [newCustName, setNewCustName]         = useState('')
+  const [newCustPhone, setNewCustPhone]       = useState('')
+  const [newCustAddr, setNewCustAddr]         = useState('')
+  const [savingCust, setSavingCust]           = useState(false)
   const [filterRider, setFilterRider]   = useState<number | ''>('')
   const [riders, setRiders]             = useState<{id:number,full_name:string}[]>([])
   const [dateFrom, setDateFrom]         = useState(() => {
@@ -120,6 +125,22 @@ function RiderSalesInner() {
     if (!confirm('Delete this sales record?')) return
     await supabase.from('rider_sales').delete().eq('id', id)
     loadAll()
+  }
+
+  const saveNewCustomer = async () => {
+    if (!newCustName.trim()) { alert('Customer name is required.'); return }
+    setSavingCust(true)
+    const { data, error } = await supabase.from('customers')
+      .insert({ name: newCustName.trim(), phone: newCustPhone.trim(), address: newCustAddr.trim() })
+      .select().single()
+    setSavingCust(false)
+    if (error) { alert(`Failed to add customer: ${error.message}`); return }
+    // Select the newly created customer
+    setCustomers(prev => [...prev, data].sort((a,b) => a.name.localeCompare(b.name)))
+    setForm(f => ({...f, customer_name: data.name, customer_id: String(data.id)}))
+    setCustSearch(data.name)
+    setShowAddCustomer(false)
+    setNewCustName(''); setNewCustPhone(''); setNewCustAddr('')
   }
 
   // summary stats
@@ -280,13 +301,28 @@ function RiderSalesInner() {
                 />
                 {showCustList && filteredCusts.length > 0 && (
                   <div style={{
-                    position:'absolute', top:'100%', left:0, right:0, zIndex:50,
-                    background:'var(--surface-2)', border:'1px solid var(--border)',
-                    borderRadius:'8px', maxHeight:'180px', overflowY:'auto', boxShadow:'0 4px 12px rgba(0,0,0,0.1)'
+                    position:'absolute', top:'100%', left:0, right:0, zIndex:9999,
+                    background:'#ffffff', border:'1px solid #d1d5db',
+                    borderRadius:'8px', maxHeight:'200px', overflowY:'auto',
+                    boxShadow:'0 8px 24px rgba(0,0,0,0.18)'
                   }}>
+                    {/* + Add Customer option always at top */}
+                    <div
+                      style={{padding:'10px 12px', cursor:'pointer', fontSize:'13px',
+                        fontWeight:500, color:'#1F4E79', borderBottom:'1px solid #e5e7eb',
+                        display:'flex', alignItems:'center', gap:'6px', background:'#f0f7ff'}}
+                      onMouseDown={() => {
+                        setShowCustList(false)
+                        setShowAddCustomer(true)
+                        setNewCustName(custSearch)
+                      }}
+                    >
+                      <span style={{fontSize:'16px'}}>+</span> Add Customer{custSearch ? ` "${custSearch}"` : ''}
+                    </div>
                     {filteredCusts.slice(0,10).map(c => (
                       <div key={c.id}
-                        style={{padding:'8px 12px', cursor:'pointer', fontSize:'13px'}}
+                        style={{padding:'10px 12px', cursor:'pointer', fontSize:'13px',
+                          borderBottom:'1px solid #f3f4f6', color:'#111827', background:'#ffffff'}}
                         onMouseDown={() => {
                           setForm(f => ({...f, customer_name: c.name, customer_id: String(c.id)}))
                           setCustSearch(c.name); setShowCustList(false)
@@ -344,6 +380,41 @@ function RiderSalesInner() {
               <button onClick={save} disabled={saving || !form.customer_name.trim() || !form.bags}
                 className="btn btn-primary">
                 {saving ? 'Saving...' : '💾 Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Customer mini-modal */}
+      {showAddCustomer && (
+        <div className="modal-overlay" onClick={() => setShowAddCustomer(false)}>
+          <div className="modal-box" style={{maxWidth:'380px', zIndex:10000}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Add New Customer</h2>
+              <button onClick={() => setShowAddCustomer(false)} className="text-gray-400 text-xl">X</button>
+            </div>
+            <div className="modal-body space-y-3">
+              <div className="form-group">
+                <label className="form-label">Name *</label>
+                <input value={newCustName} onChange={e => setNewCustName(e.target.value)}
+                  className="form-input" placeholder="Customer name" autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Phone</label>
+                <input value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)}
+                  className="form-input" placeholder="0241234567" type="tel" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Address / Location</label>
+                <input value={newCustAddr} onChange={e => setNewCustAddr(e.target.value)}
+                  className="form-input" placeholder="e.g. Pantang Village, Frafraha" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowAddCustomer(false)} className="btn btn-secondary">Cancel</button>
+              <button onClick={saveNewCustomer} disabled={savingCust || !newCustName.trim()} className="btn btn-primary">
+                {savingCust ? 'Saving...' : '+ Add Customer'}
               </button>
             </div>
           </div>
