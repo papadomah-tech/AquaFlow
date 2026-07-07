@@ -46,6 +46,11 @@ function RawMaterialsInner() {
 
   const [saving, setSaving] = useState(false)
 
+  // Material stock detail modal
+  const [matDetail, setMatDetail]       = useState<Material | null>(null)
+  const [matPurchases, setMatPurchases] = useState<Purchase[]>([])
+  const [loadingMatP, setLoadingMatP]   = useState(false)
+
   // ── Load all data ─────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -126,6 +131,32 @@ function RawMaterialsInner() {
       .order('batch_date', { ascending: true })
     setRollBatches(data ?? [])
     setLoadingBatches(false)
+  }
+
+  const openMatDetail = async (m: Material) => {
+    setMatDetail(m)
+    setLoadingMatP(true)
+    const { data } = await supabase.from('raw_material_purchases')
+      .select('*').eq('material_id', m.id)
+      .order('purchase_date', { ascending: false })
+    setMatPurchases(data ?? [])
+    setLoadingMatP(false)
+  }
+
+  const deletePurchaseFromDetail = async (p: Purchase) => {
+    if (!confirm(`Delete this purchase of ${p.quantity} ${matDetail?.unit} from ${p.supplier_name}?
+
+This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
+    await supabase.from('raw_material_purchases').delete().eq('id', p.id)
+    if (matDetail) {
+      await supabase.from('raw_materials')
+        .update({ current_stock: Math.max(0, matDetail.current_stock - p.quantity) })
+        .eq('id', matDetail.id)
+      // Refresh
+      setMatDetail(prev => prev ? { ...prev, current_stock: Math.max(0, prev.current_stock - p.quantity) } : null)
+      setMatPurchases(prev => prev.filter(x => x.id !== p.id))
+      loadAll()
+    }
   }
 
   const closeModal = () => { setModal('none'); setEditItem(null) }
@@ -330,7 +361,12 @@ function RawMaterialsInner() {
                     ? <tr><td colSpan={7} className="text-center py-8 text-gray-400 italic">No materials yet — click + Add Material</td></tr>
                     : materials.map(m => (
                       <tr key={m.id}>
-                        <td className="font-medium">{m.name}</td>
+                        <td className="font-medium">
+                          <button onClick={() => openMatDetail(m)}
+                            className="text-blue-700 hover:underline text-left font-medium">
+                            {m.name}
+                          </button>
+                        </td>
                         <td className="muted">{m.unit}</td>
                         <td className="num">{fmtNum(m.current_stock)}</td>
                         <td className="num muted">{fmtNum(m.low_stock_threshold)}</td>
@@ -466,6 +502,93 @@ function RawMaterialsInner() {
             </div>
           )}
         </>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          MATERIAL STOCK DETAIL MODAL
+      ════════════════════════════════════════════════════════════════ */}
+      {matDetail && (
+        <div className="modal-overlay" onClick={() => setMatDetail(null)}>
+          <div className="modal-box" style={{maxWidth:'620px'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="font-bold text-[#1F4E79]">{matDetail.name} — Stock Breakdown</h2>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  Current stock: <strong>{matDetail.current_stock.toLocaleString()} {matDetail.unit}</strong>
+                  {matDetail.name.toLowerCase().includes('roll') && (
+                    <span className="ml-2 text-green-700">
+                      → {Math.floor(matDetail.current_stock * BAGS_PER_KG).toLocaleString()} bags
+                      · {fmtGhc(Math.floor(matDetail.current_stock * BAGS_PER_KG) * PRICE_PER_BAG)} est. revenue
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setMatDetail(null)} className="text-gray-400 text-xl">✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Purchase Records — items that make up current stock
+              </div>
+              {loadingMatP ? (
+                <div className="text-center py-6 text-gray-400 text-sm">Loading...</div>
+              ) : matPurchases.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm italic">
+                  No purchase records found for this material.
+                </div>
+              ) : (
+                <table className="data-table w-full table-fixed">
+                  <colgroup>
+                    <col style={{width:'85px'}} /><col style={{width:'130px'}} />
+                    <col style={{width:'80px'}} /><col style={{width:'90px'}} />
+                    <col style={{width:'100px'}} /><col /><col style={{width:'55px'}} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Date</th><th>Supplier</th>
+                      <th className="right">Qty</th><th className="right">Unit Price</th>
+                      <th className="right">Total</th><th>Notes</th><th>Del</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matPurchases.map(p => (
+                      <tr key={p.id}>
+                        <td className="muted text-xs">{fmtDate(p.purchase_date)}</td>
+                        <td className="text-xs">{p.supplier_name}</td>
+                        <td className="num">{p.quantity} {matDetail.unit}</td>
+                        <td className="num muted">{fmtGhc(p.unit_price)}</td>
+                        <td className="num font-medium">{fmtGhc(p.total_cost)}</td>
+                        <td className="muted text-xs">{p.notes || '—'}</td>
+                        <td>
+                          <button
+                            onClick={() => deletePurchaseFromDetail(p)}
+                            className="btn btn-sm btn-danger"
+                            title="Delete this purchase and reduce stock"
+                          >Del</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-100 font-semibold">
+                      <td colSpan={2} className="px-3 py-2 text-xs text-gray-600">TOTAL</td>
+                      <td className="px-3 py-2 text-right text-xs tabular-nums">
+                        {matPurchases.reduce((a, p) => a + p.quantity, 0).toLocaleString()} {matDetail.unit}
+                      </td>
+                      <td />
+                      <td className="px-3 py-2 text-right text-xs tabular-nums">
+                        {fmtGhc(matPurchases.reduce((a, p) => a + p.total_cost, 0))}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+              <div className="text-xs text-gray-400 mt-3">
+                ⚠️ Deleting a purchase row reduces the current stock by that quantity. This cannot be undone.
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ════════════════════════════════════════════════════════════════
