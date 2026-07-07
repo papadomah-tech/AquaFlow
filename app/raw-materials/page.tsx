@@ -217,7 +217,13 @@ function RawMaterialsPageInner() {
         <h1 className="page-title">Raw Materials</h1>
         <div className="flex gap-2">
           <button onClick={() => openRoll()} className="btn btn-primary">+ Register Roll</button>
-          <button onClick={() => { setFormType('purchase'); setEditItem(null); setPurchForm({material_id:'',purchase_date:today(),supplier_name:'',quantity:'',unit_price:'',notes:''}); setShowForm(true) }} className="btn btn-secondary">+ Purchase</button>
+          <button onClick={() => {
+            setFormType('purchase'); setEditItem(null)
+            // Auto-select Roll Film material if it exists
+            const rfMat = materials.find((m: any) => m.name.toLowerCase().includes('roll'))
+            setPurchForm({material_id: rfMat ? String(rfMat.id) : '', purchase_date:today(), supplier_name:'', quantity:'', unit_price: rfMat ? String(rfMat.cost_per_kg || '') : '', notes:''})
+            setShowForm(true)
+          }} className="btn btn-secondary">+ Purchase</button>
           <button onClick={() => openMaterial()} className="btn btn-secondary">+ Add Material</button>
         </div>
       </div>
