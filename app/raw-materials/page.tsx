@@ -526,10 +526,36 @@ This marks it as finished and allows the next available roll to become active.`)
                   <div className="form-group"><label className="form-label">Supplier *</label><input value={purchForm.supplier_name} onChange={e => setPurchForm(f => ({...f,supplier_name:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Quantity *</label><input type="number" step="0.01" value={purchForm.quantity} onChange={e => setPurchForm(f => ({...f,quantity:e.target.value}))} className="form-input" /></div>
                   <div className="form-group"><label className="form-label">Unit Price (GHc)</label><input type="number" step="0.01" value={purchForm.unit_price} onChange={e => setPurchForm(f => ({...f,unit_price:e.target.value}))} className="form-input" /></div>
-                  {purchForm.quantity && purchForm.unit_price && (
-                    <div className="col-span-2 bg-blue-50 rounded p-2 text-center text-sm">
-                      <span className="text-gray-500">Total Cost: </span>
-                      <span className="font-bold text-[#1F4E79]">{fmtGhc(parseFloat(purchForm.quantity) * parseFloat(purchForm.unit_price))}</span>
+                  {purchForm.quantity && (
+                    <div className="col-span-2 space-y-2">
+                      {purchForm.unit_price && (
+                        <div className="bg-blue-50 rounded p-2 text-center text-sm">
+                          <span className="text-gray-500">Total Cost: </span>
+                          <span className="font-bold text-[#1F4E79]">{fmtGhc(parseFloat(purchForm.quantity) * parseFloat(purchForm.unit_price))}</span>
+                        </div>
+                      )}
+                      {(() => {
+                        const selectedMat = materials.find((m: any) => m.id === parseInt(purchForm.material_id))
+                        const isRollFilm  = selectedMat?.name?.toLowerCase().includes('roll')
+                        if (!isRollFilm) return null
+                        const qty         = parseFloat(purchForm.quantity) || 0
+                        const expBags     = Math.floor(qty * 20)
+                        const expRevenue  = expBags * 6
+                        return (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-green-50 border border-green-100 rounded-lg p-3 text-center">
+                              <div className="text-xs text-gray-500 mb-0.5">Expected Bags</div>
+                              <div className="text-lg font-bold text-green-700 tabular-nums">{expBags.toLocaleString()}</div>
+                              <div className="text-xs text-gray-400">@ 20 bags / Kg</div>
+                            </div>
+                            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-center">
+                              <div className="text-xs text-gray-500 mb-0.5">Expected Revenue</div>
+                              <div className="text-lg font-bold text-emerald-700 tabular-nums">{fmtGhc(expRevenue)}</div>
+                              <div className="text-xs text-gray-400">@ GH₵6 / bag</div>
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                   <div className="form-group col-span-2"><label className="form-label">Notes</label><input value={purchForm.notes} onChange={e => setPurchForm(f => ({...f,notes:e.target.value}))} className="form-input" /></div>
