@@ -57,7 +57,9 @@ function WeeklyReportInner() {
   const [weekData, setWeekData] = useState<Record<string, any>>({})
   const [loading, setLoading]   = useState(false)
 
-  // Per-week operational cash entered by admin
+  // Imprest totals auto-fetched per week (replaces manual opCash input)
+  const [imprestTotals, setImprestTotals] = useState<Record<string, number>>({})
+  // Per-week operational cash — kept for backward compat but auto-populated from imprest
   const [opCash, setOpCash]     = useState<Record<string, string>>({})
   // Track which weeks are already deposited
   const [deposited, setDeposited] = useState<Record<string, any>>({})
@@ -115,6 +117,30 @@ function WeeklyReportInner() {
         .select('sale_date, bags_sold')
         .eq('sale_type', 'bulk'),
     ])
+
+    // Fetch imprest entries for each week and compute totals
+    const ws2 = getWeeks(selYear, selMonth)
+    if (ws2.length > 0) {
+      const { data: imprestData } = await supabase
+        .from('imprest_entries')
+        .select('entry_date, amount')
+        .gte('entry_date', monthFrom)
+        .lte('entry_date', monthTo)
+      const totals: Record<string, number> = {}
+      ws2.forEach((w: any) => {
+        const weekEntries = (imprestData ?? []).filter((e: any) =>
+          e.entry_date >= w.from && e.entry_date <= w.to
+        )
+        totals[w.from] = weekEntries.reduce((s: number, e: any) => s + e.amount, 0)
+      })
+      setImprestTotals(totals)
+      // Auto-populate opCash so the deposit calculation uses imprest totals
+      const opMap: Record<string, string> = {}
+      ws2.forEach((w: any) => {
+        if (totals[w.from] > 0) opMap[w.from] = String(totals[w.from])
+      })
+      setOpCash(prev => ({ ...prev, ...opMap }))
+    }
 
     // Total current stock (matches Stock module exactly)
     const actualCurrentStock = (allStockRaw ?? [])
@@ -887,16 +913,15 @@ function WeeklyReportInner() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-sm">
-                          <span className="text-gray-600">Cash used for operations</span>
+                          <span className="text-gray-600">
+                            Cash used for operations
+                            <span className="ml-1 text-xs text-blue-500">(from Imprest)</span>
+                          </span>
                           <div className="flex items-center gap-2">
                             <span className="text-red-500">−</span>
-                            <input
-                              type="number" step="0.01" placeholder="0.00"
-                              value={opCash[week.from] || ''}
-                              onChange={e => setOpCash(p => ({...p, [week.from]: e.target.value}))}
-                              className="form-input w-32 text-right"
-                              style={{padding:'0.25rem 0.5rem',fontSize:'0.875rem'}}
-                            />
+                            <span className="font-semibold text-red-600 tabular-nums w-32 text-right">
+                              {fmtGhc(imprestTotals[week.from] ?? 0)}
+                            </span>
                           </div>
                         </div>
                         <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-bold">
