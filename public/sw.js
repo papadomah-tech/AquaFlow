@@ -1,4 +1,4 @@
-const CACHE = 'aquaflow-v3'
+const CACHE = 'aquaflow-v4'
 
 self.addEventListener('install', e => {
   e.waitUntil(self.skipWaiting())
