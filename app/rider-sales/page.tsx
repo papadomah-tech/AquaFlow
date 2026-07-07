@@ -59,10 +59,26 @@ function RiderSalesInner() {
       .order('sale_date', { ascending: false }).order('id', { ascending: false })
     if (riderId) q = q.eq('rider_id', riderId)
 
-    const [{ data: s }, { data: c }] = await Promise.all([
-      q,
-      supabase.from('customers').select('id, name').order('name'),
-    ])
+    // Riders see only customers they added (via rider_sales); admins see all
+    let custQuery = supabase.from('customers').select('id, name').order('name')
+    if (!isAdmin && employeeId) {
+      // Get customer_ids this rider has used
+      const { data: riderCustIds } = await supabase
+        .from('rider_sales').select('customer_id').eq('rider_id', employeeId).not('customer_id', 'is', null)
+      // Also include customers added directly by this rider
+      const { data: riderOwnCusts } = await supabase
+        .from('customers').select('id, name').eq('added_by_rider_id', employeeId).order('name')
+      const usedIds = (riderCustIds ?? []).map((r: any) => r.customer_id).filter(Boolean)
+      const ownIds  = (riderOwnCusts ?? []).map((r: any) => r.id)
+      const allIds  = [...new Set([...usedIds, ...ownIds])]
+      if (allIds.length > 0) {
+        custQuery = supabase.from('customers').select('id, name').in('id', allIds).order('name')
+      } else {
+        custQuery = supabase.from('customers').select('id, name').eq('added_by_rider_id', employeeId).order('name')
+      }
+    }
+
+    const [{ data: s }, { data: c }] = await Promise.all([q, custQuery])
     setSales(s ?? [])
     setCustomers(c ?? [])
 
@@ -129,9 +145,11 @@ function RiderSalesInner() {
 
   const saveNewCustomer = async () => {
     if (!newCustName.trim()) { alert('Customer name is required.'); return }
+    if (!newCustPhone.trim()) { alert('Phone number is required.'); return }
+    if (!newCustAddr.trim()) { alert('Address / location is required.'); return }
     setSavingCust(true)
     const { data, error } = await supabase.from('customers')
-      .insert({ name: newCustName.trim(), phone: newCustPhone.trim(), address: newCustAddr.trim() })
+      .insert({ name: newCustName.trim(), phone: newCustPhone.trim(), address: newCustAddr.trim(), added_by_rider_id: employeeId })
       .select().single()
     setSavingCust(false)
     if (error) { alert(`Failed to add customer: ${error.message}`); return }
@@ -401,19 +419,19 @@ function RiderSalesInner() {
                   className="form-input" placeholder="Customer name" autoFocus />
               </div>
               <div className="form-group">
-                <label className="form-label">Phone</label>
+                <label className="form-label">Phone *</label>
                 <input value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)}
                   className="form-input" placeholder="0241234567" type="tel" />
               </div>
               <div className="form-group">
-                <label className="form-label">Address / Location</label>
+                <label className="form-label">Address / Location *</label>
                 <input value={newCustAddr} onChange={e => setNewCustAddr(e.target.value)}
                   className="form-input" placeholder="e.g. Pantang Village, Frafraha" />
               </div>
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowAddCustomer(false)} className="btn btn-secondary">Cancel</button>
-              <button onClick={saveNewCustomer} disabled={savingCust || !newCustName.trim()} className="btn btn-primary">
+              <button onClick={saveNewCustomer} disabled={savingCust || !newCustName.trim() || !newCustPhone.trim() || !newCustAddr.trim()} className="btn btn-primary">
                 {savingCust ? 'Saving...' : '+ Add Customer'}
               </button>
             </div>
