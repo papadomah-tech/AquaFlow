@@ -188,15 +188,46 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     }
 
     if (editItem) {
-      const diff = wkg - editItem.weight_kg
-      if (rfMat && diff !== 0)
-        await supabase.from('raw_materials').update({ current_stock: rfMat.current_stock + diff }).eq('id', rfMat.id)
       await supabase.from('roll_films').update(payload).eq('id', editItem.id)
     } else {
       const { data: active } = await supabase.from('roll_films').select('id').eq('status', 'in_use').limit(1)
       if (!active || active.length === 0) payload.status = 'in_use'
-      if (rfMat) await supabase.from('raw_materials').update({ current_stock: rfMat.current_stock + wkg }).eq('id', rfMat.id)
       await supabase.from('roll_films').insert(payload)
+
+      // Auto-create purchase record for this roll if cost was entered
+      if (rollTotalCost > 0 && rfMat) {
+        await supabase.from('raw_material_purchases').insert({
+          material_id:   rfMat.id,
+          purchase_date: rollForm.purchase_date,
+          supplier_name: rollForm.supplier || 'Unknown Supplier',
+          quantity:      wkg,
+          unit_price:    rollCpk,
+          total_cost:    rollTotalCost,
+          notes:         `Roll registration: ${autoLabel}`,
+        })
+
+        // Auto-post to cashbook as expense
+        await supabase.from('expenses').insert({
+          expense_date: rollForm.purchase_date,
+          category:     'Raw Materials',
+          description:  `Roll Film purchase — ${wkg} Kg @ GH₵${rollCpk}/Kg (${autoLabel})${rollForm.supplier ? ` from ${rollForm.supplier}` : ''}. Est. ${rollExpBags.toLocaleString()} bags, rev. ${fmtGhc(rollExpBags * PRICE_PER_BAG)}`,
+          amount:       rollTotalCost,
+          paid_to:      rollForm.supplier || 'Supplier',
+        })
+      }
+    }
+
+    // Always recalculate stock from available rolls — never manually increment
+    if (rfMat) {
+      const { data: availRolls } = await supabase.from('roll_films')
+        .select('weight_kg').eq('status', 'available')
+      const availKg = (availRolls ?? []).reduce((sum: number, r: any) => sum + r.weight_kg, 0)
+      const { data: inUseRolls } = await supabase.from('roll_films')
+        .select('kg_remaining').eq('status', 'in_use')
+      const inUseKg = (inUseRolls ?? []).reduce((sum: number, r: any) => sum + (r.kg_remaining ?? 0), 0)
+      await supabase.from('raw_materials')
+        .update({ current_stock: Math.round((availKg + inUseKg) * 10) / 10 })
+        .eq('id', rfMat.id)
     }
     setSaving(false); closeModal(); loadAll()
   }
@@ -250,11 +281,25 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
   }
 
   // ── Roll actions ──────────────────────────────────────────────────────────
+  // Recalculate Roll Film current_stock from actual roll data
+  const recalcRollStock = async () => {
+    const rfMat = materials.find(m => m.name.toLowerCase().includes('roll'))
+    if (!rfMat) return
+    const { data: avail }  = await supabase.from('roll_films').select('weight_kg').eq('status', 'available')
+    const { data: inUse }  = await supabase.from('roll_films').select('kg_remaining').eq('status', 'in_use')
+    const availKg  = (avail  ?? []).reduce((s: number, r: any) => s + r.weight_kg, 0)
+    const inUseKg  = (inUse  ?? []).reduce((s: number, r: any) => s + (r.kg_remaining ?? 0), 0)
+    await supabase.from('raw_materials')
+      .update({ current_stock: Math.round((availKg + inUseKg) * 10) / 10 })
+      .eq('id', rfMat.id)
+  }
+
   const markFinished = async (roll: Roll) => {
     if (!confirm(`Mark ${roll.label} as Done?\n\nThis closes the roll and activates the next available roll.`)) return
     await supabase.from('roll_films').update({ status: 'finished' }).eq('id', roll.id)
     const { data: next } = await supabase.from('roll_films').select('id, label').eq('status', 'available').order('purchase_date', { ascending: true }).limit(1).single()
     if (next) await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+    await recalcRollStock()
     loadAll()
   }
 
@@ -269,10 +314,9 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
   }
 
   const deleteRoll = async (roll: Roll) => {
-    if (!confirm(`Delete roll ${roll.label}? This removes its Kg from stock.`)) return
-    const rfMat = materials.find(m => m.name.toLowerCase() === 'roll film')
-    if (rfMat) await supabase.from('raw_materials').update({ current_stock: Math.max(0, rfMat.current_stock - (roll.kg_remaining ?? roll.weight_kg)) }).eq('id', rfMat.id)
+    if (!confirm(`Delete roll ${roll.label}?`)) return
     await supabase.from('roll_films').delete().eq('id', roll.id)
+    await recalcRollStock()
     loadAll()
   }
 
