@@ -83,8 +83,6 @@ function ImprestPageInner() {
       amount,
       receipt_ref:  form.receipt_ref.trim() || null,
       recorded_by:  userId,
-      // No float_id — standalone entries not tied to an advance
-      float_id:     null,
     }
 
     if (editItem) {
