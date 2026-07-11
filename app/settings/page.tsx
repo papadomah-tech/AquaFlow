@@ -687,16 +687,26 @@ function DataBackup() {
 
     if (fmt === 'excel') {
       setProgress(p => [...p, '📊 Building Excel workbook...'])
+      // Yield to browser before heavy processing so UI doesn't freeze
+      await new Promise(resolve => setTimeout(resolve, 50))
       const XLSX = (await import('xlsx')).default
       const wb = XLSX.utils.book_new()
-      results.forEach(r => {
+
+      // Build sheets in small batches to keep browser responsive
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i]
         const rows = r.data ?? []
         const ws = rows.length > 0
           ? XLSX.utils.json_to_sheet(rows)
           : XLSX.utils.aoa_to_sheet([[r.error ?? 'No data']])
         XLSX.utils.book_append_sheet(wb, ws, r.label.slice(0, 31))
-      })
-      // Use write + blob instead of writeFile to avoid blocking the main thread
+        // Yield every 5 sheets so browser stays responsive
+        if (i % 5 === 4) await new Promise(resolve => setTimeout(resolve, 10))
+      }
+
+      setProgress(p => [...p, '📦 Compressing...'])
+      await new Promise(resolve => setTimeout(resolve, 20))
+
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
       const blob = new Blob([wbout], { type: 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
