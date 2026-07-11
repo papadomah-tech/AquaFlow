@@ -227,13 +227,13 @@ function SalesPageInner() {
       const { data: ns, error: nsErr } = await supabase.from('sales').insert(payload).select().single()
       if (nsErr || !ns) {
         alert(`Sale failed to save: ${nsErr?.message ?? 'Unknown error'}`)
-        setSaving(false); return
+        return
       }
       saleId = ns.id
     }
     if (!saleId) {
       alert('Sale saved but could not get sale ID — stock ledger not updated. Please contact admin.')
-      setSaving(false); return
+      return
     }
     const dispatchName = bulkForm.buyer_type === 'external'
       ? 'External Customer'
