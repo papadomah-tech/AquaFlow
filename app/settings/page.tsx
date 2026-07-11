@@ -661,63 +661,48 @@ function DataBackup() {
   const [fmt, setFmt]           = useState<'csv' | 'excel'>('csv')
 
   const runBackup = async () => {
-    setBacking(true); setDone(false); setProgress([])
+    setBacking(true); setDone(false)
+    setProgress(['⏳ Fetching all tables in parallel...'])
     const ts = new Date().toISOString().slice(0, 10)
 
-    if (fmt === 'excel') {
-      // ── Excel: one sheet per table in a single .xlsx ──────────────────
-      setProgress(['Loading Excel library...'])
-      const XLSX = (await import('xlsx')).default
-      const wb = XLSX.utils.book_new()
-
-      for (const t of BACKUP_TABLES) {
-        setProgress(p => [...p.slice(0,-1), `Fetching ${t.label}...`])
+    // Fetch ALL tables in parallel — much faster than sequential
+    const results = await Promise.all(
+      BACKUP_TABLES.map(async t => {
         try {
           const { data, error } = await supabase.from(t.key).select('*').limit(100000)
-          if (error) {
-            const ws = XLSX.utils.aoa_to_sheet([[`Error: ${error.message}`]])
-            XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31))
-            setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — ${error.message}`])
-          } else {
-            const rows = data ?? []
-            const ws = rows.length > 0
-              ? XLSX.utils.json_to_sheet(rows)
-              : XLSX.utils.aoa_to_sheet([['No data']])
-            XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31))
-            setProgress(p => [...p.slice(0,-1), `✓ ${t.label} (${rows.length} rows)`])
-          }
+          if (error) return { ...t, data: null, error: error.message }
+          return { ...t, data: data ?? [], error: null }
         } catch (e: any) {
-          const ws = XLSX.utils.aoa_to_sheet([[`Error: ${e.message}`]])
-          XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31))
-          setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — skipped`])
+          return { ...t, data: null, error: e.message }
         }
-      }
+      })
+    )
 
+    const logs: string[] = []
+    results.forEach(r => {
+      if (r.error) logs.push(`⚠️ ${r.label} — ${r.error}`)
+      else logs.push(`✓ ${r.label} (${r.data!.length} rows)`)
+    })
+    setProgress(logs)
+
+    if (fmt === 'excel') {
+      const XLSX = (await import('xlsx')).default
+      const wb = XLSX.utils.book_new()
+      results.forEach(r => {
+        const rows = r.data ?? []
+        const ws = rows.length > 0
+          ? XLSX.utils.json_to_sheet(rows)
+          : XLSX.utils.aoa_to_sheet([[r.error ?? 'No data']])
+        XLSX.utils.book_append_sheet(wb, ws, r.label.slice(0, 31))
+      })
       XLSX.writeFile(wb, `aquaflow-backup-${ts}.xlsx`)
-
     } else {
-      // ── CSV: one file per table in a ZIP ──────────────────────────────
       const JSZip = (await import('jszip')).default
       const zip = new JSZip()
       const folder = zip.folder('aquaflow-backup')!
-
-      for (const t of BACKUP_TABLES) {
-        setProgress(p => [...p, `Fetching ${t.label}...`])
-        try {
-          const { data, error } = await supabase.from(t.key).select('*').limit(100000)
-          if (error) {
-            folder.file(`${t.key}.csv`, `Error: ${error.message}`)
-            setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — ${error.message}`])
-          } else {
-            folder.file(`${t.key}.csv`, toCSV(data ?? []))
-            setProgress(p => [...p.slice(0,-1), `✓ ${t.label} (${(data ?? []).length} rows)`])
-          }
-        } catch (e: any) {
-          folder.file(`${t.key}.csv`, `Error: ${e.message}`)
-          setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — skipped`])
-        }
-      }
-
+      results.forEach(r => {
+        folder.file(`${r.key}.csv`, r.error ? `Error: ${r.error}` : toCSV(r.data!))
+      })
       folder.file('_manifest.txt', [
         'AquaFlow Manager — Data Backup',
         `Date: ${new Date().toLocaleString()}`,
@@ -725,7 +710,6 @@ function DataBackup() {
         '',
         ...BACKUP_TABLES.map(t => `- ${t.key}.csv`),
       ].join('\n'))
-
       const blob = await zip.generateAsync({ type: 'blob' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
