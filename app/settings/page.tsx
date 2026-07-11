@@ -602,11 +602,200 @@ export default function SettingsPage() {
       {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
       <DangerZone />
 
+      {/* ── DATA BACKUP ───────────────────────────────────────────────────── */}
+      <DataBackup />
+
     </AppLayout>
   )
 }
 
 // ── Danger Zone component with selective reset ───────────────────────────────
+// ─── All tables to back up ───────────────────────────────────────────────────
+const BACKUP_TABLES = [
+  { key: 'profiles',               label: 'User Profiles' },
+  { key: 'employees',              label: 'Employees' },
+  { key: 'customers',              label: 'Customers' },
+  { key: 'sales',                  label: 'Sales' },
+  { key: 'payments',               label: 'Payments' },
+  { key: 'bulk_returns',           label: 'Bulk Returns' },
+  { key: 'production_batches',     label: 'Production Batches' },
+  { key: 'finished_inventory',     label: 'Finished Inventory' },
+  { key: 'stock_takes',            label: 'Stock Takes' },
+  { key: 'stock_take_items',       label: 'Stock Take Items' },
+  { key: 'stock_adjustments',      label: 'Stock Adjustments' },
+  { key: 'raw_materials',          label: 'Raw Materials' },
+  { key: 'raw_material_purchases', label: 'Raw Material Purchases' },
+  { key: 'raw_material_usage',     label: 'Raw Material Usage' },
+  { key: 'roll_films',             label: 'Roll Films' },
+  { key: 'expenses',               label: 'Expenses' },
+  { key: 'imprest_entries',        label: 'Imprest Entries' },
+  { key: 'imprest_floats',         label: 'Imprest Floats' },
+  { key: 'bank_deposits',          label: 'Bank Deposits' },
+  { key: 'salary_payments',        label: 'Salary Payments' },
+  { key: 'employee_losses',        label: 'Employee Losses' },
+  { key: 'attendance',             label: 'Attendance' },
+  { key: 'rider_sales',            label: 'Rider Sales' },
+  { key: 'rider_payments',         label: 'Rider Payments' },
+  { key: 'opening_balances',       label: 'Opening Balances' },
+]
+
+function toCSV(rows: any[]): string {
+  if (!rows || rows.length === 0) return 'No data'
+  const headers = Object.keys(rows[0])
+  const escape = (v: any) => {
+    if (v === null || v === undefined) return ''
+    const s = String(v)
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  return [
+    headers.join(','),
+    ...rows.map(r => headers.map(h => escape(r[h])).join(',')),
+  ].join('\n')
+}
+
+function DataBackup() {
+  const [backing, setBacking]   = useState(false)
+  const [progress, setProgress] = useState<string[]>([])
+  const [done, setDone]         = useState(false)
+  const [fmt, setFmt]           = useState<'csv' | 'excel'>('csv')
+
+  const runBackup = async () => {
+    setBacking(true); setDone(false); setProgress([])
+    const ts = new Date().toISOString().slice(0, 10)
+
+    if (fmt === 'excel') {
+      // ── Excel: one sheet per table in a single .xlsx ──────────────────
+      setProgress(['Loading Excel library...'])
+      const XLSX = (await import('xlsx')).default
+      const wb = XLSX.utils.book_new()
+
+      for (const t of BACKUP_TABLES) {
+        setProgress(p => [...p.slice(0,-1), `Fetching ${t.label}...`])
+        try {
+          const { data, error } = await supabase.from(t.key).select('*').limit(100000)
+          if (error) {
+            const ws = XLSX.utils.aoa_to_sheet([[`Error: ${error.message}`]])
+            XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31))
+            setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — ${error.message}`])
+          } else {
+            const rows = data ?? []
+            const ws = rows.length > 0
+              ? XLSX.utils.json_to_sheet(rows)
+              : XLSX.utils.aoa_to_sheet([['No data']])
+            XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31))
+            setProgress(p => [...p.slice(0,-1), `✓ ${t.label} (${rows.length} rows)`])
+          }
+        } catch (e: any) {
+          const ws = XLSX.utils.aoa_to_sheet([[`Error: ${e.message}`]])
+          XLSX.utils.book_append_sheet(wb, ws, t.label.slice(0, 31))
+          setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — skipped`])
+        }
+      }
+
+      XLSX.writeFile(wb, `aquaflow-backup-${ts}.xlsx`)
+
+    } else {
+      // ── CSV: one file per table in a ZIP ──────────────────────────────
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      const folder = zip.folder('aquaflow-backup')!
+
+      for (const t of BACKUP_TABLES) {
+        setProgress(p => [...p, `Fetching ${t.label}...`])
+        try {
+          const { data, error } = await supabase.from(t.key).select('*').limit(100000)
+          if (error) {
+            folder.file(`${t.key}.csv`, `Error: ${error.message}`)
+            setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — ${error.message}`])
+          } else {
+            folder.file(`${t.key}.csv`, toCSV(data ?? []))
+            setProgress(p => [...p.slice(0,-1), `✓ ${t.label} (${(data ?? []).length} rows)`])
+          }
+        } catch (e: any) {
+          folder.file(`${t.key}.csv`, `Error: ${e.message}`)
+          setProgress(p => [...p.slice(0,-1), `⚠️ ${t.label} — skipped`])
+        }
+      }
+
+      folder.file('_manifest.txt', [
+        'AquaFlow Manager — Data Backup',
+        `Date: ${new Date().toLocaleString()}`,
+        `Tables: ${BACKUP_TABLES.length}`,
+        '',
+        ...BACKUP_TABLES.map(t => `- ${t.key}.csv`),
+      ].join('\n'))
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `aquaflow-backup-${ts}.zip`
+      a.click(); URL.revokeObjectURL(url)
+    }
+
+    setBacking(false); setDone(true)
+  }
+
+  return (
+    <div className="card mt-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="text-base font-bold text-[#1F4E79]">💾 Data Backup</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Downloads all {BACKUP_TABLES.length} tables. Choose your preferred format.
+          </p>
+        </div>
+      </div>
+
+      {/* Format selector */}
+      <div className="flex gap-3 mb-4">
+        {([
+          { key: 'csv',   label: '📄 CSV (ZIP)',      sub: 'One file per table' },
+          { key: 'excel', label: '📊 Excel (.xlsx)',  sub: 'One sheet per table' },
+        ] as const).map(({ key, label, sub }) => (
+          <button
+            key={key}
+            onClick={() => setFmt(key)}
+            disabled={backing}
+            style={{
+              flex: 1, padding: '10px 14px', borderRadius: '10px', textAlign: 'left',
+              border: fmt === key ? '2px solid #1F4E79' : '2px solid #e5e7eb',
+              background: fmt === key ? '#eff6ff' : '#f9fafb',
+              cursor: backing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <div style={{fontSize: '13px', fontWeight: 600, color: fmt === key ? '#1F4E79' : '#374151'}}>{label}</div>
+            <div style={{fontSize: '11px', color: '#9ca3af', marginTop: '2px'}}>{sub}</div>
+          </button>
+        ))}
+      </div>
+
+      <button
+        onClick={runBackup}
+        disabled={backing}
+        className="btn btn-primary w-full"
+      >
+        {backing ? '⏳ Backing up...' : `⬇️ Download ${fmt === 'excel' ? 'Excel Backup' : 'CSV Backup (ZIP)'}`}
+      </button>
+
+      {progress.length > 0 && (
+        <div className="bg-gray-50 rounded-xl p-3 text-xs font-mono space-y-0.5 max-h-48 overflow-y-auto mt-3">
+          {progress.map((p, i) => (
+            <div key={i} className={p.startsWith('✓') ? 'text-green-700' : p.startsWith('⚠') ? 'text-orange-600' : 'text-gray-500'}>
+              {p}
+            </div>
+          ))}
+          {done && (
+            <div className="text-blue-700 font-semibold pt-1 border-t border-gray-200">
+              ✅ Backup complete — check your Downloads folder.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DangerZone() {
   const [showReset, setShowReset]     = useState(false)
   const [selected, setSelected]       = useState<Record<string,boolean>>({})
