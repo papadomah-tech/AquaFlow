@@ -686,6 +686,7 @@ function DataBackup() {
     setProgress(logs)
 
     if (fmt === 'excel') {
+      setProgress(p => [...p, '📊 Building Excel workbook...'])
       const XLSX = (await import('xlsx')).default
       const wb = XLSX.utils.book_new()
       results.forEach(r => {
@@ -695,7 +696,14 @@ function DataBackup() {
           : XLSX.utils.aoa_to_sheet([[r.error ?? 'No data']])
         XLSX.utils.book_append_sheet(wb, ws, r.label.slice(0, 31))
       })
-      XLSX.writeFile(wb, `aquaflow-backup-${ts}.xlsx`)
+      // Use write + blob instead of writeFile to avoid blocking the main thread
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([wbout], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `aquaflow-backup-${ts}.xlsx`
+      document.body.appendChild(a); a.click()
+      document.body.removeChild(a); URL.revokeObjectURL(url)
     } else {
       const JSZip = (await import('jszip')).default
       const zip = new JSZip()
