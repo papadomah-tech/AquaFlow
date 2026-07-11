@@ -218,19 +218,35 @@ function SalesPageInner() {
       payment_status: status, notes: bulkForm.notes,
     }
 
+    let saleId: number | undefined
     if (editSale) {
       await supabase.from('sales').update(payload).eq('id', editSale.id)
       await supabase.from('finished_inventory').delete().eq('sale_id', editSale.id)
+      saleId = editSale.id
     } else {
-      const { data: ns } = await supabase.from('sales').insert(payload).select().single()
-      if (ns) payload._id = ns.id
+      const { data: ns, error: nsErr } = await supabase.from('sales').insert(payload).select().single()
+      if (nsErr || !ns) {
+        alert(`Sale failed to save: ${nsErr?.message ?? 'Unknown error'}`)
+        setSaving(false); return
+      }
+      saleId = ns.id
     }
-    await supabase.from('finished_inventory').insert({
+    if (!saleId) {
+      alert('Sale saved but could not get sale ID — stock ledger not updated. Please contact admin.')
+      setSaving(false); return
+    }
+    const dispatchName = bulkForm.buyer_type === 'external'
+      ? 'External Customer'
+      : (riders.find((r:any) => r.id === riderId)?.full_name ?? 'Rider')
+    const { error: fiErr } = await supabase.from('finished_inventory').insert({
       bags_in: 0, bags_out: bags,
       transaction_date: bulkForm.sale_date, reference_type: 'sale',
-      sale_id: editSale?.id ?? payload._id,
-      notes: `Bulk dispatch to ${bulkForm.buyer_type === 'external' ? 'External Customer' : (riders.find((r:any)=>r.id===riderId)?.full_name ?? 'Rider')}`,
+      sale_id: saleId,
+      notes: `Bulk dispatch to ${dispatchName}`,
     })
+    if (fiErr) {
+      alert(`Sale saved but stock ledger failed to update: ${fiErr.message}\nPlease notify admin to fix manually.`)
+    }
     setShowForm(false); load()
   }
 

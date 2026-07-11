@@ -163,11 +163,12 @@ function WeeklyReportInner() {
       const riderMap: Record<string, any> = {}
       wBulk.forEach((s: any) => {
         const name = s.buyer?.full_name ?? s.customers?.name ?? 'External'
-        if (!riderMap[name]) riderMap[name] = { name, bags: 0, invoiced: 0, collected: 0, outstanding: 0 }
+        if (!riderMap[name]) riderMap[name] = { name, bags: 0, invoiced: 0, collected: 0, outstanding: 0, dispatches: [] }
         riderMap[name].bags        += s.bags_sold
         riderMap[name].invoiced    += s.total_amount
         riderMap[name].collected   += s.amount_paid
         riderMap[name].outstanding += s.outstanding_balance
+        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, invoiced: s.total_amount, collected: s.amount_paid })
       })
 
       const totalInvoiced   = wBulk.reduce((a: number, s: any) => a + s.total_amount, 0)
@@ -677,12 +678,22 @@ function WeeklyReportInner() {
                               {(wd.riders ?? []).length === 0
                                 ? <div className="text-gray-400">No dispatches this week</div>
                                 : (wd.riders ?? []).map((r: any, i: number) => (
-                                  <div key={i} className="flex justify-between">
-                                    <span className="text-gray-500">{r.name}</span>
-                                    <span className="text-red-600 font-medium">−{fmtNum(r.bags)}</span>
+                                  <div key={i} className="mb-2">
+                                    {/* Individual dispatch rows */}
+                                    {(r.dispatches ?? []).map((d: any, j: number) => (
+                                      <div key={j} className="flex justify-between py-0.5 pl-2 border-l-2 border-gray-200">
+                                        <span className="text-gray-400">{fmtDate(d.date)} — {r.name}</span>
+                                        <span className="text-red-500">−{fmtNum(d.bags)}</span>
+                                      </div>
+                                    ))}
+                                    {/* Rider subtotal */}
+                                    <div className="flex justify-between font-medium border-t border-dashed border-gray-200 pt-0.5 mt-0.5">
+                                      <span className="text-gray-600">{r.name} subtotal</span>
+                                      <span className="text-red-600">−{fmtNum(r.bags)}</span>
+                                    </div>
                                   </div>
                                 ))}
-                              <div className="flex justify-between font-semibold border-t border-gray-200 pt-1">
+                              <div className="flex justify-between font-semibold border-t-2 border-gray-300 pt-1 mt-1">
                                 <span>Total Dispatched</span>
                                 <span className="text-red-700">{fmtNum(wd.weekDispOut ?? 0)}</span>
                               </div>
