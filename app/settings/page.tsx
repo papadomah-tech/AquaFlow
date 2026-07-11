@@ -662,77 +662,72 @@ function DataBackup() {
 
   const runBackup = async () => {
     setBacking(true); setDone(false)
-    setProgress(['⏳ Fetching all tables in parallel...'])
+    setProgress([`⏳ Connecting to server...`])
     const ts = new Date().toISOString().slice(0, 10)
 
-    // Fetch ALL tables in parallel — much faster than sequential
-    const results = await Promise.all(
-      BACKUP_TABLES.map(async t => {
-        try {
-          const { data, error } = await supabase.from(t.key).select('*').limit(100000)
-          if (error) return { ...t, data: null, error: error.message }
-          return { ...t, data: data ?? [], error: null }
-        } catch (e: any) {
-          return { ...t, data: null, error: e.message }
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { alert('Session expired — please log in again.'); setBacking(false); return }
+
+      if (fmt === 'excel') {
+        setProgress(['⏳ Generating Excel file on server (this may take 15–30 seconds)...'])
+        const res = await fetch('/api/backup?fmt=excel', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          alert(`Backup failed: ${err.error}`)
+          setBacking(false); return
         }
-      })
-    )
+        setProgress(p => [...p, '📦 Downloading...'])
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `aquaflow-backup-${ts}.xlsx`
+        document.body.appendChild(a); a.click()
+        document.body.removeChild(a); URL.revokeObjectURL(url)
+        setProgress(p => [...p, `✅ Excel backup downloaded — ${BACKUP_TABLES.length} sheets`])
+      } else {
+        // CSV: fetch data from server, ZIP in browser
+        setProgress(['⏳ Fetching all tables...'])
+        const res = await fetch('/api/backup?fmt=csv', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` }
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          alert(`Backup failed: ${err.error}`)
+          setBacking(false); return
+        }
+        const json = await res.json()
+        const csvData: Record<string, string> = json.data
+        const logs = BACKUP_TABLES.map(t =>
+          csvData[t.key] === 'Error fetching data'
+            ? `⚠️ ${t.label} — error`
+            : `✓ ${t.label}`
+        )
+        setProgress(logs)
 
-    const logs: string[] = []
-    results.forEach(r => {
-      if (r.error) logs.push(`⚠️ ${r.label} — ${r.error}`)
-      else logs.push(`✓ ${r.label} (${r.data!.length} rows)`)
-    })
-    setProgress(logs)
-
-    if (fmt === 'excel') {
-      setProgress(p => [...p, '📊 Building Excel workbook...'])
-      // Yield to browser before heavy processing so UI doesn't freeze
-      await new Promise(resolve => setTimeout(resolve, 50))
-      const XLSX = (await import('xlsx')).default
-      const wb = XLSX.utils.book_new()
-
-      // Build sheets in small batches to keep browser responsive
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i]
-        const rows = r.data ?? []
-        const ws = rows.length > 0
-          ? XLSX.utils.json_to_sheet(rows)
-          : XLSX.utils.aoa_to_sheet([[r.error ?? 'No data']])
-        XLSX.utils.book_append_sheet(wb, ws, r.label.slice(0, 31))
-        // Yield every 5 sheets so browser stays responsive
-        if (i % 5 === 4) await new Promise(resolve => setTimeout(resolve, 10))
+        setProgress(p => [...p, '📦 Creating ZIP...'])
+        const JSZip = (await import('jszip')).default
+        const zip = new JSZip()
+        const folder = zip.folder('aquaflow-backup')!
+        BACKUP_TABLES.forEach(t => folder.file(`${t.key}.csv`, csvData[t.key] ?? ''))
+        folder.file('_manifest.txt', [
+          'AquaFlow Manager — Data Backup',
+          `Date: ${new Date().toLocaleString()}`,
+          `Tables: ${BACKUP_TABLES.length}`,
+          '',
+          ...BACKUP_TABLES.map(t => `- ${t.key}.csv`),
+        ].join('\n'))
+        const blob = await zip.generateAsync({ type: 'blob' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `aquaflow-backup-${ts}.zip`
+        a.click(); URL.revokeObjectURL(url)
+        setProgress(p => [...p, `✅ CSV backup downloaded — ${BACKUP_TABLES.length} files`])
       }
-
-      setProgress(p => [...p, '📦 Compressing...'])
-      await new Promise(resolve => setTimeout(resolve, 20))
-
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([wbout], { type: 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = `aquaflow-backup-${ts}.xlsx`
-      document.body.appendChild(a); a.click()
-      document.body.removeChild(a); URL.revokeObjectURL(url)
-    } else {
-      const JSZip = (await import('jszip')).default
-      const zip = new JSZip()
-      const folder = zip.folder('aquaflow-backup')!
-      results.forEach(r => {
-        folder.file(`${r.key}.csv`, r.error ? `Error: ${r.error}` : toCSV(r.data!))
-      })
-      folder.file('_manifest.txt', [
-        'AquaFlow Manager — Data Backup',
-        `Date: ${new Date().toLocaleString()}`,
-        `Tables: ${BACKUP_TABLES.length}`,
-        '',
-        ...BACKUP_TABLES.map(t => `- ${t.key}.csv`),
-      ].join('\n'))
-      const blob = await zip.generateAsync({ type: 'blob' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = `aquaflow-backup-${ts}.zip`
-      a.click(); URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert(`Backup error: ${e.message}`)
     }
 
     setBacking(false); setDone(true)
