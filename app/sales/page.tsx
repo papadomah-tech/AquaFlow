@@ -123,8 +123,9 @@ function SalesPageInner() {
   // Fetch rider's available bags (bulk received minus retail sold)
   useEffect(() => {
     if (!isRider || !employeeId) return
-    // Fetch factory stock balance from finished_inventory
+    // Fetch factory stock balance from finished_inventory (exclude archived)
     supabase.from('finished_inventory').select('bags_in,bags_out')
+      .or('is_archived.is.null,is_archived.eq.false')
       .then(({ data: fi }) => {
         const stock = (fi ?? []).reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
         setFactoryStock(stock)
@@ -174,7 +175,9 @@ function SalesPageInner() {
     const status = paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
 
     // Stock check — always verify, even on edits (re-check against current stock)
+    // Must exclude archived entries so we only count live post-archive stock
     const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
+      .or('is_archived.is.null,is_archived.eq.false')
     const currentStock = (fi ?? []).reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
     // For edits, add back the bags from the original dispatch so we compare fairly
     const stockAvailable = editSale ? currentStock + (parseInt(String(editSale.bags_sold)) || 0) : currentStock
