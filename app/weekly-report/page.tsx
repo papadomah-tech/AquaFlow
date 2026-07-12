@@ -107,8 +107,9 @@ function WeeklyReportInner() {
       // All inventory up to end of month for running stock calc
       supabase.from('finished_inventory')
         .select('bags_in, bags_out, transaction_date, reference_type, notes')
-        .or('is_archived.is.null,is_archived.eq.false').lte('transaction_date', monthTo)
+        .lte('transaction_date', monthTo)
         .order('transaction_date'),
+        // NOTE: includes archived entries — they are real historical movements needed for correct opening stock calc
       // Current total stock (same as Stock module)
       supabase.from('finished_inventory')
         .select('bags_in, bags_out').or('is_archived.is.null,is_archived.eq.false'),
