@@ -188,18 +188,11 @@ function WeeklyReportInner() {
       if (prevWeekClosing !== null) {
         openingStock = prevWeekClosing
       } else {
-        // Week 1: sum production batches before this week minus bulk dispatches before this week
-        const prevBatchesIn = (allInventory ?? [])
-          .filter((r: any) => r.transaction_date < w.from && r.reference_type === 'production')
-          .reduce((a: number, r: any) => a + (r.bags_in||0), 0)
-        const prevAdjIn = (allInventory ?? [])
-          .filter((r: any) => r.transaction_date < w.from && r.reference_type === 'adjustment')
-          .reduce((a: number, r: any) => a + (r.bags_in||0), 0)
-        // Previous dispatches from ALL-TIME bulk sales (bulkSales is month-filtered)
-        const prevBulkOut = (allBulkSales ?? [])
-          .filter((s: any) => s.sale_date < w.from)
-          .reduce((a: number, s: any) => a + s.bags_sold, 0)
-        openingStock = prevBatchesIn + prevAdjIn - prevBulkOut
+        // Week 1: use finished_inventory as single source of truth
+        // Sum ALL bags_in minus ALL bags_out before this week's start date
+        openingStock = (allInventory ?? [])
+          .filter((r: any) => r.transaction_date < w.from)
+          .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
       }
 
       // This week's production (from production_batches — authoritative)

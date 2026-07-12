@@ -133,6 +133,7 @@ function StockPageInner() {
   })
 
   const openEdit = (r: any) => {
+    if (r.is_locked) { alert('🔒 This entry is locked — it belongs to a reconciled period and cannot be edited.'); return }
     setEditEntry(r)
     setEditForm({
       transaction_date: r.transaction_date,
@@ -157,6 +158,7 @@ function StockPageInner() {
   }
 
   const deleteEntry = async (r: any) => {
+    if (r.is_locked) { alert('🔒 This entry is locked — it belongs to a reconciled period and cannot be deleted.'); return }
     if (!confirm(
       `Delete this stock entry?\n\n` +
       `Date: ${fmtDate(r.transaction_date)}\n` +
@@ -308,12 +310,13 @@ function StockPageInner() {
                             {r.notes ?? '—'}
                           </td>
                           <td>
-                            <div className="flex gap-1">
-                              <button onClick={() => openEdit(r)}
-                                className="btn btn-sm btn-secondary">Edit</button>
-                              <button onClick={() => deleteEntry(r)}
-                                className="btn btn-sm btn-danger">Del</button>
-                            </div>
+                            {r.is_locked
+                              ? <span title="Locked — reconciled period" style={{fontSize:'18px',cursor:'default',display:'block',textAlign:'center'}}>🔒</span>
+                              : <div className="flex gap-1">
+                                  <button onClick={() => openEdit(r)} className="btn btn-sm btn-secondary">Edit</button>
+                                  <button onClick={() => deleteEntry(r)} className="btn btn-sm btn-danger">Del</button>
+                                </div>
+                            }
                           </td>
                         </tr>
                       )
