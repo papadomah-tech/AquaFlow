@@ -101,14 +101,17 @@ function PerformancePageInner() {
         bags = (fi ?? []).reduce((a: number, r: any) => a + r.bags_out, 0)
       } else if (emp.employee_type === 'rider') {
         const [{ data: primary }, { data: teammate }] = await Promise.all([
-          supabase.from('sales').select('bags_sold')
+          supabase.from('sales').select('bags_sold, is_overtime')
             .eq('sale_type', 'bulk').eq('buyer_employee_id', emp.id)
             .gte('sale_date', period.from).lte('sale_date', period.to),
-          supabase.from('sales').select('bags_sold')
+          supabase.from('sales').select('bags_sold, is_overtime')
             .eq('sale_type', 'bulk').eq('teammate_employee_id', emp.id)
             .gte('sale_date', period.from).lte('sale_date', period.to),
         ])
-        bags = [...(primary ?? []), ...(teammate ?? [])].reduce((a: number, s: any) => a + s.bags_sold, 0)
+        // Exclude overtime dispatches from performance pay bag count
+        bags = [...(primary ?? []), ...(teammate ?? [])]
+          .filter((s: any) => !s.is_overtime)
+          .reduce((a: number, s: any) => a + s.bags_sold, 0)
       } else {
         const { data: sales } = await supabase.from('sales').select('bags_sold')
           .eq('salesperson_id', emp.id)

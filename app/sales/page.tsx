@@ -62,7 +62,8 @@ function SalesPageInner() {
     teammate_employee_id: '',
     buyer_type: 'rider',          // 'rider' | 'external'
     external_customer_id: '',     // for external bulk customers
-    bags_sold: '', unit_price: '', amount_paid: '', notes: ''
+    bags_sold: '', unit_price: '', amount_paid: '', notes: '',
+    is_overtime: false,
   })
   // retailForm removed — retail sales disabled
   const [bulkForm, setBulkForm]     = useState(blankBulk())
@@ -216,6 +217,7 @@ function SalesPageInner() {
       bags_sold: bags, unit_price: price, total_amount: total,
       amount_paid: paid, outstanding_balance: bal,
       payment_status: status, notes: bulkForm.notes,
+      is_overtime: bulkForm.is_overtime ?? false,
     }
 
     let saleId: number | undefined
@@ -472,7 +474,10 @@ function SalesPageInner() {
                     <td className="muted">{fmtDate(s.sale_date)}</td>
                     <td className="font-medium">{s.buyer?.full_name ?? s.customers?.name ?? '—'}</td>
                     <td className="muted">{s.employees?.full_name ?? 'Factory'}</td>
-                    <td className="num">{fmtNum(s.bags_sold)}</td>
+                    <td className="num">
+                      {fmtNum(s.bags_sold)}
+                      {s.is_overtime && <span className="badge badge-yellow ml-1" style={{fontSize:'9px'}}>OT</span>}
+                    </td>
                     <td className="num">{fmtGhc(s.total_amount)}</td>
                     <td className="num-green">{fmtGhc(s.amount_paid)}</td>
                     <td className="num-red">{fmtGhc(s.outstanding_balance)}</td>
@@ -481,7 +486,7 @@ function SalesPageInner() {
                       <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
-                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'' })
+                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
                         <button onClick={() => {
@@ -594,6 +599,35 @@ function SalesPageInner() {
                   </div>
                 </div>
               )}
+              {/* Overtime toggle */}
+              <div style={{
+                background: bulkForm.is_overtime ? '#fff7ed' : '#f0fdf4',
+                border: `1px solid ${bulkForm.is_overtime ? '#fed7aa' : '#bbf7d0'}`,
+                borderRadius: '10px', padding: '10px 14px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+              }}>
+                <div>
+                  <div style={{fontWeight:600, fontSize:'13px', color: bulkForm.is_overtime ? '#c2410c' : '#15803d'}}>
+                    {bulkForm.is_overtime ? '🌙 Overtime Dispatch' : '☀️ Regular Dispatch'}
+                  </div>
+                  <div style={{fontSize:'11px', color:'#6b7280', marginTop:'2px'}}>
+                    {bulkForm.is_overtime
+                      ? 'Rate: GH₵5/bag · Excluded from performance pay'
+                      : 'Rate: GH₵6/bag · Counts toward performance pay'}
+                  </div>
+                </div>
+                <label style={{display:'flex', alignItems:'center', gap:'8px', cursor:'pointer'}}>
+                  <span style={{fontSize:'12px', color:'#6b7280'}}>Overtime</span>
+                  <input type="checkbox" checked={bulkForm.is_overtime}
+                    onChange={e => setBulkForm(f => ({
+                      ...f,
+                      is_overtime: e.target.checked,
+                      unit_price: e.target.checked ? '5' : f.buyer_type === 'rider' ? '6' : f.unit_price
+                    }))}
+                    style={{width:'18px', height:'18px', cursor:'pointer'}} />
+                </label>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
                   <label className="form-label">Bags Dispatched *</label>
