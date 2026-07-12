@@ -605,6 +605,9 @@ export default function SettingsPage() {
       {/* ── DATA BACKUP ───────────────────────────────────────────────────── */}
       <DataBackup />
 
+      {/* ── ARCHIVE ────────────────────────────────────────────────────────── */}
+      <ArchiveSection />
+
     </AppLayout>
   )
 }
@@ -785,6 +788,153 @@ function DataBackup() {
           {done && (
             <div className="text-blue-700 font-semibold pt-1 border-t border-gray-200">
               ✅ Backup complete — check your Downloads folder.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ArchiveSection() {
+  const [cutoff, setCutoff]       = useState('2026-07-06')
+  const [notes, setNotes]         = useState('')
+  const [archiving, setArchiving] = useState(false)
+  const [logs, setLogs]           = useState<any[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [showLogs, setShowLogs]   = useState(false)
+  const { supabase: sb } = { supabase: null } // use module-level supabase
+
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? ''
+  }
+
+  const loadLogs = async () => {
+    setLoadingLogs(true)
+    const res = await fetch('/api/archive', { headers: { Authorization: `Bearer ${await getToken()}` } })
+    const json = await res.json()
+    setLogs(json.logs ?? [])
+    setLoadingLogs(false)
+  }
+
+  const runArchive = async () => {
+    if (!cutoff) { alert('Select a cutoff date.'); return }
+    if (!confirm(
+      `Archive ALL records before ${cutoff}?\n\n` +
+      `This will hide them from all dashboards and reports.\n` +
+      `Records can be restored later from the Archive Log.\n\n` +
+      `Click OK to proceed.`
+    )) return
+
+    setArchiving(true)
+    const res = await fetch('/api/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+      body: JSON.stringify({ cutoff_date: cutoff, notes }),
+    })
+    const json = await res.json()
+    setArchiving(false)
+
+    if (!res.ok || json.error) { alert(`Archive failed: ${json.error}`); return }
+
+    const summary = Object.entries(json.counts as Record<string,number>)
+      .filter(([,n]) => n > 0)
+      .map(([k,n]) => `${k}: ${n}`)
+      .join('\n')
+    alert(`✅ Archive complete!\n\nTotal: ${json.total} records archived\n\n${summary}`)
+    setShowLogs(true)
+    loadLogs()
+  }
+
+  const unarchive = async (logId: number) => {
+    if (!confirm('Restore all records from this archive operation?')) return
+    const res = await fetch('/api/archive', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+      body: JSON.stringify({ log_id: logId }),
+    })
+    const json = await res.json()
+    if (!res.ok) { alert(`Restore failed: ${json.error}`); return }
+    alert('✅ Records restored successfully.')
+    loadLogs()
+  }
+
+  return (
+    <div className="card mt-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="text-base font-bold text-[#1F4E79]">🗄️ Archive Records</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Hide historical records from dashboards and reports. Archived records can be restored at any time.
+          </p>
+        </div>
+        <button onClick={() => { setShowLogs(!showLogs); if (!showLogs) loadLogs() }}
+          className="btn btn-sm btn-secondary">
+          {showLogs ? 'Hide Log' : '📋 Archive Log'}
+        </button>
+      </div>
+
+      {/* Archive form */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="form-group">
+          <label className="form-label">Archive records before *</label>
+          <input type="date" value={cutoff} onChange={e => setCutoff(e.target.value)}
+            className="form-input" />
+          <div className="text-xs text-gray-400 mt-1">All records strictly before this date will be archived</div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Notes (optional)</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)}
+            className="form-input" placeholder="e.g. End of Q2 2026 archive" />
+        </div>
+      </div>
+
+      <button onClick={runArchive} disabled={archiving || !cutoff}
+        className="btn btn-primary" style={{minWidth:'180px'}}>
+        {archiving ? '⏳ Archiving...' : '🗄️ Archive Records'}
+      </button>
+
+      {/* Archive log */}
+      {showLogs && (
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Archive Log</div>
+          {loadingLogs ? (
+            <div className="text-sm text-gray-400">Loading...</div>
+          ) : logs.length === 0 ? (
+            <div className="text-sm text-gray-400 italic">No archive operations yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {logs.map((log: any) => (
+                <div key={log.id} style={{
+                  background: log.is_reversed ? '#f9fafb' : '#eff6ff',
+                  border: `1px solid ${log.is_reversed ? '#e5e7eb' : '#bfdbfe'}`,
+                  borderRadius: '10px', padding: '12px'
+                }}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">
+                        {log.is_reversed ? '↩️ Restored' : '🗄️ Archived'} — records before {log.cutoff_date}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {new Date(log.archived_at).toLocaleString()}
+                        {log.notes && ` · ${log.notes}`}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {Object.entries(log.record_counts as Record<string,number>)
+                          .filter(([,n]) => n > 0)
+                          .map(([k,n]) => `${k}: ${n}`)
+                          .join(' · ')}
+                      </div>
+                    </div>
+                    {!log.is_reversed && (
+                      <button onClick={() => unarchive(log.id)} className="btn btn-sm btn-secondary">
+                        ↩️ Restore
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

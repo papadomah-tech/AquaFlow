@@ -132,7 +132,7 @@ function SalesPageInner() {
     const fetchRiderBags = async () => {
       const [{ data: bulkIn }, { data: retailOut }, { data: riderRet }] = await Promise.all([
         supabase.from('sales').select('bags_sold')
-          .eq('sale_type', 'bulk').eq('buyer_employee_id', employeeId),
+          .eq('sale_type', 'bulk').eq('is_archived', false).eq('buyer_employee_id', employeeId),
         supabase.from('sales').select('bags_sold')
           .eq('sale_type', 'retail').eq('salesperson_id', employeeId),
         supabase.from('bulk_returns').select('bags_returned')

@@ -20,7 +20,7 @@ function ExpensesPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    let q = supabase.from('expenses').select('*').gte('expense_date', filter.from).lte('expense_date', filter.to).order('expense_date', { ascending: false })
+    let q = supabase.from('expenses').select('*').gte('expense_date', filter.from).lte('expense_date', filter.to).eq('is_archived', false).order('expense_date', { ascending: false })
     if (filter.cat !== 'all') q = q.eq('category', filter.cat)
     const { data } = await q
     setExpenses(data ?? [])
