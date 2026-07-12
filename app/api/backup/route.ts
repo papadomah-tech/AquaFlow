@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     const token = authHeader.replace('Bearer ', '').trim()
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // Verify token using anon client
     const anonClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -35,8 +36,13 @@ export async function GET(req: NextRequest) {
     const { data: { user } } = await anonClient.auth.getUser(token)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Check admin role
-    const { data: profile } = await anonClient.from('profiles').select('role').eq('id', user.id).single()
+    // Use service role to fetch profile (bypasses RLS on profiles table)
+    const svcClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+    const { data: profile } = await svcClient.from('profiles').select('role').eq('id', user.id).single()
     if (profile?.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
     const admin = createClient(

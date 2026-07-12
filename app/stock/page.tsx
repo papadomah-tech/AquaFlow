@@ -26,13 +26,27 @@ function StockPageInner() {
         // Exclude entries where reference_type='sale' AND notes contains 'Retail sale'
         // (rider retail was written with reference_type='sale', factory retail won't be written going forward)
         // Historical rider retail entries are cleaned up via SQL migration
-        .order('transaction_date', { ascending: false }).limit(200),
+        .order('transaction_date', { ascending: false }).order('id', { ascending: false }).limit(200),
       supabase.from('stock_takes')
         .select('*,stock_take_items(*)').order('take_date', { ascending: false }),
     ])
-    const rows = fi ?? []
+    const allRows = fi ?? []
+    // Compute running balance from oldest to newest, then reverse for display
+    const sorted = [...allRows].sort((a, b) => {
+      if (a.transaction_date !== b.transaction_date) return a.transaction_date < b.transaction_date ? -1 : 1
+      // On same date: production (bags_in) before sales (bags_out) for correct running balance
+      if ((b.bags_in||0) !== (a.bags_in||0)) return (b.bags_in||0) - (a.bags_in||0)
+      return a.id - b.id
+    })
+    let running = 0
+    const withBalance = sorted.map(r => {
+      running += (r.bags_in||0) - (r.bags_out||0)
+      return { ...r, _balance: running }
+    })
+    // Reverse for display (newest first)
+    const rows = withBalance.reverse()
     setLedger(rows)
-    setStock(rows.reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0))
+    setStock(running)
     setTakes(st ?? [])
     setLoading(false)
   }, [])
@@ -175,16 +189,9 @@ function StockPageInner() {
     loss:       ['badge-gray',   'Loss'      ],
   }
 
-  // ── Running balance for ledger ─────────────────────────────────────────────
-  const withBalance = (() => {
-    let running = 0
-    const sorted = [...ledger].reverse()
-    const out = sorted.map(r => {
-      running += (r.bags_in||0) - (r.bags_out||0)
-      return { ...r, balance: running }
-    })
-    return out.reverse()
-  })()
+  // ── Running balance for ledger — pre-computed in load() with correct ordering ──
+  // Production entries sort before sales on the same date
+  const withBalance = ledger.map(r => ({ ...r, balance: r._balance ?? 0 }))
 
   return (
     <AppLayout>

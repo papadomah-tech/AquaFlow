@@ -164,12 +164,19 @@ function SalesPageInner() {
     const bal   = Math.max(0, total - paid)
     const status = paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
 
-    if (!editSale) {
-      const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
-      const stock = (fi ?? []).reduce((a: number, r: any) => a + r.bags_in - r.bags_out, 0)
-      if (bags > stock) {
-        alert('Insufficient stock! Available: ' + stock + ' bags'); return
-      }
+    // Stock check — always verify, even on edits (re-check against current stock)
+    const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
+    const currentStock = (fi ?? []).reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
+    // For edits, add back the bags from the original dispatch so we compare fairly
+    const stockAvailable = editSale ? currentStock + (parseInt(String(editSale.bags_sold)) || 0) : currentStock
+    if (bags > stockAvailable) {
+      alert(
+        `🚫 Insufficient stock!\n\n` +
+        `Available: ${stockAvailable} bags\n` +
+        `Requested: ${bags} bags\n\n` +
+        `Record a production batch first before dispatching.`
+      )
+      return
     }
 
     let custId: number
