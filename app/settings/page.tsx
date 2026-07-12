@@ -605,6 +605,9 @@ export default function SettingsPage() {
       {/* ── DATA BACKUP ───────────────────────────────────────────────────── */}
       <DataBackup />
 
+      {/* ── OPENING BALANCE ────────────────────────────────────────────────── */}
+      <OpeningBalanceSection />
+
       {/* ── ARCHIVE ────────────────────────────────────────────────────────── */}
       <ArchiveSection />
 
@@ -790,6 +793,133 @@ function DataBackup() {
               ✅ Backup complete — check your Downloads folder.
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OpeningBalanceSection() {
+  const [entry, setEntry]       = useState<any>(null)
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [editing, setEditing]   = useState(false)
+  const [form, setForm]         = useState({ date: '', bags: '' })
+
+  useEffect(() => {
+    loadEntry()
+  }, [])
+
+  const loadEntry = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('finished_inventory')
+      .select('id, transaction_date, bags_in, notes, is_locked')
+      .eq('reference_type', 'opening_balance')
+      .order('transaction_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setEntry(data ?? null)
+    setLoading(false)
+  }
+
+  const openEdit = () => {
+    setForm({
+      date: entry?.transaction_date ?? new Date().toISOString().split('T')[0],
+      bags: entry?.bags_in ? String(entry.bags_in) : ''
+    })
+    setEditing(true)
+  }
+
+  const save = async () => {
+    const bags = parseInt(form.bags)
+    if (!form.date) { alert('Date is required.'); return }
+    if (!bags || bags <= 0) { alert('Enter a valid bag count.'); return }
+    setSaving(true)
+
+    const payload = {
+      transaction_date: form.date,
+      bags_in:  bags,
+      bags_out: 0,
+      reference_type: 'opening_balance',
+      is_locked: true,
+      notes: `Opening stock balance as at ${form.date} — ${bags.toLocaleString()} bags`,
+    }
+
+    if (entry) {
+      await supabase.from('finished_inventory').update(payload).eq('id', entry.id)
+    } else {
+      await supabase.from('finished_inventory').insert(payload)
+    }
+
+    setSaving(false)
+    setEditing(false)
+    loadEntry()
+  }
+
+  const remove = async () => {
+    if (!entry) return
+    if (!confirm('Remove the opening balance entry? This will affect stock calculations.')) return
+    await supabase.from('finished_inventory').delete().eq('id', entry.id)
+    setEntry(null)
+  }
+
+  return (
+    <div className="card mt-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="text-base font-bold text-[#1F4E79]">📦 Opening Stock Balance</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Set the bags on hand before the app started tracking. Used as the starting point for all stock calculations.
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-400">Loading...</div>
+      ) : !editing ? (
+        <div>
+          {entry ? (
+            <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'12px',padding:'16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:'13px',color:'#6b7280',marginBottom:'4px'}}>Current Opening Balance</div>
+                <div style={{fontSize:'24px',fontWeight:700,color:'#15803d'}}>{parseInt(entry.bags_in).toLocaleString()} bags</div>
+                <div style={{fontSize:'12px',color:'#9ca3af',marginTop:'2px'}}>as at {entry.transaction_date} · 🔒 Locked</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={openEdit} className="btn btn-secondary btn-sm">Edit</button>
+                <button onClick={remove} className="btn btn-danger btn-sm">Remove</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{background:'#fefce8',border:'1px solid #fde68a',borderRadius:'12px',padding:'16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div className="text-sm text-amber-700">No opening balance set. Stock calculations will start from zero.</div>
+              <button onClick={openEdit} className="btn btn-primary btn-sm">+ Set Opening Balance</button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="form-group">
+            <label className="form-label">Date *</label>
+            <input type="date" value={form.date}
+              onChange={e => setForm(f => ({...f, date: e.target.value}))}
+              className="form-input" />
+            <div className="text-xs text-gray-400 mt-1">The date the bags were physically on hand</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Bags on Hand *</label>
+            <input type="number" min="0" value={form.bags}
+              onChange={e => setForm(f => ({...f, bags: e.target.value}))}
+              className="form-input" placeholder="e.g. 922" />
+            <div className="text-xs text-gray-400 mt-1">Total bags physically counted on that date</div>
+          </div>
+          <div className="col-span-2 flex gap-2">
+            <button onClick={save} disabled={saving || !form.date || !form.bags} className="btn btn-primary">
+              {saving ? 'Saving...' : '💾 Save Opening Balance'}
+            </button>
+            <button onClick={() => setEditing(false)} className="btn btn-secondary">Cancel</button>
+          </div>
         </div>
       )}
     </div>
