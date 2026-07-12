@@ -16,14 +16,24 @@ import { supabase, fmtGhc, fmtNum, today, fmtDate} from '@/lib/supabase'
 //   • Deposit button → writes to bank_deposits
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Weeks always start from the 1st of the month.
-// Week 1: 1st → first Sunday. Subsequent weeks: Monday → Sunday.
+// Weeks start from the 1st of the month, unless a custom start date is provided.
+// Week 1: startDate → first Sunday. Subsequent weeks: Monday → Sunday.
+// Custom overrides: specific months can start from a different date (e.g. July 2026 from 6th)
+const WEEK_START_OVERRIDES: Record<string, string> = {
+  '2026-07': '2026-07-06',  // July 2026 starts from 6th (post-archive)
+}
+
 function getWeeks(year: number, month: number) {
   const weeks: { from: string; to: string; label: string }[] = []
   const lastDay = new Date(year, month, 0)   // last day of month
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
-  let cur = new Date(year, month - 1, 1)     // always start from 1st
+  // Use custom start date if defined, otherwise 1st of month
+  const startDateStr = WEEK_START_OVERRIDES[monthKey]
+    ?? `${year}-${String(month).padStart(2, '0')}-01`
+
+  let cur = new Date(startDateStr + 'T00:00:00')
   let weekNum = 1
 
   while (cur <= lastDay) {
