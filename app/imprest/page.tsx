@@ -50,7 +50,7 @@ function ImprestPageInner() {
       .select('*')
       .gte('entry_date', dateFrom)
       .lte('entry_date', dateTo)
-      .eq('is_archived', false).order('entry_date', { ascending: false })
+      .or('is_archived.is.null,is_archived.eq.false').order('entry_date', { ascending: false })
       .order('id', { ascending: false })
     setEntries(data ?? [])
     setLoading(false)

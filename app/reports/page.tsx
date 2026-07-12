@@ -18,9 +18,9 @@ function ReportsPageInner() {
   const loadPL = useCallback(async () => {
     setLoading(true)
     const [{ data: sales }, { data: exp }, { data: rm_cost }] = await Promise.all([
-      supabase.from('sales').select('total_amount,amount_paid,outstanding_balance,bags_sold,sale_type,customers(name),employees!salesperson_id(full_name),buyer:employees!buyer_employee_id(full_name),unit_price,notes,sale_date,payment_status').eq('is_archived', false).gte('sale_date', filter.from).lte('sale_date', filter.to),
-      supabase.from('expenses').select('amount,category,expense_date,description,paid_to').eq('is_archived', false).gte('expense_date', filter.from).lte('expense_date', filter.to),
-      supabase.from('raw_material_purchases').select('total_cost').eq('is_archived', false).gte('purchase_date', filter.from).lte('purchase_date', filter.to),
+      supabase.from('sales').select('total_amount,amount_paid,outstanding_balance,bags_sold,sale_type,customers(name),employees!salesperson_id(full_name),buyer:employees!buyer_employee_id(full_name),unit_price,notes,sale_date,payment_status').or('is_archived.is.null,is_archived.eq.false').gte('sale_date', filter.from).lte('sale_date', filter.to),
+      supabase.from('expenses').select('amount,category,expense_date,description,paid_to').or('is_archived.is.null,is_archived.eq.false').gte('expense_date', filter.from).lte('expense_date', filter.to),
+      supabase.from('raw_material_purchases').select('total_cost').or('is_archived.is.null,is_archived.eq.false').gte('purchase_date', filter.from).lte('purchase_date', filter.to),
     ])
     const allSales  = sales ?? []
     const retail: any[] = []  // retail removed

@@ -91,14 +91,14 @@ function RiderDashboard({ employeeId, employeeName }: { employeeId: number; empl
     ] = await Promise.all([
       supabase.from('sales')
         .select('bags_sold, sale_date, unit_price, amount_paid, outstanding_balance, payment_status')
-        .eq('sale_type', 'bulk').eq('is_archived', false).eq('buyer_employee_id', employeeId)
+        .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false').eq('buyer_employee_id', employeeId)
         .order('sale_date', { ascending: false }),
       supabase.from('bulk_returns')
         .select('bags_returned, return_date, total_credit')
-        .eq('is_archived', false).eq('employee_id', employeeId)
+        .or('is_archived.is.null,is_archived.eq.false').eq('employee_id', employeeId)
         .order('return_date', { ascending: false }),
       supabase.from('sales').select('bags_sold')
-        .eq('is_archived', false).eq('sale_type', 'bulk').eq('teammate_employee_id', employeeId),
+        .or('is_archived.is.null,is_archived.eq.false').eq('sale_type', 'bulk').eq('teammate_employee_id', employeeId),
       supabase.from('employees')
         .select('base_pay, feeding_fee, monthly_target, salary')
         .eq('id', employeeId).single(),
@@ -293,10 +293,10 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
     ] = await Promise.all([
       supabase.from('sales')
         .select('total_amount,amount_paid,outstanding_balance,bags_sold,sale_type,salesperson_id')
-        .eq('is_archived', false).gte('sale_date', dateFrom),
-      supabase.from('finished_inventory').select('bags_in,bags_out').eq('is_archived', false),
-      supabase.from('expenses').select('amount').eq('is_archived', false).gte('expense_date', dateFrom),
-      supabase.from('finished_inventory').select('bags_out').eq('is_archived', false).gte('transaction_date', dateFrom),
+        .or('is_archived.is.null,is_archived.eq.false').gte('sale_date', dateFrom),
+      supabase.from('finished_inventory').select('bags_in,bags_out').or('is_archived.is.null,is_archived.eq.false'),
+      supabase.from('expenses').select('amount').or('is_archived.is.null,is_archived.eq.false').gte('expense_date', dateFrom),
+      supabase.from('finished_inventory').select('bags_out').or('is_archived.is.null,is_archived.eq.false').gte('transaction_date', dateFrom),
       employeeId
         ? supabase.from('employees').select('base_pay,feeding_fee,monthly_target,salary,employee_type').eq('id', employeeId).single()
         : Promise.resolve({ data: null }),
@@ -336,7 +336,7 @@ function AdminDashboard({ employeeId, isAdminUser }: { employeeId?: number; isAd
 
     const { data: recSales } = await supabase.from('sales')
       .select('id,sale_date,customers(name),bags_sold,total_amount,payment_status,sale_type,buyer:employees!buyer_employee_id(full_name),salespersonRep:employees!salesperson_id(full_name)')
-      .eq('is_archived', false).gte('sale_date', dateFrom)
+      .or('is_archived.is.null,is_archived.eq.false').gte('sale_date', dateFrom)
       .order('created_at', { ascending: false }).limit(10)
     setRecent(recSales ?? [])
     setLoading(false)

@@ -33,7 +33,7 @@ function ProductionPageInner() {
     const [{ data }, { data: opFeeExps }] = await Promise.all([
       supabase.from('production_batches')
         .select('*,roll_films(id,label,status,bags_expected,bags_produced,weight_kg,kg_remaining)')
-        .eq('is_archived', false)
+        .or('is_archived.is.null,is_archived.eq.false')
         .gte('batch_date', filter.from).lte('batch_date', filter.to)
         .order('batch_date', { ascending: false }),
       supabase.from('expenses')

@@ -95,10 +95,10 @@ function WeeklyReportInner() {
     ] = await Promise.all([
       supabase.from('production_batches')
         .select('batch_date, bags_produced, roll_ref')
-        .eq('is_archived', false).gte('batch_date', monthFrom).lte('batch_date', monthTo),
+        .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
         .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name),customers(name)')
-        .eq('sale_type', 'bulk').eq('is_archived', false)
+        .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false')
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
         .select('*')
@@ -107,15 +107,15 @@ function WeeklyReportInner() {
       // All inventory up to end of month for running stock calc
       supabase.from('finished_inventory')
         .select('bags_in, bags_out, transaction_date, reference_type, notes')
-        .eq('is_archived', false).lte('transaction_date', monthTo)
+        .or('is_archived.is.null,is_archived.eq.false').lte('transaction_date', monthTo)
         .order('transaction_date'),
       // Current total stock (same as Stock module)
       supabase.from('finished_inventory')
-        .select('bags_in, bags_out').eq('is_archived', false),
+        .select('bags_in, bags_out').or('is_archived.is.null,is_archived.eq.false'),
       // All-time bulk sales for opening stock calculation (not month-filtered)
       supabase.from('sales')
         .select('sale_date, bags_sold')
-        .eq('sale_type', 'bulk').eq('is_archived', false),
+        .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false'),
     ])
 
     // Fetch imprest entries for each week and compute totals
@@ -123,7 +123,7 @@ function WeeklyReportInner() {
     if (ws2.length > 0) {
       const { data: imprestData } = await supabase
         .from('imprest_entries')
-        .select('entry_date, amount').eq('is_archived', false)
+        .select('entry_date, amount').or('is_archived.is.null,is_archived.eq.false')
         .gte('entry_date', monthFrom)
         .lte('entry_date', monthTo)
       const totals: Record<string, number> = {}

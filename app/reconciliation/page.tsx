@@ -55,18 +55,18 @@ function ReconciliationPageInner() {
       { data: allOutstanding },
     ] = await Promise.all([
       // Dr: Bulk collections
-      supabase.from('sales').select('id,sale_date,amount_paid,bags_sold,buyer:employees!buyer_employee_id(full_name),customers(name)').eq('is_archived', false)
+      supabase.from('sales').select('id,sale_date,amount_paid,bags_sold,buyer:employees!buyer_employee_id(full_name),customers(name)').or('is_archived.is.null,is_archived.eq.false')
         .eq('sale_type', 'bulk').gt('amount_paid', 0)
         .gte('sale_date', filter.from).lte('sale_date', filter.to)
         .order('sale_date'),
 
       // Cr: Bank deposits
-      supabase.from('bank_deposits').select('*').eq('is_archived', false)
+      supabase.from('bank_deposits').select('*').or('is_archived.is.null,is_archived.eq.false')
         .gte('deposit_date', filter.from).lte('deposit_date', filter.to)
         .order('deposit_date'),
 
       // Cr: All expenses
-      supabase.from('expenses').select('*').eq('is_archived', false)
+      supabase.from('expenses').select('*').or('is_archived.is.null,is_archived.eq.false')
         .gte('expense_date', filter.from).lte('expense_date', filter.to)
         .order('expense_date'),
 
@@ -78,7 +78,7 @@ function ReconciliationPageInner() {
         .order('payment_date'),
 
       // Outstanding invoices — bulk only (revenue = bulk dispatches only)
-      supabase.from('sales').select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,sale_type,buyer:employees!buyer_employee_id(full_name),customers(name)').eq('is_archived', false)
+      supabase.from('sales').select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,sale_type,buyer:employees!buyer_employee_id(full_name),customers(name)').or('is_archived.is.null,is_archived.eq.false')
         .eq('sale_type', 'bulk')
         .gt('outstanding_balance', 0)
         .order('sale_date'),

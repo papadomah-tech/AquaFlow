@@ -22,7 +22,7 @@ function StockPageInner() {
     setLoading(true)
     const [{ data: fi }, { data: st }] = await Promise.all([
       supabase.from('finished_inventory')
-        .select('*').eq('is_archived', false)
+        .select('*').or('is_archived.is.null,is_archived.eq.false')
         // Exclude entries where reference_type='sale' AND notes contains 'Retail sale'
         // (rider retail was written with reference_type='sale', factory retail won't be written going forward)
         // Historical rider retail entries are cleaned up via SQL migration

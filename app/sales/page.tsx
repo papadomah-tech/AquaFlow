@@ -79,6 +79,7 @@ function SalesPageInner() {
     let q = supabase.from('sales')
       .select('*,customers(id,name),employees!salesperson_id(id,full_name),buyer:employees!buyer_employee_id(id,full_name)')
       .eq('sale_type', saleType)
+      .or('is_archived.is.null,is_archived.eq.false')
       .gte('sale_date', filter.from)
       .lte('sale_date', filter.to)
       .order('sale_date', { ascending: false })
@@ -132,7 +133,7 @@ function SalesPageInner() {
     const fetchRiderBags = async () => {
       const [{ data: bulkIn }, { data: retailOut }, { data: riderRet }] = await Promise.all([
         supabase.from('sales').select('bags_sold')
-          .eq('sale_type', 'bulk').eq('is_archived', false).eq('buyer_employee_id', employeeId),
+          .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false').eq('buyer_employee_id', employeeId),
         supabase.from('sales').select('bags_sold')
           .eq('sale_type', 'retail').eq('salesperson_id', employeeId),
         supabase.from('bulk_returns').select('bags_returned')
