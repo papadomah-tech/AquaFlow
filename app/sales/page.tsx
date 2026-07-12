@@ -36,7 +36,8 @@ function SalesPageInner() {
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading]     = useState(true)
   const [activeTab, setActiveTab] = useState<'bulk'>('bulk')
-  const [riderBags, setRiderBags]   = useState<number | null>(null)  // bags on hand for rider
+  const [riderBags, setRiderBags]   = useState<number | null>(null)
+  const [factoryStock, setFactoryStock] = useState<number | null>(null)
   const [returns, setReturns]         = useState<any[]>([])
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [returnTarget, setReturnTarget]     = useState<any>(null)  // the bulk sale being returned
@@ -121,6 +122,13 @@ function SalesPageInner() {
   // Fetch rider's available bags (bulk received minus retail sold)
   useEffect(() => {
     if (!isRider || !employeeId) return
+    // Fetch factory stock balance from finished_inventory
+    supabase.from('finished_inventory').select('bags_in,bags_out')
+      .then(({ data: fi }) => {
+        const stock = (fi ?? []).reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
+        setFactoryStock(stock)
+      })
+
     const fetchRiderBags = async () => {
       const [{ data: bulkIn }, { data: retailOut }, { data: riderRet }] = await Promise.all([
         supabase.from('sales').select('bags_sold')
@@ -424,6 +432,30 @@ function SalesPageInner() {
           </div>
         ))}
       </div>
+
+      {/* ── Factory stock balance ─────────────────────────────────────── */}
+      {!isRider && factoryStock !== null && (
+        <div className={'card mb-4 border-l-4 flex items-center gap-4 '
+          + (factoryStock > 100 ? 'border-green-500 bg-green-50'
+          : factoryStock > 0   ? 'border-orange-400 bg-orange-50'
+          : 'border-red-500 bg-red-50')}>
+          <div className={'text-4xl font-bold tabular-nums '
+            + (factoryStock > 100 ? 'text-green-700' : factoryStock > 0 ? 'text-orange-600' : 'text-red-700')}>
+            {fmtNum(factoryStock)}
+          </div>
+          <div>
+            <div className={'font-semibold '
+              + (factoryStock > 100 ? 'text-green-700' : factoryStock > 0 ? 'text-orange-600' : 'text-red-700')}>
+              {factoryStock > 100 ? '✅ Bags in Stock' : factoryStock > 0 ? '⚠️ Stock Running Low' : '❌ No Stock Available'}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {factoryStock > 0
+                ? `${fmtNum(factoryStock)} bag${factoryStock !== 1 ? 's' : ''} available for dispatch`
+                : 'No bags available — record a production batch before dispatching'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Rider bag balance warning ─────────────────────────────────── */}
       {isRider && riderBags !== null && (
