@@ -175,8 +175,10 @@ function ProductionPageInner() {
         const { data: rfm } = await supabase.from('raw_materials').select('id,current_stock').ilike('name','Roll Film').single()
         if (rfm) await supabase.from('raw_materials').update({ current_stock: rfm.current_stock + (editBatch.roll_kg_used || 0) }).eq('id', rfm.id)
       }
-      // Reverse previous material deductions
-      for (const m of materials) {
+      // Reverse previous material deductions — read fresh to avoid stale state
+      const { data: freshForReversal } = await supabase
+        .from('raw_materials').select('id,current_stock,usage_per_bag').gt('usage_per_bag', 0)
+      for (const m of (freshForReversal ?? [])) {
         const prevUsed = editBatch.bags_produced * m.usage_per_bag
         if (prevUsed > 0) {
           await supabase.from('raw_materials')
@@ -213,7 +215,12 @@ function ProductionPageInner() {
     }
 
     // ── Deduct all raw materials by recipe ratio ────────────────────────────
-    for (const m of materials) {
+    // Re-read current stock values fresh from the DB immediately before deducting.
+    // Using the `materials` state variable here would deduct from stale values
+    // if multiple batches are saved in the same session without a page reload.
+    const { data: freshMaterials } = await supabase
+      .from('raw_materials').select('*').gt('usage_per_bag', 0)
+    for (const m of (freshMaterials ?? [])) {
       const used = bags * m.usage_per_bag
       if (used <= 0) continue
       const newStock = m.current_stock - used
