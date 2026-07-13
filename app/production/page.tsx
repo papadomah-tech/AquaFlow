@@ -70,6 +70,10 @@ function ProductionPageInner() {
           await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', nextAvail[0].id)
           inUse = nextAvail.map((r: any) => ({ ...r, status: 'in_use' }))
         }
+      } else if (inUse.length > 1) {
+        // Data integrity issue: multiple rolls in_use — surface it, pick the oldest only
+        console.warn(`[AquaFlow] ${inUse.length} rolls are marked in_use simultaneously. Only the oldest will be used for production. Please audit Roll Film inventory.`)
+        inUse = [inUse[0]]  // oldest by purchase_date — already sorted asc
       }
 
       setRolls(inUse ?? [])

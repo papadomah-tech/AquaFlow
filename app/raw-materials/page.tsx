@@ -174,8 +174,11 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
       label: autoLabel, weight_kg: wkg, purchase_date: rollForm.purchase_date,
       supplier: rollForm.supplier, cost: wkg * cpk,
       bags_expected: Math.round(wkg * BAGS_PER_KG),
+      // For finished rolls, preserve bags_produced and kg_remaining as-is — they are historical
       bags_produced: editItem?.bags_produced ?? 0,
-      kg_remaining:  editItem?.kg_remaining ?? wkg,
+      kg_remaining:  editItem?.status === 'finished'
+        ? (editItem?.kg_remaining ?? wkg)   // locked — cannot be edited on a finished roll
+        : (editItem?.kg_remaining ?? wkg),
       status:        editItem?.status ?? 'available',
     }
 
@@ -333,6 +336,10 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
   }
 
   const deleteRoll = async (roll: Roll) => {
+    if (roll.status === 'in_use') {
+      alert(`Cannot delete "${roll.label}" — it is currently active (in use).\nMark it Done first, which will activate the next roll, then delete it.`)
+      return
+    }
     if (!confirm(`Delete roll ${roll.label}?`)) return
     const { error } = await supabase.from('roll_films').delete().eq('id', roll.id)
     if (error) { alert('Delete failed: ' + error.message); return }
@@ -460,6 +467,20 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
           {/* ── ROLLS TAB ── */}
           {tab === 'rolls' && (
             <>
+              {/* Data integrity: multiple in_use rolls */}
+              {rolls.filter(r => r.status === 'in_use').length > 1 && (
+                <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-3">
+                  <div className="text-sm text-red-800 font-semibold">
+                    🚨 Data Integrity Issue — {rolls.filter(r => r.status === 'in_use').length} rolls are marked as In Use simultaneously.
+                  </div>
+                  <div className="text-xs text-red-700 mt-1">
+                    Only one roll can be active at a time. Mark all but the correct active roll as Done or revert them to Available.
+                    Production will use the oldest roll only until this is resolved.
+                  </div>
+                </div>
+              )}
+
+              {/* No active roll warning */}
               {!rolls.some(r => r.status === 'in_use') && rolls.some(r => r.status === 'available') && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3 flex items-center justify-between">
                   <div className="text-sm text-orange-800">
@@ -490,25 +511,29 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                     {rolls.length === 0
                       ? <tr><td colSpan={12} className="text-center py-8 text-gray-400 italic">No rolls registered</td></tr>
                       : rolls.map(r => {
-                          const remaining = r.bags_expected - r.bags_produced
-                          const util      = r.bags_expected > 0 ? (r.bags_produced / r.bags_expected * 100).toFixed(1) : '0.0'
-                          const kgLeft    = r.kg_remaining ?? r.weight_kg
+                          const remaining    = r.bags_expected - r.bags_produced
+                          const utilPct      = r.bags_expected > 0 ? (r.bags_produced / r.bags_expected * 100) : 0
+                          const util         = utilPct.toFixed(1)
+                          const kgLeft       = r.kg_remaining ?? r.weight_kg
+                          const remainColor  = remaining < 0 ? 'text-orange-600 font-bold' : remaining === 0 ? 'text-gray-400' : 'text-gray-700'
+                          const utilColor    = utilPct > 115 ? 'text-red-700 font-bold' : utilPct > 100 ? 'text-orange-600 font-bold' : utilPct > 80 ? 'text-blue-600' : 'text-gray-600'
+                          const isActive     = r.status === 'in_use'
                           return (
-                            <tr key={r.id}>
+                            <tr key={r.id} className={isActive ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}>
                               <td className="font-mono text-xs font-medium whitespace-nowrap">
                                 <button onClick={() => openRollDetail(r)} className="text-blue-700 hover:underline text-left">{r.label}</button>
                               </td>
                               <td className="muted">{fmtDate(r.purchase_date)}</td>
                               <td className="muted">{r.supplier || '—'}</td>
                               <td className="num">{r.weight_kg}</td>
-                              <td className={'num font-medium ' + (kgLeft <= 0 ? 'text-red-600' : kgLeft < r.weight_kg * 0.15 ? 'text-orange-600' : 'text-green-700')}>
-                                {kgLeft.toFixed(2)}
+                              <td className={'num font-medium ' + (kgLeft <= 0 ? 'text-red-600' : kgLeft < r.weight_kg * 0.15 ? 'text-orange-600' : 'text-green-700')} title={r.kg_remaining == null ? 'No kg tracking — showing original weight' : ''}>
+                                {kgLeft.toFixed(2)}{r.kg_remaining == null ? <span className="text-gray-300 text-[9px] ml-0.5">*</span> : null}
                               </td>
                               <td className="num">{fmtGhc(r.cost)}</td>
                               <td className="num">{fmtNum(r.bags_expected)}</td>
                               <td className="num text-green-700">{fmtNum(r.bags_produced)}</td>
-                              <td className="num">{fmtNum(remaining)}</td>
-                              <td className="num">{util}%</td>
+                              <td className={"num " + remainColor}>{remaining < 0 ? "+" + fmtNum(Math.abs(remaining)) + " over" : fmtNum(remaining)}</td>
+                              <td className={"num " + utilColor}>{util}%</td>
                               <td><span className={'badge ' + statusBadgeClass(r.status)}>{r.status}</span></td>
                               <td>
                                 <div className="flex gap-1">
