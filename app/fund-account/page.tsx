@@ -3,101 +3,151 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useCallback } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import AccessDenied from '@/components/ui/AccessDenied'
-import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
+import { supabase, fmtGhc, fmtNum, today, fmtDate } from '@/lib/supabase'
 import { useRole } from '@/hooks/useRole'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEPOSITS ACCOUNT
 // ─────────────────────────────────────────────────────────────────────────────
-// Cash inflow sources tracked here:
-//   A. Bulk Dispatch Collections — amount_paid on bulk sales (non-archived only)
-//   B. Bank Deposits             — manually recorded deposits (non-archived only)
+// Cash flow statement — week-by-week for the selected month:
+//   Collected (bulk dispatches) = Banked + Ops Used (Imprest) [+ Pending/In Transit]
 //
-// Retail sales are excluded — bulk dispatch is the sole company revenue source.
-// Archived records are excluded from all queries.
-//
-// Each section shows:
-//   • Full invoice list with status (paid / partial / unpaid)
-//   • Subtotal of cash collected for that section
-//   • Grand total cash in and unbanked amount
-//
-// Non-admin: filtered to records they created
+// Retail sales excluded. Archived records excluded.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Mirrors Weekly Report week-building logic exactly
+const WEEK_START_OVERRIDES: Record<string, string> = {
+  '2026-07': '2026-07-06',
+}
+function getWeeks(year: number, month: number) {
+  const weeks: { from: string; to: string; label: string }[] = []
+  const lastDay = new Date(year, month, 0)
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
+  const startDateStr = WEEK_START_OVERRIDES[monthKey]
+    ?? `${year}-${String(month).padStart(2, '0')}-01`
+  let cur = new Date(startDateStr + 'T00:00:00')
+  let weekNum = 1
+  while (cur <= lastDay) {
+    const from = new Date(cur)
+    const to = new Date(cur)
+    while (to.getDay() !== 0 && to < lastDay) to.setDate(to.getDate() + 1)
+    const toFinal = to > lastDay ? new Date(lastDay) : to
+    weeks.push({ from: fmt(from), to: fmt(toFinal), label: `Week ${weekNum}` })
+    weekNum++
+    cur = new Date(toFinal)
+    cur.setDate(cur.getDate() + 1)
+  }
+  return weeks
+}
+
+const MONTHS = ['January','February','March','April','May','June',
+  'July','August','September','October','November','December']
 
 export default function DepositsAccountPage() {
   const { isAdmin, canAccess, userId, employeeName, loading: roleLoading } = useRole()
 
-  const [tab, setTab]           = useState<'summary'|'bulk'|'deposits'>('summary')
-  const [period, setPeriod]     = useState<'month'|'all'>('month')
-  const [data, setData]         = useState<any>(null)
-  const [bulkSales, setBulkSales]     = useState<any[]>([])
-  const [deposits, setDeposits]       = useState<any[]>([])
-  const [employees, setEmployees]     = useState<any[]>([])
-  const [loading, setLoading]   = useState(true)
+  const now = new Date()
+  const [selYear,  setSelYear]  = useState(now.getFullYear())
+  const [selMonth, setSelMonth] = useState(now.getMonth() + 1)
+
+  const [tab, setTab]         = useState<'summary'|'bulk'|'deposits'>('summary')
+  const [weeks, setWeeks]     = useState<any[]>([])
+  const [weekData, setWeekData] = useState<Record<string, any>>({})
+  const [bulkSales, setBulkSales] = useState<any[]>([])
+  const [deposits, setDeposits]   = useState<any[]>([])
+  const [totals, setTotals]       = useState<any>(null)
+  const [loading, setLoading]     = useState(true)
 
   // Deposit form
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState<any>(null)
-  const [form, setForm]         = useState({
+  const [form, setForm] = useState({
     deposit_date: today(), bank_name: '', amount: '',
     reference: '', deposited_by: '', notes: ''
   })
   const [saving, setSaving] = useState(false)
 
-  const dateFrom = period === 'month' ? monthStart() : '2000-01-01'
-
-  useEffect(() => {
-    supabase.from('employees').select('id,full_name,role,employee_type')
-      .eq('status', 'active').order('full_name')
-      .then(({ data: e }) => setEmployees(e ?? []))
-  }, [])
+  const monthStr = `${selYear}-${String(selMonth).padStart(2, '0')}`
+  const monthFrom = `${monthStr}-01`
+  const monthTo   = `${selYear}-${String(selMonth).padStart(2, '0')}-${new Date(selYear, selMonth, 0).getDate()}`
 
   const load = useCallback(async () => {
     if (roleLoading) return
     if (!canAccess('fund-account')) { setLoading(false); return }
     setLoading(true)
 
-    // ── A. Bulk Dispatch Sales (no retail — bulk is the only revenue source) ──
-    const { data: bulk } = await supabase
-      .from('sales')
-      .select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name),employees!salesperson_id(full_name)')
-      .eq('sale_type', 'bulk')
-      .or('is_archived.is.null,is_archived.eq.false')
-      .gte('sale_date', dateFrom)
-      .order('sale_date', { ascending: false })
+    const ws = getWeeks(selYear, selMonth)
+    setWeeks(ws)
 
-    const filteredBulk = isAdmin ? (bulk ?? [])
-      : (bulk ?? []).filter((s: any) => s.employees?.id === userId || !s.salesperson_id)
+    const [
+      { data: bulk },
+      { data: deps },
+      { data: imprest },
+    ] = await Promise.all([
+      supabase.from('sales')
+        .select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .eq('sale_type', 'bulk')
+        .or('is_archived.is.null,is_archived.eq.false')
+        .gte('sale_date', monthFrom)
+        .lte('sale_date', monthTo)
+        .order('sale_date', { ascending: false }),
+      supabase.from('bank_deposits').select('*')
+        .or('is_archived.is.null,is_archived.eq.false')
+        .gte('deposit_date', monthFrom)
+        .lte('deposit_date', monthTo)
+        .order('deposit_date', { ascending: false }),
+      supabase.from('imprest_entries').select('entry_date,amount,description')
+        .or('is_archived.is.null,is_archived.eq.false')
+        .gte('entry_date', monthFrom)
+        .lte('entry_date', monthTo),
+    ])
 
-    // ── B. Bank Deposits ────────────────────────────────────────────────
-    let depQ = supabase.from('bank_deposits').select('*')
-      .or('is_archived.is.null,is_archived.eq.false')
-      .gte('deposit_date', dateFrom)
-      .order('deposit_date', { ascending: false })
-    if (!isAdmin && userId) depQ = depQ.eq('created_by', userId)
-    const { data: deps } = await depQ
+    const allBulk  = bulk  ?? []
+    const allDeps  = deps  ?? []
+    const allImp   = imprest ?? []
 
-    setBulkSales(filteredBulk)
-    setDeposits(deps ?? [])
+    setBulkSales(allBulk)
+    setDeposits(allDeps)
 
-    // ── Calculations ────────────────────────────────────────────────────
-    const bulkInvoiced     = filteredBulk.reduce((a: number, s: any) => a + s.total_amount, 0)
-    const bulkCollected    = filteredBulk.reduce((a: number, s: any) => a + s.amount_paid, 0)
-    const bulkOutstanding  = filteredBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
+    // Build per-week data
+    const byWeek: Record<string, any> = {}
+    ws.forEach(w => {
+      const inRange = (d: string) => d >= w.from && d <= w.to
 
-    const totalDeposited   = (deps ?? []).reduce((a: number, d: any) => a + d.amount, 0)
+      const wBulk = allBulk.filter((s: any) => inRange(s.sale_date))
+      const wDeps = allDeps.filter((d: any) => inRange(d.deposit_date))
+      const wImp  = allImp.filter((e: any)  => inRange(e.entry_date))
 
-    const grandTotalCashIn = bulkCollected
+      const collected = wBulk.reduce((a: number, s: any) => a + (s.amount_paid || 0), 0)
+      const banked    = wDeps.reduce((a: number, d: any) => a + (d.amount || 0), 0)
+      const opsUsed   = wImp.reduce((a: number,  e: any) => a + (e.amount || 0), 0)
+      const accounted = banked + opsUsed
+      const variance  = collected - accounted   // positive = pending/in-transit
 
-    setData({
-      bulkInvoiced, bulkCollected, bulkOutstanding,
-      totalDeposited, grandTotalCashIn,
-      bulkCount: filteredBulk.length,
-      depCount: (deps ?? []).length,
+      byWeek[w.from] = {
+        collected, banked, opsUsed, accounted, variance,
+        bulkRows: wBulk, depRows: wDeps, impRows: wImp,
+      }
+    })
+    setWeekData(byWeek)
+
+    // Period totals
+    const tCollected = allBulk.reduce((a: number, s: any) => a + (s.amount_paid || 0), 0)
+    const tInvoiced  = allBulk.reduce((a: number, s: any) => a + (s.total_amount || 0), 0)
+    const tOutstanding = allBulk.reduce((a: number, s: any) => a + (s.outstanding_balance || 0), 0)
+    const tBanked    = allDeps.reduce((a: number, d: any) => a + (d.amount || 0), 0)
+    const tOpsUsed   = allImp.reduce((a: number,  e: any) => a + (e.amount || 0), 0)
+    const tAccounted = tBanked + tOpsUsed
+    const tVariance  = tCollected - tAccounted
+
+    setTotals({
+      tCollected, tInvoiced, tOutstanding,
+      tBanked, tOpsUsed, tAccounted, tVariance,
+      bulkCount: allBulk.length, depCount: allDeps.length,
     })
     setLoading(false)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, userId, period, dateFrom, roleLoading])
+  }, [selYear, selMonth, monthFrom, monthTo, isAdmin, userId, roleLoading, canAccess])
 
   useEffect(() => { load() }, [load])
 
@@ -110,7 +160,6 @@ export default function DepositsAccountPage() {
     <AccessDenied message="You do not have access to the Deposits Account." />
   )
 
-  // ── Deposit form handlers ───────────────────────────────────────────────────
   const openForm = (item?: any) => {
     setEditItem(item ?? null)
     setForm(item ? {
@@ -159,170 +208,201 @@ export default function DepositsAccountPage() {
     </button>
   )
 
+  // Colour helper for variance pill
+  const varianceStyle = (v: number) =>
+    Math.abs(v) < 0.01
+      ? { bg: 'bg-green-100', text: 'text-green-700', label: '✅ Fully Accounted' }
+      : v > 0
+      ? { bg: 'bg-amber-100', text: 'text-amber-700', label: '⏳ Pending / In Transit' }
+      : { bg: 'bg-red-100',   text: 'text-red-700',   label: '⚠️ Over-accounted' }
+
   return (
     <AppLayout>
+      {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="page-header">
         <div>
           <h1 className="page-title">💰 Deposits Account</h1>
           <div className="text-xs text-gray-400 mt-0.5">
-            {isAdmin ? 'All records' : 'Your records only'}
+            Weekly cash flow statement — {MONTHS[selMonth - 1]} {selYear}
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => openForm()} className="btn btn-primary">
+        <div className="flex gap-2 items-center flex-wrap">
+          <select value={selMonth} onChange={e => setSelMonth(parseInt(e.target.value))}
+            className="form-select w-36">
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select value={selYear} onChange={e => setSelYear(parseInt(e.target.value))}
+            className="form-select w-24">
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={load} className="btn btn-primary">Generate</button>
+          <button onClick={() => openForm()} className="btn btn-secondary">
             + Bank Deposit
-          </button>
-          <button onClick={() => setPeriod(p => p === 'month' ? 'all' : 'month')}
-            className="btn btn-secondary btn-sm">
-            {period === 'month' ? 'This Month' : 'All Time'}
           </button>
         </div>
       </div>
 
-      {!isAdmin && (
-        <div className="card mb-4 bg-blue-50 border border-blue-200">
-          <div className="text-sm text-blue-700">
-            📋 Showing your deposits and sales records only.
-          </div>
-        </div>
-      )}
-
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading...</div>
-      ) : data && (
+        <div className="text-center py-12 text-gray-400">Building statement...</div>
+      ) : totals && (
         <>
-          {/* ── Grand Total Hero ──────────────────────────────────────── */}
+          {/* ── Period Hero ──────────────────────────────────────────── */}
           <div className="rounded-2xl p-5 mb-5 bg-[#1F4E79] text-white shadow-lg">
-            <div className="text-blue-200 text-sm font-medium">
-              Total Cash In — {period === 'month' ? 'This Month' : 'All Time'}
+            <div className="text-blue-200 text-sm font-medium mb-1">
+              {MONTHS[selMonth - 1]} {selYear} — Cash Flow Summary
             </div>
-            <div className="text-5xl font-bold mt-1 tabular-nums">
-              {fmtGhc(data.grandTotalCashIn)}
-            </div>
-            <div className="grid grid-cols-3 gap-2 mt-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
               {[
-                ['Bulk Collected',  fmtGhc(data.bulkCollected),                              false],
-                ['Banked',         fmtGhc(data.totalDeposited),                              false],
-                ['Not Banked',     fmtGhc(data.bulkCollected - data.totalDeposited),         true],
-              ].map(([l, v, warn]) => (
-                <div key={l as string}
-                  className={'rounded-xl p-3 text-center '
-                    + (warn ? 'bg-orange-400/30' : 'bg-white/10')}>
-                  <div className="text-blue-200 text-xs">{l}</div>
-                  <div className={'font-bold tabular-nums mt-0.5 '
-                    + (warn ? 'text-orange-200' : 'text-white')}>{v}</div>
+                { label: 'Total Collected',  value: fmtGhc(totals.tCollected), sub: `${totals.bulkCount} dispatches` },
+                { label: 'Banked',           value: fmtGhc(totals.tBanked),    sub: `${totals.depCount} deposits` },
+                { label: 'Ops Used (Imprest)', value: fmtGhc(totals.tOpsUsed), sub: 'operational cash' },
+                { label: 'Accounted For',    value: fmtGhc(totals.tAccounted), sub: 'banked + ops', highlight: true },
+              ].map(({ label, value, sub, highlight }) => (
+                <div key={label}
+                  className={`rounded-xl p-3 text-center ${highlight ? 'bg-white/20 ring-1 ring-white/40' : 'bg-white/10'}`}>
+                  <div className="text-blue-200 text-xs">{label}</div>
+                  <div className="text-white font-bold tabular-nums mt-0.5">{value}</div>
+                  <div className="text-blue-300 text-xs mt-0.5">{sub}</div>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* ── Section Summary Cards ─────────────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-
-            {/* Bulk */}
-            <div className="card border-l-4 border-orange-400">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                A. Bulk Dispatch Collections
-              </div>
-              {[
-                ['Invoiced',    fmtGhc(data.bulkInvoiced),    'text-[#1F4E79]'],
-                ['Collected',   fmtGhc(data.bulkCollected),   'text-green-700 font-bold'],
-                ['Outstanding', fmtGhc(data.bulkOutstanding), 'text-red-600'],
-              ].map(([l, v, c]) => (
-                <div key={l as string} className="flex justify-between py-1.5 border-b border-gray-100 last:border-0">
-                  <span className="text-sm text-gray-600">{l}</span>
-                  <span className={'text-sm tabular-nums ' + c}>{v}</span>
+            {/* Period variance pill */}
+            {Math.abs(totals.tVariance) >= 0.01 && (() => {
+              const vs = varianceStyle(totals.tVariance)
+              return (
+                <div className={`mt-3 rounded-xl px-4 py-2 flex justify-between items-center ${vs.bg}`}>
+                  <span className={`text-sm font-semibold ${vs.text}`}>{vs.label}</span>
+                  <span className={`text-sm font-bold tabular-nums ${vs.text}`}>
+                    {fmtGhc(Math.abs(totals.tVariance))}
+                  </span>
                 </div>
-              ))}
-              <button onClick={() => setTab('bulk')}
-                className="text-xs text-blue-600 hover:underline mt-2">
-                View {data.bulkCount} records →
-              </button>
-            </div>
-
-            {/* Deposits */}
-            <div className="card border-l-4 border-green-500">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                B. Bank Deposits
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-gray-100">
-                <span className="text-sm text-gray-600">Total Banked</span>
-                <span className="text-sm font-bold text-green-700 tabular-nums">
-                  {fmtGhc(data.totalDeposited)}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-sm text-gray-600">Entries</span>
-                <span className="text-sm text-gray-700">{data.depCount}</span>
-              </div>
-              <button onClick={() => setTab('deposits')}
-                className="text-xs text-blue-600 hover:underline mt-2">
-                View deposits →
-              </button>
-            </div>
+              )
+            })()}
           </div>
 
           {/* ── Tabs ──────────────────────────────────────────────────── */}
           <div className="flex border-b border-gray-200 mb-4 overflow-x-auto">
-            {TAB('summary',  '📊 Summary')}
-            {TAB('bulk',     '📦 Bulk Dispatches', data.bulkCount)}
-            {TAB('deposits', '🏦 Bank Deposits',   data.depCount)}
+            {TAB('summary',  '📊 Weekly Statement')}
+            {TAB('bulk',     '📦 Dispatches', totals.bulkCount)}
+            {TAB('deposits', '🏦 Bank Deposits', totals.depCount)}
           </div>
 
-          {/* ── SUMMARY TAB ───────────────────────────────────────────── */}
+          {/* ── WEEKLY STATEMENT TAB ─────────────────────────────────── */}
           {tab === 'summary' && (
-            <div className="card">
-              <div className="text-sm font-bold text-[#1F4E79] uppercase tracking-wider mb-4">
-                Cash Inflow Statement
-              </div>
-              <div className="space-y-1">
+            <div className="space-y-3">
+              {weeks.map((w, wi) => {
+                const wd = weekData[w.from] ?? {}
+                const vs = varianceStyle(wd.variance ?? 0)
+                const hasVariance = Math.abs(wd.variance ?? 0) >= 0.01
 
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 pb-1">
-                  A. Bulk Dispatch Collections
-                </div>
-                {[
-                  ['Total Invoiced',   data.bulkInvoiced,    'text-gray-700'],
-                  ['Cash Collected',   data.bulkCollected,   'text-green-700'],
-                  ['Outstanding',      data.bulkOutstanding, 'text-red-600'],
-                ].map(([l, v, c]) => (
-                  <div key={l as string}
-                    className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-gray-50">
-                    <span className="text-sm text-gray-600 pl-2">{l}</span>
-                    <span className={'text-sm font-medium tabular-nums ' + c}>{fmtGhc(v as number)}</span>
+                return (
+                  <div key={w.from} className="card overflow-hidden p-0">
+                    {/* Week header bar */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-[#1F4E79] text-white">
+                      <div>
+                        <span className="font-bold text-sm">Week {wi + 1}</span>
+                        <span className="text-blue-300 text-xs ml-2">
+                          {fmtDate(w.from)} → {fmtDate(w.to)}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-blue-300">Collected</div>
+                        <div className="font-bold tabular-nums">{fmtGhc(wd.collected ?? 0)}</div>
+                      </div>
+                    </div>
+
+                    {/* Statement rows */}
+                    <div className="divide-y divide-gray-100">
+
+                      {/* Banked */}
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold">A</span>
+                          <div>
+                            <div className="text-sm font-medium text-gray-700">Deposited to Bank</div>
+                            <div className="text-xs text-gray-400">
+                              {wd.depRows?.length === 0
+                                ? 'No deposits this week'
+                                : wd.depRows?.map((d: any) =>
+                                    `${fmtDate(d.deposit_date)} · ${d.bank_name}`
+                                  ).join(' | ')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-sm font-bold text-green-700 tabular-nums">{fmtGhc(wd.banked ?? 0)}</div>
+                      </div>
+
+                      {/* Ops Used */}
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">B</span>
+                          <div>
+                            <div className="text-sm font-medium text-gray-700">Used for Operations (Imprest)</div>
+                            <div className="text-xs text-gray-400">
+                              {wd.impRows?.length === 0
+                                ? 'No imprest entries this week'
+                                : `${wd.impRows?.length} entr${wd.impRows?.length === 1 ? 'y' : 'ies'}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-sm font-bold text-orange-600 tabular-nums">{fmtGhc(wd.opsUsed ?? 0)}</div>
+                      </div>
+
+                      {/* Accounted total */}
+                      <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                        <div className="text-sm font-semibold text-gray-600 pl-8">Total Accounted (A + B)</div>
+                        <div className="text-sm font-bold text-[#1F4E79] tabular-nums">{fmtGhc(wd.accounted ?? 0)}</div>
+                      </div>
+
+                      {/* Variance — only shown when non-zero */}
+                      {hasVariance && (
+                        <div className={`flex items-center justify-between px-4 py-2 ${vs.bg}`}>
+                          <div className={`text-xs font-semibold pl-8 ${vs.text}`}>{vs.label}</div>
+                          <div className={`text-sm font-bold tabular-nums ${vs.text}`}>
+                            {fmtGhc(Math.abs(wd.variance))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ))}
-                <div className="flex justify-between items-center py-2 px-3 bg-orange-50 rounded-lg">
-                  <span className="text-sm font-bold text-orange-700 pl-2">Subtotal Collected (A)</span>
-                  <span className="text-sm font-bold text-orange-700 tabular-nums">{fmtGhc(data.bulkCollected)}</span>
-                </div>
+                )
+              })}
 
-                <div className="border-t border-gray-200 my-3" />
-
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 pb-1">
-                  B. Bank Deposits
+              {/* ── Period Total statement ──────────────────────────── */}
+              <div className="card overflow-hidden p-0 mt-2 ring-2 ring-[#1F4E79]">
+                <div className="px-4 py-3 bg-[#1F4E79] text-white">
+                  <span className="font-bold">{MONTHS[selMonth - 1]} {selYear} — Period Total</span>
                 </div>
-                <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-gray-50">
-                  <span className="text-sm text-gray-600 pl-2">Total Banked ({data.depCount} entries)</span>
-                  <span className="text-sm font-medium text-green-700 tabular-nums">{fmtGhc(data.totalDeposited)}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 px-3 bg-green-50 rounded-lg">
-                  <span className="text-sm font-bold text-green-700 pl-2">Subtotal (B)</span>
-                  <span className="text-sm font-bold text-green-700 tabular-nums">{fmtGhc(data.totalDeposited)}</span>
-                </div>
-
-                <div className="border-t-2 border-[#1F4E79] mt-4 pt-3 space-y-2">
-                  <div className="flex justify-between items-center px-3 py-3 bg-[#1F4E79] rounded-xl">
-                    <span className="font-bold text-white">GRAND TOTAL CASH IN (A)</span>
-                    <span className="font-bold text-white text-xl tabular-nums">
-                      {fmtGhc(data.bulkCollected)}
-                    </span>
+                <div className="divide-y divide-gray-100">
+                  {[
+                    { label: 'Total Invoiced',            value: totals.tInvoiced,    color: 'text-gray-700',    indent: false },
+                    { label: 'Total Collected (Cash In)', value: totals.tCollected,   color: 'text-[#1F4E79] font-bold', indent: false },
+                    { label: 'A. Deposited to Bank',      value: totals.tBanked,      color: 'text-green-700',   indent: true  },
+                    { label: 'B. Used for Operations',    value: totals.tOpsUsed,     color: 'text-orange-600',  indent: true  },
+                    { label: 'Total Accounted (A + B)',   value: totals.tAccounted,   color: 'text-[#1F4E79] font-bold', indent: false },
+                  ].map(({ label, value, color, indent }) => (
+                    <div key={label} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50">
+                      <span className={`text-sm text-gray-600 ${indent ? 'pl-6' : ''}`}>{label}</span>
+                      <span className={`text-sm tabular-nums ${color}`}>{fmtGhc(value)}</span>
+                    </div>
+                  ))}
+                  {/* Outstanding receivable */}
+                  <div className="flex justify-between items-center px-4 py-3 bg-gray-50">
+                    <span className="text-sm text-gray-500">Outstanding Receivable (not yet collected)</span>
+                    <span className="text-sm font-medium text-red-600 tabular-nums">{fmtGhc(totals.tOutstanding)}</span>
                   </div>
-                  <div className="flex justify-between items-center px-3 py-3 bg-green-700 rounded-xl">
-                    <span className="font-bold text-white">TOTAL CASH NOT BANKED (A − B)</span>
-                    <span className="font-bold text-white text-xl tabular-nums">
-                      {fmtGhc(data.bulkCollected - data.totalDeposited)}
-                    </span>
-                  </div>
+                  {/* Variance row — only if needed */}
+                  {Math.abs(totals.tVariance) >= 0.01 && (() => {
+                    const vs = varianceStyle(totals.tVariance)
+                    return (
+                      <div className={`flex justify-between items-center px-4 py-3 ${vs.bg}`}>
+                        <span className={`text-sm font-semibold ${vs.text}`}>{vs.label}</span>
+                        <span className={`text-sm font-bold tabular-nums ${vs.text}`}>
+                          {fmtGhc(Math.abs(totals.tVariance))}
+                        </span>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             </div>
@@ -332,7 +412,7 @@ export default function DepositsAccountPage() {
           {tab === 'bulk' && (
             <div className="card">
               <div className="text-sm font-semibold text-[#1F4E79] mb-3">
-                📦 Bulk Dispatch Collections
+                📦 Bulk Dispatch Collections — {MONTHS[selMonth - 1]} {selYear}
               </div>
               <div className="overflow-x-auto">
                 <table className="data-table">
@@ -343,7 +423,7 @@ export default function DepositsAccountPage() {
                   </colgroup>
                   <thead>
                     <tr>
-                      <th>Date</th><th>Rider / Sales Rep</th>
+                      <th>Date</th><th>Rider / Customer</th>
                       <th className="right">Invoiced</th>
                       <th className="right">Collected</th>
                       <th className="right">Outstanding</th>
@@ -353,12 +433,12 @@ export default function DepositsAccountPage() {
                   <tbody>
                     {bulkSales.length === 0
                       ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">
-                          No bulk dispatches in this period
+                          No bulk dispatches this period
                         </td></tr>
                       : bulkSales.map((s: any) => (
                       <tr key={s.id}>
                         <td className="muted">{fmtDate(s.sale_date)}</td>
-                        <td className="font-medium">{s.buyer?.full_name ?? '—'}</td>
+                        <td className="font-medium">{s.buyer?.full_name ?? s.customers?.name ?? '—'}</td>
                         <td className="num">{fmtGhc(s.total_amount)}</td>
                         <td className="num-green">{fmtGhc(s.amount_paid)}</td>
                         <td className="num-red">{fmtGhc(s.outstanding_balance)}</td>
@@ -368,19 +448,11 @@ export default function DepositsAccountPage() {
                   </tbody>
                   {bulkSales.length > 0 && (
                     <tfoot>
-                      <tr className="bg-orange-600">
-                        <td colSpan={2} className="py-2 px-3 text-white text-xs font-semibold">
-                          TOTALS
-                        </td>
-                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
-                          {fmtGhc(data.bulkInvoiced)}
-                        </td>
-                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
-                          {fmtGhc(data.bulkCollected)}
-                        </td>
-                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
-                          {fmtGhc(data.bulkOutstanding)}
-                        </td>
+                      <tr className="bg-[#1F4E79]">
+                        <td colSpan={2} className="py-2 px-3 text-white text-xs font-semibold">TOTALS</td>
+                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">{fmtGhc(totals.tInvoiced)}</td>
+                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">{fmtGhc(totals.tCollected)}</td>
+                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">{fmtGhc(totals.tOutstanding)}</td>
                         <td />
                       </tr>
                     </tfoot>
@@ -394,7 +466,7 @@ export default function DepositsAccountPage() {
           {tab === 'deposits' && (
             <div className="card">
               <div className="text-sm font-semibold text-[#1F4E79] mb-3">
-                🏦 Bank Deposits
+                🏦 Bank Deposits — {MONTHS[selMonth - 1]} {selYear}
               </div>
               <div className="overflow-x-auto">
                 <table className="data-table">
@@ -413,7 +485,7 @@ export default function DepositsAccountPage() {
                   <tbody>
                     {deposits.length === 0
                       ? <tr><td colSpan={6} className="text-center py-8 text-gray-400">
-                          No deposits in this period
+                          No deposits this period
                         </td></tr>
                       : deposits.map((d: any) => (
                       <tr key={d.id}>
@@ -436,12 +508,8 @@ export default function DepositsAccountPage() {
                   {deposits.length > 0 && (
                     <tfoot>
                       <tr className="bg-green-700">
-                        <td colSpan={4} className="py-2 px-3 text-white text-xs font-semibold">
-                          TOTAL BANKED
-                        </td>
-                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">
-                          {fmtGhc(data.totalDeposited)}
-                        </td>
+                        <td colSpan={4} className="py-2 px-3 text-white text-xs font-semibold">TOTAL BANKED</td>
+                        <td className="py-2 px-3 text-white text-xs font-bold text-right tabular-nums">{fmtGhc(totals.tBanked)}</td>
                         <td />
                       </tr>
                     </tfoot>
