@@ -189,12 +189,24 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     }
 
     if (editItem) {
+      // On edit: never allow status to become 'in_use' if another roll is already active
+      if (payload.status === 'in_use') {
+        const { data: active } = await supabase.from('roll_films').select('id').eq('status', 'in_use').neq('id', editItem.id).limit(1)
+        if (active && active.length > 0) {
+          alert('Cannot set this roll to In Use — another roll is already active.\nMark the current roll Done first.')
+          setSaving(false); return
+        }
+      }
       await supabase.from('roll_films').update(payload).eq('id', editItem.id)
     } else {
+      // On insert: auto-activate only when no roll is currently in_use
       const { data: active } = await supabase.from('roll_films').select('id').eq('status', 'in_use').limit(1)
-      if (!active || active.length === 0) payload.status = 'in_use'
+      if (!active || active.length === 0) {
+        payload.status = 'in_use'    // no active roll — auto-activate this one
+      } else {
+        payload.status = 'available' // queue behind the active roll
+      }
       await supabase.from('roll_films').insert(payload)
-
     }
 
     // Always recalculate stock from available rolls — never manually increment
@@ -278,10 +290,34 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
   }
 
   const markFinished = async (roll: Roll) => {
-    if (!confirm(`Mark ${roll.label} as Done?\n\nThis closes the roll and activates the next available roll.`)) return
-    await supabase.from('roll_films').update({ status: 'finished' }).eq('id', roll.id)
-    const { data: next } = await supabase.from('roll_films').select('id, label').eq('status', 'available').order('purchase_date', { ascending: true }).limit(1).single()
-    if (next) await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+    // Guard 1: roll must be in_use (not just any non-finished roll)
+    if (roll.status !== 'in_use') {
+      alert(`Only the active roll (in use) can be marked Done.\n"${roll.label}" is currently "${roll.status}".`)
+      return
+    }
+    // Guard 2: must have produced at least one bag — cannot close a roll with zero production
+    if ((roll.bags_produced ?? 0) === 0) {
+      alert(`Cannot mark "${roll.label}" as Done — no bags have been produced from this roll yet.\n\nRecord a production batch first, then close the roll.`)
+      return
+    }
+    if (!confirm(`Mark ${roll.label} as Done?\n\nBags produced: ${fmtNum(roll.bags_produced)} of ${fmtNum(roll.bags_expected)} expected.\nThis closes the roll and activates the next available roll.`)) return
+
+    const { error } = await supabase.from('roll_films').update({ status: 'finished' }).eq('id', roll.id)
+    if (error) { alert('Failed to close roll: ' + error.message); return }
+
+    // Guard 3: only activate next roll if no other roll became in_use in the meantime
+    const { data: stillActive } = await supabase.from('roll_films').select('id').eq('status', 'in_use').limit(1)
+    if (!stillActive || stillActive.length === 0) {
+      const { data: next } = await supabase.from('roll_films')
+        .select('id, label').eq('status', 'available')
+        .order('purchase_date', { ascending: true }).limit(1).single()
+      if (next) {
+        await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+        alert(`Roll ${next.label} is now active.`)
+      } else {
+        alert('Roll closed. No available rolls to activate — add a new roll to continue production.')
+      }
+    }
     await recalcRollStock()
     loadAll()
   }
@@ -477,7 +513,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                               <td>
                                 <div className="flex gap-1">
                                   <button onClick={() => openRoll(r)} className="btn btn-sm btn-secondary">Edit</button>
-                                  {r.status !== 'finished' && (
+                                  {r.status === 'in_use' && (
                                     <button onClick={() => markFinished(r)} className="btn btn-sm btn-warning">Done</button>
                                   )}
                                   <button onClick={() => deleteRoll(r)} className="btn btn-sm btn-danger">Del</button>
@@ -653,11 +689,19 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
               {rollDetail.bags_produced > rollDetail.bags_expected && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 text-xs text-orange-800">
                   ⚠️ <strong>Over-expected:</strong> This roll has produced {fmtNum(rollDetail.bags_produced - rollDetail.bags_expected)} bags more than expected.
-                  {rollDetail.status !== 'finished' && (
+                  {rollDetail.status === 'in_use' && rollDetail.bags_produced > 0 && (
                     <button
                       onClick={async () => {
-                        if (!confirm(`Close roll ${rollDetail.label}?\nThis marks it finished and activates the next available roll.`)) return
-                        await supabase.from('roll_films').update({ status: 'finished' }).eq('id', rollDetail.id)
+                        if (!confirm(`Close roll ${rollDetail.label}?\nBags produced: ${fmtNum(rollDetail.bags_produced)} of ${fmtNum(rollDetail.bags_expected)} expected.\nThis marks it finished and activates the next available roll.`)) return
+                        const { error } = await supabase.from('roll_films').update({ status: 'finished' }).eq('id', rollDetail.id)
+                        if (error) { alert('Failed: ' + error.message); return }
+                        // Only activate next if nothing became in_use in the meantime
+                        const { data: stillActive } = await supabase.from('roll_films').select('id').eq('status', 'in_use').limit(1)
+                        if (!stillActive || stillActive.length === 0) {
+                          const { data: next } = await supabase.from('roll_films').select('id,label').eq('status','available').order('purchase_date',{ascending:true}).limit(1).single()
+                          if (next) await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+                        }
+                        await recalcRollStock()
                         closeModal(); loadAll()
                       }}
                       className="btn btn-sm btn-warning mt-2 w-full"
