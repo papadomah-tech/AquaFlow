@@ -188,7 +188,8 @@ export default function DepositsAccountPage() {
 
   const delDeposit = async (d: any) => {
     if (!confirm('Delete deposit of ' + fmtGhc(d.amount) + '?')) return
-    await supabase.from('bank_deposits').delete().eq('id', d.id)
+    const { error } = await supabase.from('bank_deposits').delete().eq('id', d.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     load()
   }
 

@@ -167,7 +167,8 @@ function StockPageInner() {
       `Notes: ${r.notes || '—'}\n\n` +
       `This will adjust the stock balance.`
     )) return
-    await supabase.from('finished_inventory').delete().eq('id', r.id)
+    const { error: e1 } = await supabase.from('finished_inventory').delete().eq('id', r.id)
+    if (e1) { alert('Delete failed: ' + e1.message); return }
     loadAll()
   }
 
@@ -179,7 +180,8 @@ function StockPageInner() {
       `Physical count: ${t.stock_take_items?.[0]?.counted_qty ?? '—'} bags\n\n` +
       `Note: any adjustment entry made when this was finalised will NOT be automatically reversed.`
     )) return
-    await supabase.from('stock_takes').delete().eq('id', t.id)
+    const { error: e2 } = await supabase.from('stock_takes').delete().eq('id', t.id)
+    if (e2) { alert('Delete failed: ' + e2.message); return }
     loadAll()
   }
 

@@ -140,7 +140,8 @@ function RiderSalesInner() {
 
   const del = async (id: number) => {
     if (!confirm('Delete this sales record?')) return
-    await supabase.from('rider_sales').delete().eq('id', id)
+    const { error } = await supabase.from('rider_sales').delete().eq('id', id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     loadAll()
   }
 

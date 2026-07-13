@@ -860,7 +860,8 @@ function OpeningBalanceSection() {
   const remove = async () => {
     if (!entry) return
     if (!confirm('Remove the opening balance entry? This will affect stock calculations.')) return
-    await supabase.from('finished_inventory').delete().eq('id', entry.id)
+    const { error } = await supabase.from('finished_inventory').delete().eq('id', entry.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     setEntry(null)
   }
 

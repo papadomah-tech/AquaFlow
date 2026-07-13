@@ -147,7 +147,8 @@ function RawMaterialsInner() {
     if (!confirm(`Delete this purchase of ${p.quantity} ${matDetail?.unit} from ${p.supplier_name}?
 
 This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
-    await supabase.from('raw_material_purchases').delete().eq('id', p.id)
+    const { error: dpErr } = await supabase.from('raw_material_purchases').delete().eq('id', p.id)
+    if (dpErr) { alert('Delete failed: ' + dpErr.message); return }
     if (matDetail) {
       await supabase.from('raw_materials')
         .update({ current_stock: Math.max(0, matDetail.current_stock - p.quantity) })
@@ -297,20 +298,23 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
 
   const deleteRoll = async (roll: Roll) => {
     if (!confirm(`Delete roll ${roll.label}?`)) return
-    await supabase.from('roll_films').delete().eq('id', roll.id)
+    const { error } = await supabase.from('roll_films').delete().eq('id', roll.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     await recalcRollStock()
     loadAll()
   }
 
   const deleteMaterial = async (m: Material) => {
     if (!confirm(`Delete ${m.name}? This cannot be undone.`)) return
-    await supabase.from('raw_materials').delete().eq('id', m.id)
+    const { error } = await supabase.from('raw_materials').delete().eq('id', m.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     loadAll()
   }
 
   const deletePurchase = async (id: number) => {
     if (!confirm('Delete this purchase record?')) return
-    await supabase.from('raw_material_purchases').delete().eq('id', id)
+    const { error } = await supabase.from('raw_material_purchases').delete().eq('id', id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     loadAll()
   }
 

@@ -296,7 +296,8 @@ function ProductionPageInner() {
       }
     }
     await supabase.from('raw_material_usage').delete().like('notes', '%' + b.batch_number + '%')
-    await supabase.from('production_batches').delete().eq('id', b.id)
+    const { error: bErr } = await supabase.from('production_batches').delete().eq('id', b.id)
+    if (bErr) { alert('Delete failed: ' + bErr.message); return }
     await supabase.from('finished_inventory').delete().eq('reference_type','production').like('notes','%' + b.batch_number + '%')
     await supabase.from('expenses').delete().eq('category','Operator Fee').like('description','%' + b.batch_number + '%')
     load()

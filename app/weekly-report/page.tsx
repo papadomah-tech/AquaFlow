@@ -298,7 +298,8 @@ function WeeklyReportInner() {
     if (!confirmed) return
 
     // Delete the deposit
-    await supabase.from('bank_deposits').delete().eq('id', dep.id)
+    const { error: depErr } = await supabase.from('bank_deposits').delete().eq('id', dep.id)
+    if (depErr) { alert('Reversal failed: ' + depErr.message); return }
 
     // Delete matching operational expense from same day (if exists)
     const weekLabel = week.from

@@ -190,7 +190,8 @@ function ReconciliationPageInner() {
   const delDeposit = async (id: string) => {
     const depId = id.replace('dep-', '')
     if (!confirm('Delete this deposit?')) return
-    await supabase.from('bank_deposits').delete().eq('id', depId)
+    const { error } = await supabase.from('bank_deposits').delete().eq('id', depId)
+    if (error) { alert('Delete failed: ' + error.message); return }
     load()
   }
 

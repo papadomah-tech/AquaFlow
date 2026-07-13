@@ -328,7 +328,8 @@ function SalesPageInner() {
 
   const deleteReturn = async (r: any) => {
     if (!confirm('Delete this return record?\nNote: this will NOT reverse the stock or debt adjustments.')) return
-    await supabase.from('bulk_returns').delete().eq('id', r.id)
+    const { error } = await supabase.from('bulk_returns').delete().eq('id', r.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     load()
   }
 
@@ -336,7 +337,8 @@ function SalesPageInner() {
     if (!confirm('Delete Sale #' + s.id + '?')) return
     await supabase.from('payments').delete().eq('sale_id', s.id)
     await supabase.from('finished_inventory').delete().eq('sale_id', s.id)
-    await supabase.from('sales').delete().eq('id', s.id)
+    const { error } = await supabase.from('sales').delete().eq('id', s.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     load()
   }
 

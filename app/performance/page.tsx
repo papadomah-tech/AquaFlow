@@ -290,7 +290,8 @@ function PerformancePageInner() {
     if (p.expense_id) {
       await supabase.from('expenses').delete().eq('id', p.expense_id)
     }
-    await supabase.from('salary_payments').delete().eq('id', p.id)
+    const { error } = await supabase.from('salary_payments').delete().eq('id', p.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     loadHistory()
     calculate()
   }

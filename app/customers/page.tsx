@@ -98,7 +98,8 @@ function CustomersPageInner() {
 
   const del = async (c: Customer) => {
     if (!confirm('Delete customer ' + c.name + '?\nThis cannot be undone.')) return
-    await supabase.from('customers').delete().eq('id', c.id)
+    const { error } = await supabase.from('customers').delete().eq('id', c.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     load()
   }
 

@@ -98,7 +98,8 @@ function ImprestPageInner() {
 
   const del = async (e: any) => {
     if (!confirm(`Delete "${e.description}"?`)) return
-    await supabase.from('imprest_entries').delete().eq('id', e.id)
+    const { error } = await supabase.from('imprest_entries').delete().eq('id', e.id)
+    if (error) { alert('Delete failed: ' + error.message); return }
     load()
   }
 
