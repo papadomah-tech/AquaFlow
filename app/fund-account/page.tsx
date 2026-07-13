@@ -111,12 +111,30 @@ export default function DepositsAccountPage() {
     setDeposits(allDeps)
 
     // Build per-week data
+    // For deposits posted from the Weekly Report, the notes field contains the week start date
+    // e.g. "Weekly Report — 2026-07-06 | ..."  — use that to assign the deposit to the correct week.
+    // For manually added deposits, fall back to deposit_date.
+    const getDepositWeekKey = (d: any): string => {
+      if (d.notes) {
+        const m = d.notes.match(/Weekly Report — (\d{4}-\d{2}-\d{2})/)
+        if (m) return m[1]   // the week.from date encoded in the note
+      }
+      return d.deposit_date  // manual deposit — use its own date
+    }
+
     const byWeek: Record<string, any> = {}
     ws.forEach(w => {
       const inRange = (d: string) => d >= w.from && d <= w.to
 
       const wBulk = allBulk.filter((s: any) => inRange(s.sale_date))
-      const wDeps = allDeps.filter((d: any) => inRange(d.deposit_date))
+      // Assign each deposit to the week it covers, not the date it was physically made
+      const wDeps = allDeps.filter((d: any) => {
+        const weekKey = getDepositWeekKey(d)
+        // Weekly Report deposit: matched by the week start encoded in notes
+        if (d.notes?.includes('Weekly Report')) return weekKey === w.from
+        // Manual deposit: matched by deposit_date falling in this week's range
+        return inRange(d.deposit_date)
+      })
       const wImp  = allImp.filter((e: any)  => inRange(e.entry_date))
 
       const collected = wBulk.reduce((a: number, s: any) => a + (s.amount_paid || 0), 0)
