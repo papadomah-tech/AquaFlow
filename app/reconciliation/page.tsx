@@ -18,7 +18,7 @@ import { supabase, fmtGhc, fmtNum, fmtDate, today, monthStart } from '@/lib/supa
 type Entry = {
   id:       string
   date:     string
-  type:     'bulk_collection' | 'bank_deposit' | 'expense' | 'opening'
+  type:     'bulk_collection' | 'bank_deposit' | 'expense' | 'imprest' | 'opening'
   particulars: string
   dr:       number   // cash in
   cr:       number   // cash out
@@ -52,6 +52,7 @@ function ReconciliationPageInner() {
       { data: bankDeps },
       { data: expenses },
       { data: salPayments },
+      { data: imprestData },
       { data: allOutstanding },
     ] = await Promise.all([
       // Dr: Bulk collections
@@ -60,13 +61,16 @@ function ReconciliationPageInner() {
         .gte('sale_date', filter.from).lte('sale_date', filter.to)
         .order('sale_date'),
 
-      // Cr: Bank deposits
+      // Cr: Bank deposits (transfer of collected cash to bank — cash leaves hand)
       supabase.from('bank_deposits').select('*').or('is_archived.is.null,is_archived.eq.false')
         .gte('deposit_date', filter.from).lte('deposit_date', filter.to)
         .order('deposit_date'),
 
-      // Cr: All expenses
+      // Cr: Expenses — EXCLUDING 'Operational Expense' posted by Weekly Report
+      // Those are the consolidated sum of imprest entries, which appear individually below.
+      // Including both would double-count operational cash outflows.
       supabase.from('expenses').select('*').or('is_archived.is.null,is_archived.eq.false')
+        .neq('category', 'Operational Expense')
         .gte('expense_date', filter.from).lte('expense_date', filter.to)
         .order('expense_date'),
 
@@ -77,7 +81,14 @@ function ReconciliationPageInner() {
         .is('expense_id', null)   // only those NOT already in expenses
         .order('payment_date'),
 
-      // Outstanding invoices — bulk only (revenue = bulk dispatches only)
+      // Cr: Imprest entries — individual operational cash outflows
+      // These are the actual line-by-line ops spending; the Weekly Report
+      // consolidates them into one 'Operational Expense' (excluded above).
+      supabase.from('imprest_entries').select('*').or('is_archived.is.null,is_archived.eq.false')
+        .gte('entry_date', filter.from).lte('entry_date', filter.to)
+        .order('entry_date'),
+
+      // Outstanding invoices — bulk only
       supabase.from('sales').select('id,sale_date,total_amount,amount_paid,outstanding_balance,payment_status,sale_type,buyer:employees!buyer_employee_id(full_name),customers(name)').or('is_archived.is.null,is_archived.eq.false')
         .eq('sale_type', 'bulk')
         .gt('outstanding_balance', 0)
@@ -135,6 +146,17 @@ function ReconciliationPageInner() {
       })
     })
 
+    // Cr: Imprest entries — individual operational cash outflows
+    // The Weekly Report's consolidated 'Operational Expense' is excluded from expenses
+    // above to avoid double-counting; these individual imprest lines replace it.
+    ;(imprestData ?? []).forEach((e: any) => {
+      rows.push({
+        id: `imp-${e.id}`, date: e.entry_date, type: 'imprest',
+        particulars: `Ops (Imprest) — ${e.description || 'Operational expense'}`,
+        dr: 0, cr: e.amount,
+      })
+    })
+
     // Sort by date, then opening first
     rows.sort((a, b) => {
       if (a.type === 'opening') return -1
@@ -155,16 +177,17 @@ function ReconciliationPageInner() {
     const totalDr  = rows.reduce((a, r) => a + r.dr, 0)
     const totalCr  = rows.reduce((a, r) => a + r.cr, 0)
     const closing  = totalDr - totalCr
-    const bulkColl = (bulkSales ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
-    const banked   = (bankDeps ?? []).reduce((a: number, d: any) => a + d.amount, 0)
-    const expTotal = (expenses ?? []).reduce((a: number, e: any) => a + e.amount, 0)
+    const bulkColl  = (bulkSales ?? []).reduce((a: number, s: any) => a + s.amount_paid, 0)
+    const banked    = (bankDeps ?? []).reduce((a: number, d: any) => a + d.amount, 0)
+    const expTotal  = (expenses ?? []).reduce((a: number, e: any) => a + e.amount, 0)
+    const impTotal  = (imprestData ?? []).reduce((a: number, e: any) => a + e.amount, 0)
     const outstanding = (allOutstanding ?? []).reduce((a: number, s: any) => a + s.outstanding_balance, 0)
     const overdueCount = (allOutstanding ?? []).filter((s: any) => {
       const d = new Date(s.sale_date); d.setDate(d.getDate() + 30)
       return new Date() > d
     }).length
 
-    setSummary({ totalDr, totalCr, closing, bulkColl, banked, expTotal, outstanding, overdueCount })
+    setSummary({ totalDr, totalCr, closing, bulkColl, banked, expTotal, impTotal, outstanding, overdueCount })
 
     // Outstanding for tab
     const today30 = new Date(); today30.setDate(today30.getDate() - 30)
@@ -205,6 +228,7 @@ function ReconciliationPageInner() {
     bulk_collection:{ badge: 'badge-green',  drCr: 'text-green-700' },
     bank_deposit:   { badge: 'badge-yellow', drCr: 'text-orange-600' },
     expense:        { badge: 'badge-red',    drCr: 'text-red-600' },
+    imprest:        { badge: 'badge-orange',  drCr: 'text-orange-600' },
   }
 
   const TAB = (key: typeof tab, label: string) => (
@@ -277,9 +301,10 @@ function ReconciliationPageInner() {
             <div className="space-y-1.5">
               {[
                 ['Opening Balance',        fmtGhc(savedOpening),       savedOpening >= 0 ? 'text-green-700' : 'text-red-600'],
-                ['+ Bulk Collections',     fmtGhc(summary.bulkColl),   'text-green-700'],
-                ['− Bank Deposits',        fmtGhc(summary.banked),     'text-orange-600'],
-                ['− Expenses Paid',        fmtGhc(summary.expTotal),   'text-red-600'],
+                ['+ Bulk Collections',        fmtGhc(summary.bulkColl),   'text-green-700'],
+                ['− Operational (Imprest)',   fmtGhc(summary.impTotal),   'text-orange-600'],
+                ['− Other Expenses',          fmtGhc(summary.expTotal),   'text-red-600'],
+                ['− Banked (Transfer)',        fmtGhc(summary.banked),     'text-[#1F4E79]'],
               ].map(([l,v,c]) => (
                 <div key={l as string} className="flex justify-between items-center py-1.5 border-b border-gray-200 last:border-0">
                   <span className="text-sm text-gray-600">{l}</span>
@@ -338,6 +363,7 @@ function ReconciliationPageInner() {
                                 {r.type === 'opening' ? 'Opening'
                                   : r.type === 'bulk_collection' ? 'Receipt'
                                   : r.type === 'bank_deposit' ? 'Deposit'
+                                  : r.type === 'imprest' ? 'Ops/Imprest'
                                   : 'Expense'}
                               </span>
                             </td>
