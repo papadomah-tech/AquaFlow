@@ -9,7 +9,7 @@ import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
 
 const OP_FEE = 30
-const BAGS_PER_KG = 20   // 1 Kg of roll film produces ~20 bags
+const BAGS_PER_KG = 25   // standard rate: 1 Kg roll film → 25 bags
 
 function ProductionPageInner() {
   const { userId } = useRole()
@@ -178,7 +178,7 @@ function ProductionPageInner() {
       // Reverse previous material deductions — read fresh to avoid stale state
       const { data: freshForReversal } = await supabase
         .from('raw_materials').select('id,current_stock,usage_per_bag').gt('usage_per_bag', 0)
-      for (const m of (freshForReversal ?? [])) {
+      for (const m of (freshForReversal ?? []).filter((m: any) => !m.name.toLowerCase().includes('water'))) {
         const prevUsed = editBatch.bags_produced * m.usage_per_bag
         if (prevUsed > 0) {
           await supabase.from('raw_materials')
@@ -220,7 +220,7 @@ function ProductionPageInner() {
     // if multiple batches are saved in the same session without a page reload.
     const { data: freshMaterials } = await supabase
       .from('raw_materials').select('*').gt('usage_per_bag', 0)
-    for (const m of (freshMaterials ?? [])) {
+    for (const m of (freshMaterials ?? []).filter((m: any) => !m.name.toLowerCase().includes('water'))) {
       const used = bags * m.usage_per_bag
       if (used <= 0) continue
       const newStock = m.current_stock - used

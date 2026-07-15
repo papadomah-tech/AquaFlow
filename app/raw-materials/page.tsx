@@ -6,7 +6,7 @@ import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, fmtDate } from '@/lib/supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const BAGS_PER_KG    = 20
+const BAGS_PER_KG    = 25  // standard rate: 1 Kg roll film → 25 bags
 const PRICE_PER_BAG  = 6
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -72,15 +72,34 @@ function RawMaterialsInner() {
 
   // ── Roll Film stock banner (computed before render) ──────────────────────
   const rfMaterial  = materials.find(m => m.name.toLowerCase().includes('roll'))
-  const rfBannerData = rfMaterial && rfMaterial.current_stock > 0 ? (() => {
-    const kgOnHand  = rfMaterial.current_stock
-    const expBags   = Math.floor(kgOnHand * BAGS_PER_KG)
+  const pkgMaterial = materials.find(m => m.name.toLowerCase().includes('packaging'))
+  const rollsInUse      = rolls.filter(r => r.status === 'in_use')
+  const rollsAvailable  = rolls.filter(r => r.status === 'available')
+  const rollsFinished   = rolls.filter(r => r.status === 'finished')
+  const rfBannerData = rfMaterial ? (() => {
+    const kgOnHand  = rfMaterial.current_stock   // kept in sync with roll registrations
+    const expBags   = Math.floor(kgOnHand * BAGS_PER_KG)   // 25 bags / Kg standard rate
     const expRev    = expBags * PRICE_PER_BAG
     const validRolls = rolls.filter(r => r.weight_kg > 0 && r.cost > 0)
     const avgCostPerKg = validRolls.length > 0
       ? validRolls.reduce((sum, r) => sum + (r.cost / r.weight_kg), 0) / validRolls.length
       : 0
-    return { kgOnHand, expBags, expRev, totalCost: kgOnHand * avgCostPerKg }
+    // Active roll detail
+    const activeRoll  = rollsInUse[0] ?? null
+    const activeLabel = activeRoll
+      ? `Roll ${rolls.indexOf(activeRoll) + 1} of ${rolls.length} — ${activeRoll.label}`
+      : 'No active roll'
+    const activeKgLeft = activeRoll ? (activeRoll.kg_remaining ?? activeRoll.weight_kg) : 0
+    return {
+      kgOnHand, expBags, expRev,
+      totalCost: kgOnHand * avgCostPerKg,
+      totalRolls: rolls.length,
+      inUseCount: rollsInUse.length,
+      availCount: rollsAvailable.length,
+      finishedCount: rollsFinished.length,
+      activeLabel, activeKgLeft,
+      activeRoll,
+    }
   })() : null
 
   // ── Purchase projections (live, derived from form) ─────────────────────────
@@ -393,18 +412,55 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
           {/* ── STOCK TAB ── */}
           {tab === 'stock' && (
             <>
-            {/* Roll Film summary banner — computed before render, no IIFE */}
+            {/* ── Roll Film Stock Banner ───────────────────────────────── */}
             {rfBannerData && (
               <div style={{background:'linear-gradient(135deg,#1F4E79 0%,#2563eb 100%)',borderRadius:'14px',padding:'16px 20px',marginBottom:'16px',color:'#fff'}}>
-                <div style={{fontSize:'12px',fontWeight:600,letterSpacing:'0.08em',opacity:0.75,marginBottom:'10px',textTransform:'uppercase'}}>
-                  🎞️ Roll Film — Stock Projection
+                {/* Header row: title + roll status pills */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px',flexWrap:'wrap',gap:'8px'}}>
+                  <div style={{fontSize:'12px',fontWeight:600,letterSpacing:'0.08em',opacity:0.75,textTransform:'uppercase'}}>
+                    🎞️ Roll Film — Stock & Production Projection
+                  </div>
+                  <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                    {rfBannerData.inUseCount > 0 && (
+                      <span style={{background:'#22c55e',color:'#fff',fontSize:'11px',fontWeight:700,padding:'2px 10px',borderRadius:'99px'}}>
+                        🔵 Roll {rolls.indexOf(rfBannerData.activeRoll!) + 1} of {rfBannerData.totalRolls} IN USE
+                      </span>
+                    )}
+                    {rfBannerData.availCount > 0 && (
+                      <span style={{background:'rgba(255,255,255,0.2)',color:'#fff',fontSize:'11px',fontWeight:600,padding:'2px 10px',borderRadius:'99px'}}>
+                        {rfBannerData.availCount} queued
+                      </span>
+                    )}
+                    {rfBannerData.finishedCount > 0 && (
+                      <span style={{background:'rgba(255,255,255,0.1)',color:'#fff',fontSize:'11px',fontWeight:600,padding:'2px 10px',borderRadius:'99px'}}>
+                        {rfBannerData.finishedCount} finished
+                      </span>
+                    )}
+                    {rfBannerData.inUseCount === 0 && (
+                      <span style={{background:'#ef4444',color:'#fff',fontSize:'11px',fontWeight:700,padding:'2px 10px',borderRadius:'99px'}}>
+                        ⚠️ No active roll
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px'}}>
+
+                {/* Active roll detail bar */}
+                {rfBannerData.activeRoll && (
+                  <div style={{background:'rgba(255,255,255,0.1)',borderRadius:'8px',padding:'8px 12px',marginBottom:'12px',fontSize:'12px',display:'flex',gap:'16px',flexWrap:'wrap',color:'#e0e7ff'}}>
+                    <span>📌 <strong style={{color:'#fff'}}>Active:</strong> {rfBannerData.activeRoll.label}</span>
+                    <span>⚖️ <strong style={{color:'#fff'}}>Kg remaining:</strong> {rfBannerData.activeKgLeft.toFixed(2)} Kg</span>
+                    <span>🎯 <strong style={{color:'#fff'}}>Bags still possible:</strong> {Math.floor(rfBannerData.activeKgLeft * BAGS_PER_KG).toLocaleString()} bags</span>
+                    <span>📦 <strong style={{color:'#fff'}}>Bags produced this roll:</strong> {fmtNum(rfBannerData.activeRoll.bags_produced)}</span>
+                  </div>
+                )}
+
+                {/* Summary tiles */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'8px'}}>
                   {([
-                    { label: 'Kg on Hand',      value: `${rfBannerData.kgOnHand.toLocaleString()} Kg`, sub: '@ 20 bags / Kg' },
-                    { label: 'Expected Bags',    value: rfBannerData.expBags.toLocaleString(),           sub: 'from current stock' },
-                    { label: 'Expected Revenue', value: fmtGhc(rfBannerData.expRev),                    sub: `@ GH₵${PRICE_PER_BAG} / bag` },
-                    { label: 'Est. Stock Value', value: rfBannerData.totalCost > 0 ? fmtGhc(rfBannerData.totalCost) : '—', sub: 'avg cost / Kg' },
+                    { label: 'Total Kg on Hand',   value: `${rfBannerData.kgOnHand.toFixed(2)} Kg`,    sub: `${rfBannerData.totalRolls} roll(s) — ${rfBannerData.inUseCount} in use, ${rfBannerData.availCount} queued` },
+                    { label: 'Possible Bags',       value: rfBannerData.expBags.toLocaleString(),        sub: '@ 25 bags / Kg standard rate' },
+                    { label: 'Expected Revenue',    value: fmtGhc(rfBannerData.expRev),                  sub: `@ GH₵${PRICE_PER_BAG} / bag` },
+                    { label: 'Est. Stock Value',    value: rfBannerData.totalCost > 0 ? fmtGhc(rfBannerData.totalCost) : '—', sub: 'avg cost / Kg' },
                   ] as const).map(({ label, value, sub }) => (
                     <div key={label} style={{background:'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
                       <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>{label}</div>
@@ -412,6 +468,42 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                       <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>{sub}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Packaging Bags Banner ────────────────────────────────────── */}
+            {pkgMaterial && (
+              <div style={{background:'linear-gradient(135deg,#065f46 0%,#059669 100%)',borderRadius:'14px',padding:'14px 20px',marginBottom:'16px',color:'#fff'}}>
+                <div style={{fontSize:'12px',fontWeight:600,letterSpacing:'0.08em',opacity:0.75,marginBottom:'10px',textTransform:'uppercase'}}>
+                  📦 Packaging Bags — Stock Status
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
+                  <div style={{background:'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
+                    <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>Pieces in Stock</div>
+                    <div style={{fontSize:'22px',fontWeight:700,lineHeight:1}}>{fmtNum(pkgMaterial.current_stock)}</div>
+                    <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>1 piece consumed per bag produced</div>
+                  </div>
+                  <div style={{background:'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
+                    <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>Low Stock Alert</div>
+                    <div style={{fontSize:'22px',fontWeight:700,lineHeight:1}}>{fmtNum(pkgMaterial.low_stock_threshold)}</div>
+                    <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>pieces threshold</div>
+                  </div>
+                  <div style={{background: pkgMaterial.current_stock <= pkgMaterial.low_stock_threshold ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
+                    <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>Status</div>
+                    <div style={{fontSize:'15px',fontWeight:700,lineHeight:1.3}}>
+                      {pkgMaterial.current_stock <= 0
+                        ? '🚫 OUT OF STOCK'
+                        : pkgMaterial.current_stock <= pkgMaterial.low_stock_threshold
+                        ? '⚠️ LOW — Restock Soon'
+                        : '✅ OK'}
+                    </div>
+                    <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>
+                      {pkgMaterial.current_stock > 0
+                        ? `covers ${fmtNum(pkgMaterial.current_stock)} bags of production`
+                        : 'purchase required before next production run'}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -433,29 +525,52 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   {materials.length === 0
                     ? <tr><td colSpan={7} className="text-center py-8 text-gray-400 italic">No materials yet — click + Add Material</td></tr>
                     : materials.map(m => (
-                      <tr key={m.id}>
+                      {/* Hide Water — removed from record keeping per business decision */}
+                      {m.name.toLowerCase().includes('water') ? null : (
+                      <tr key={m.id} className={m.name.toLowerCase().includes('roll') ? 'bg-blue-50' : ''}>
                         <td className="font-medium">
-                          <button onClick={() => openMatDetail(m)}
-                            className="text-blue-700 hover:underline text-left font-medium">
-                            {m.name}
-                          </button>
+                          {m.name.toLowerCase().includes('roll') ? (
+                            <span className="text-[#1F4E79] font-semibold">{m.name}</span>
+                          ) : (
+                            <button onClick={() => openMatDetail(m)}
+                              className="text-blue-700 hover:underline text-left font-medium">
+                              {m.name}
+                            </button>
+                          )}
                         </td>
                         <td className="muted">{m.unit}</td>
-                        <td className="num">{fmtNum(m.current_stock)}</td>
+                        <td className="num font-semibold">
+                          {fmtNum(m.current_stock)}
+                          {m.name.toLowerCase().includes('roll') && (
+                            <div className="text-[10px] text-gray-400 font-normal">
+                              {rollsInUse.length > 0 ? `Roll ${rolls.indexOf(rollsInUse[0]) + 1} in use` : 'No active roll'}
+                              {rollsAvailable.length > 0 ? ` · ${rollsAvailable.length} queued` : ''}
+                            </div>
+                          )}
+                        </td>
                         <td className="num muted">{fmtNum(m.low_stock_threshold)}</td>
-                        <td className="num muted">{m.usage_per_bag > 0 ? `${m.usage_per_bag} ${m.unit}/bag` : '—'}</td>
+                        <td className="num muted">
+                          {m.name.toLowerCase().includes('roll')
+                            ? <span className="text-xs text-gray-400 italic">roll-managed</span>
+                            : m.usage_per_bag > 0 ? `${m.usage_per_bag} ${m.unit}/bag` : '—'}
+                        </td>
                         <td>
                           <span className={'badge ' + (m.current_stock <= m.low_stock_threshold ? 'badge-red' : 'badge-green')}>
                             {m.current_stock <= m.low_stock_threshold ? 'LOW' : 'OK'}
                           </span>
                         </td>
                         <td>
-                          <div className="flex gap-1">
-                            <button onClick={() => openMaterial(m)} className="btn btn-sm btn-secondary">Edit</button>
-                            <button onClick={() => deleteMaterial(m)} className="btn btn-sm btn-danger">Del</button>
-                          </div>
+                          {m.name.toLowerCase().includes('roll') ? (
+                            <span className="text-xs text-gray-400 italic">auto-managed</span>
+                          ) : (
+                            <div className="flex gap-1">
+                              <button onClick={() => openMaterial(m)} className="btn btn-sm btn-secondary">Edit</button>
+                              <button onClick={() => deleteMaterial(m)} className="btn btn-sm btn-danger">Del</button>
+                            </div>
+                          )}
                         </td>
                       </tr>
+                      )}
                     ))
                   }
                 </tbody>
@@ -816,7 +931,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
                     <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'4px'}}>Expected Bags</div>
                     <div style={{fontSize:'20px',fontWeight:700,color:'#15803d'}}>{rollExpBags.toLocaleString()}</div>
-                    <div style={{fontSize:'11px',color:'#9ca3af'}}>@ 20 bags / Kg</div>
+                    <div style={{fontSize:'11px',color:'#9ca3af'}}>@ 25 bags / Kg</div>
                   </div>
                   <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
                     <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'4px'}}>Total Cost</div>
