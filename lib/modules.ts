@@ -12,6 +12,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'raw-materials',  label: 'Raw Materials',  icon: '🧱', href: '/raw-materials',  adminOnly: false, description: 'Stock levels, roll film inventory, purchases' },
   { key: 'production',     label: 'Production',     icon: '🏭', href: '/production',     adminOnly: false, description: 'Production batches, batch history, operator fees' },
   { key: 'stock',          label: 'Stock',          icon: '📦', href: '/stock',          adminOnly: false, description: 'Finished goods ledger, stock take, movements' },
+  { key: 'losses',         label: 'Losses & Protocol', icon: '🗑️', href: '/losses',      adminOnly: false, description: 'Record destroyed bags and protocol (sample/test) issues — deducted from stock' },
   { key: 'pricing',        label: 'Pricing',        icon: '💰', href: '/pricing',        adminOnly: false, description: 'Cost calculator, revenue breakdown' },
   { key: 'customers',      label: 'Customers',      icon: '👤', href: '/customers',      adminOnly: false, description: 'Customer base — add, search, manage contacts' },
   { key: 'rider-sales',    label: 'My Sales',       icon: '🛵', href: '/rider-sales',    adminOnly: false, description: 'Personal sales diary — deliveries, collections, outstanding' },
