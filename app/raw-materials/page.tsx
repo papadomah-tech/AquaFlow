@@ -359,7 +359,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
   const activateNextRoll = async () => {
     const { data: active } = await supabase.from('roll_films').select('id').eq('status', 'in_use').limit(1)
     if (active && active.length > 0) { alert('A roll is already active.'); return }
-    const { data: next } = await supabase.from('roll_films').select('id, label').eq('status', 'available').order('purchase_date', { ascending: true }).limit(1).single()
+    const { data: next } = await supabase.from('roll_films').select('id, label').eq('status', 'available').order('purchase_date', { ascending: true }).order('label', { ascending: true }).limit(1).single()
     if (!next) { alert('No available rolls to activate.'); return }
     await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
     alert(`Roll ${next.label} is now active.`)
@@ -863,7 +863,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                         // Only activate next if nothing became in_use in the meantime
                         const { data: stillActive } = await supabase.from('roll_films').select('id').eq('status', 'in_use').limit(1)
                         if (!stillActive || stillActive.length === 0) {
-                          const { data: next } = await supabase.from('roll_films').select('id,label').eq('status','available').order('purchase_date',{ascending:true}).limit(1).single()
+                          const { data: next } = await supabase.from('roll_films').select('id,label').eq('status','available').order('purchase_date',{ascending:true}).order('label',{ascending:true}).limit(1).single()
                           if (next) await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
                         }
                         await recalcRollStock()

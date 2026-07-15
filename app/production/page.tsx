@@ -65,7 +65,7 @@ function ProductionPageInner() {
       if (!inUse || inUse.length === 0) {
         // No active roll — promote the oldest available one
         const { data: nextAvail } = await supabase.from('roll_films').select('*')
-          .eq('status', 'available').order('purchase_date', { ascending: true }).limit(1)
+          .eq('status', 'available').order('purchase_date', { ascending: true }).order('label', { ascending: true }).limit(1)
         if (nextAvail && nextAvail.length > 0) {
           await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', nextAvail[0].id)
           inUse = nextAvail.map((r: any) => ({ ...r, status: 'in_use' }))
