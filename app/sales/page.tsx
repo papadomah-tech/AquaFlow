@@ -700,8 +700,25 @@ function SalesPageInner() {
                   <label className="form-label">Bags Dispatched *</label>
                   <input type="number" value={bulkForm.bags_sold}
                     onChange={e => setBulkForm(f => ({...f, bags_sold:e.target.value}))}
-                    className="form-input" />
-                </div>
+                    className="form-input"
+                    max={factoryStock !== null
+                      ? (editSale ? factoryStock + (parseInt(String(editSale.bags_sold)) || 0) : factoryStock)
+                      : undefined} />
+                  {factoryStock !== null && (() => {
+                    const maxBags = editSale
+                      ? factoryStock + (parseInt(String(editSale.bags_sold)) || 0)
+                      : factoryStock
+                    const enteredBags = parseInt(bulkForm.bags_sold) || 0
+                    const over = enteredBags > maxBags
+                    return (
+                      <div className={'text-xs mt-1 font-medium '
+                        + (over ? 'text-red-600' : maxBags > 0 ? 'text-amber-600' : 'text-red-600')}>
+                        {over
+                          ? `⚠️ Exceeds stock — max ${fmtNum(maxBags)} bags available`
+                          : `Max: ${fmtNum(maxBags)} bag${maxBags !== 1 ? 's' : ''} available`}
+                      </div>
+                    )
+                  })()}</div>
                 <div className="form-group">
                   <label className="form-label">Price per Bag (GHc) *</label>
                   <input type="number" step="0.01" value={bulkForm.unit_price}
