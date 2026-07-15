@@ -11,7 +11,9 @@ import { supabase, fmtNum, fmtDate, today } from '@/lib/supabase'
 // Factory manager module for recording two types of stock reduction:
 //
 //   Destroyed  — bags that are damaged, burst, or unfit for sale
-//                Fields: date, quantity, reason/description
+//                Fields: date, quantity, reason/description, rider (optional)
+//                Rider who reported the damage is stored in the notes field as
+//                "| Reported by: <name> [rider_id:<id>]" — informational only.
 //                posted to finished_inventory with reference_type = 'loss'
 //
 //   Protocol   — bags given out for testing, sampling, or regulatory purposes
@@ -35,16 +37,23 @@ interface LossEntry {
   is_locked:      boolean
 }
 
+// Parse rider name from encoded notes string
+function parseRider(notes: string): string | null {
+  const m = notes.match(/Reported by: ([^|[]+)\[rider_id:/);
+  return m ? m[1].trim() : null
+}
+
 function LossesPageInner() {
   const [tab, setTab]         = useState<'destroyed' | 'protocol' | 'history'>('destroyed')
   const [entries, setEntries] = useState<LossEntry[]>([])
   const [stock, setStock]     = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving]   = useState(false)
+  const [riders, setRiders]   = useState<any[]>([])
 
-  // Destroyed form
+  // Destroyed form — includes optional rider who reported it
   const [dForm, setDForm] = useState({
-    date: today(), qty: '', reason: '',
+    date: today(), qty: '', reason: '', rider_id: '',
   })
 
   // Protocol form
@@ -74,6 +83,17 @@ function LossesPageInner() {
     )
     setStock(availStock)
     setEntries(losses ?? [])
+
+    // Fetch riders for the "reported by" dropdown
+    const { data: emps } = await supabase.from('employees')
+      .select('id,full_name,employee_type,team_role')
+      .eq('status', 'active').order('full_name')
+    setRiders((emps ?? []).filter((e: any) =>
+      e.employee_type === 'rider' || e.team_role === 'rider' ||
+      (e.role ?? '').toLowerCase().includes('rider') ||
+      (e.role ?? '').toLowerCase().includes('sales')
+    ))
+
     setLoading(false)
   }, [])
 
@@ -96,16 +116,23 @@ function LossesPageInner() {
     )) return
 
     setSaving(true)
+    const riderName = dForm.rider_id
+      ? riders.find(r => String(r.id) === dForm.rider_id)?.full_name ?? ''
+      : ''
+    const notesStr = dForm.rider_id
+      ? `Destroyed — ${dForm.reason} | Reported by: ${riderName} [rider_id:${dForm.rider_id}]`
+      : `Destroyed — ${dForm.reason}`
+
     const { error } = await supabase.from('finished_inventory').insert({
       transaction_date: dForm.date,
       reference_type:   'loss',
       bags_in:          0,
       bags_out:         qty,
-      notes:            `Destroyed — ${dForm.reason}`,
+      notes:            notesStr,
       is_locked:        false,
     })
     if (error) { alert('Save failed: ' + error.message); setSaving(false); return }
-    setDForm({ date: today(), qty: '', reason: '' })
+    setDForm({ date: today(), qty: '', reason: '', rider_id: '' })
     setSaving(false)
     load()
   }
@@ -279,6 +306,21 @@ function LossesPageInner() {
                     placeholder="e.g. Burst during stacking, heat damage, packaging defect..." />
                 </div>
 
+                <div>
+                  <label className="form-label">Reported by Rider <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <select value={dForm.rider_id}
+                    onChange={e => setDForm(f => ({ ...f, rider_id: e.target.value }))}
+                    className="form-select">
+                    <option value="">— Select rider who reported damage —</option>
+                    {riders.map(r => (
+                      <option key={r.id} value={String(r.id)}>{r.full_name}</option>
+                    ))}
+                  </select>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Link this damage report to the rider who reported it. For informational purposes only — does not affect their account.
+                  </div>
+                </div>
+
                 {/* Live preview */}
                 {dForm.qty && parseInt(dForm.qty) > 0 && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
@@ -388,18 +430,20 @@ function LossesPageInner() {
               <div className="overflow-x-auto">
                 <table className="data-table">
                   <colgroup>
-                    <col style={{ width: '100px' }} />
-                    <col style={{ width: '100px' }} />
-                    <col style={{ width: '90px' }} />
-                    <col />
+                    <col style={{ width: '95px' }} />
+                    <col style={{ width: '95px' }} />
                     <col style={{ width: '80px' }} />
+                    <col />
+                    <col style={{ width: '130px' }} />
+                    <col style={{ width: '70px' }} />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>Date</th>
                       <th>Type</th>
                       <th className="right">Bags</th>
-                      <th>Notes</th>
+                      <th>Notes / Purpose</th>
+                      <th>Reported By</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -423,8 +467,18 @@ function LossesPageInner() {
                         <td className="num font-bold text-red-600">
                           −{fmtNum(e.bags_out)}
                         </td>
-                        <td className="text-sm text-gray-600 max-w-xs truncate" title={e.notes}>
-                          {e.notes}
+                        <td className="text-sm text-gray-600 max-w-xs truncate"
+                          title={e.notes.replace(/\s*\[rider_id:\d+\]/, '')}>
+                          {e.notes.replace(/\s*\| Reported by: [^|[]+\[rider_id:\d+\]/, '')}
+                        </td>
+                        <td className="text-sm">
+                          {e.reference_type === 'loss' && parseRider(e.notes) ? (
+                            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full font-medium">
+                              🛵 {parseRider(e.notes)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">—</span>
+                          )}
                         </td>
                         <td>
                           {e.is_locked ? (
