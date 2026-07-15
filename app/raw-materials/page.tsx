@@ -29,6 +29,8 @@ function RawMaterialsInner() {
   const [rolls, setRolls]         = useState<Roll[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [loading, setLoading]     = useState(true)
+  const [totalBagsProduced, setTotalBagsProduced] = useState<number>(0)
+  const [totalKgConsumed,   setTotalKgConsumed]   = useState<number>(0)
 
   // Modal state
   const [modal, setModal]     = useState<'none' | 'roll' | 'material' | 'purchase' | 'rollDetail'>('none')
@@ -54,17 +56,24 @@ function RawMaterialsInner() {
   // ── Load all data ─────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: m }, { data: r }, { data: p }] = await Promise.all([
+    const [{ data: m }, { data: r }, { data: p }, { data: prod }] = await Promise.all([
       supabase.from('raw_materials').select('*').order('name'),
       supabase.from('roll_films').select('*').order('purchase_date', { ascending: false }),
       supabase.from('raw_material_purchases')
         .select('*, raw_materials(name, unit)')
         .order('purchase_date', { ascending: false })
         .limit(100),
+      // Aggregate production totals — bags produced and kg consumed across all non-archived batches
+      supabase.from('production_batches')
+        .select('bags_produced, roll_kg_used')
+        .or('is_archived.is.null,is_archived.eq.false'),
     ])
     setMaterials(m ?? [])
     setRolls(r ?? [])
     setPurchases(p ?? [])
+    const allBatches = prod ?? []
+    setTotalBagsProduced(allBatches.reduce((a: number, b: any) => a + (b.bags_produced || 0), 0))
+    setTotalKgConsumed(allBatches.reduce((a: number, b: any) => a + (b.roll_kg_used || 0), 0))
     setLoading(false)
   }, [])
 
@@ -90,8 +99,10 @@ function RawMaterialsInner() {
       ? `Roll ${rolls.indexOf(activeRoll) + 1} of ${rolls.length} — ${activeRoll.label}`
       : 'No active roll'
     const activeKgLeft = activeRoll ? (activeRoll.kg_remaining ?? activeRoll.weight_kg) : 0
+    const kgStillOnHand   = kgOnHand                              // remaining unprocessed
+    const bagsFromRemaining = Math.floor(kgOnHand * BAGS_PER_KG)  // projected from what's left
     return {
-      kgOnHand, expBags, expRev,
+      kgOnHand, expBags: bagsFromRemaining, expRev: bagsFromRemaining * PRICE_PER_BAG,
       totalCost: kgOnHand * avgCostPerKg,
       totalRolls: rolls.length,
       inUseCount: rollsInUse.length,
@@ -99,6 +110,7 @@ function RawMaterialsInner() {
       finishedCount: rollsFinished.length,
       activeLabel, activeKgLeft,
       activeRoll,
+      totalBagsProduced, totalKgConsumed,
     }
   })() : null
 
@@ -454,20 +466,31 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   </div>
                 )}
 
-                {/* Summary tiles */}
-                <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'8px'}}>
-                  {([
-                    { label: 'Total Kg on Hand',   value: `${rfBannerData.kgOnHand.toFixed(2)} Kg`,    sub: `${rfBannerData.totalRolls} roll(s) — ${rfBannerData.inUseCount} in use, ${rfBannerData.availCount} queued` },
-                    { label: 'Possible Bags',       value: rfBannerData.expBags.toLocaleString(),        sub: '@ 25 bags / Kg standard rate' },
-                    { label: 'Expected Revenue',    value: fmtGhc(rfBannerData.expRev),                  sub: `@ GH₵${PRICE_PER_BAG} / bag` },
-                    { label: 'Est. Stock Value',    value: rfBannerData.totalCost > 0 ? fmtGhc(rfBannerData.totalCost) : '—', sub: 'avg cost / Kg' },
-                  ] as const).map(({ label, value, sub }) => (
-                    <div key={label} style={{background:'rgba(255,255,255,0.12)',borderRadius:'10px',padding:'10px 12px'}}>
-                      <div style={{fontSize:'11px',opacity:0.75,marginBottom:'4px'}}>{label}</div>
-                      <div style={{fontSize:'18px',fontWeight:700,lineHeight:1}}>{value}</div>
-                      <div style={{fontSize:'10px',opacity:0.6,marginTop:'3px'}}>{sub}</div>
-                    </div>
-                  ))}
+                {/* Summary tiles — top row: what's been produced */}
+                <div style={{background:'rgba(255,255,255,0.07)',borderRadius:'10px',padding:'10px 14px',marginBottom:'8px',display:'flex',gap:'24px',flexWrap:'wrap',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:'10px',opacity:0.65,textTransform:'uppercase',letterSpacing:'0.06em'}}>Bags Produced So Far</div>
+                    <div style={{fontSize:'26px',fontWeight:800,lineHeight:1,marginTop:'2px'}}>{rfBannerData.totalBagsProduced.toLocaleString()}</div>
+                    <div style={{fontSize:'10px',opacity:0.55,marginTop:'2px'}}>from {rfBannerData.totalKgConsumed.toFixed(2)} Kg consumed</div>
+                  </div>
+                  <div style={{width:'1px',background:'rgba(255,255,255,0.2)',alignSelf:'stretch'}} />
+                  <div>
+                    <div style={{fontSize:'10px',opacity:0.65,textTransform:'uppercase',letterSpacing:'0.06em'}}>Kg Remaining on Hand</div>
+                    <div style={{fontSize:'26px',fontWeight:800,lineHeight:1,marginTop:'2px'}}>{rfBannerData.kgOnHand.toFixed(2)} Kg</div>
+                    <div style={{fontSize:'10px',opacity:0.55,marginTop:'2px'}}>{rfBannerData.totalRolls} roll(s) — {rfBannerData.inUseCount} in use, {rfBannerData.availCount} queued</div>
+                  </div>
+                  <div style={{width:'1px',background:'rgba(255,255,255,0.2)',alignSelf:'stretch'}} />
+                  <div>
+                    <div style={{fontSize:'10px',opacity:0.65,textTransform:'uppercase',letterSpacing:'0.06em'}}>Still Possible from Remaining Kg</div>
+                    <div style={{fontSize:'26px',fontWeight:800,lineHeight:1,marginTop:'2px'}}>{rfBannerData.expBags.toLocaleString()}</div>
+                    <div style={{fontSize:'10px',opacity:0.55,marginTop:'2px'}}>@ 25 bags / Kg standard rate</div>
+                  </div>
+                  <div style={{width:'1px',background:'rgba(255,255,255,0.2)',alignSelf:'stretch'}} />
+                  <div>
+                    <div style={{fontSize:'10px',opacity:0.65,textTransform:'uppercase',letterSpacing:'0.06em'}}>Expected Revenue (Remaining)</div>
+                    <div style={{fontSize:'22px',fontWeight:800,lineHeight:1,marginTop:'2px'}}>{fmtGhc(rfBannerData.expRev)}</div>
+                    <div style={{fontSize:'10px',opacity:0.55,marginTop:'2px'}}>@ GH₵{PRICE_PER_BAG} / bag</div>
+                  </div>
                 </div>
               </div>
             )}
