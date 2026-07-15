@@ -6,7 +6,7 @@ import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, fmtDate } from '@/lib/supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const BAGS_PER_KG    = 25  // standard rate: 1 Kg roll film → 25 bags
+const BAGS_PER_KG    = 22  // standard rate: 1 Kg roll film → 22 bags
 const PRICE_PER_BAG  = 6
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ function RawMaterialsInner() {
   const rollsFinished   = rolls.filter(r => r.status === 'finished')
   const rfBannerData = rfMaterial ? (() => {
     const kgOnHand  = rfMaterial.current_stock   // kept in sync with roll registrations
-    const expBags   = Math.floor(kgOnHand * BAGS_PER_KG)   // 25 bags / Kg standard rate
+    const expBags   = Math.floor(kgOnHand * BAGS_PER_KG)   // 22 bags / Kg standard rate
     const expRev    = expBags * PRICE_PER_BAG
     const validRolls = rolls.filter(r => r.weight_kg > 0 && r.cost > 0)
     const avgCostPerKg = validRolls.length > 0
@@ -483,7 +483,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   <div>
                     <div style={{fontSize:'10px',opacity:0.65,textTransform:'uppercase',letterSpacing:'0.06em'}}>Still Possible from Remaining Kg</div>
                     <div style={{fontSize:'26px',fontWeight:800,lineHeight:1,marginTop:'2px'}}>{rfBannerData.expBags.toLocaleString()}</div>
-                    <div style={{fontSize:'10px',opacity:0.55,marginTop:'2px'}}>@ 25 bags / Kg standard rate</div>
+                    <div style={{fontSize:'10px',opacity:0.55,marginTop:'2px'}}>@ 22 bags / Kg standard rate</div>
                   </div>
                   <div style={{width:'1px',background:'rgba(255,255,255,0.2)',alignSelf:'stretch'}} />
                   <div>
@@ -649,8 +649,10 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                     {rolls.length === 0
                       ? <tr><td colSpan={12} className="text-center py-8 text-gray-400 italic">No rolls registered</td></tr>
                       : rolls.map(r => {
-                          const remaining    = r.bags_expected - r.bags_produced
-                          const utilPct      = r.bags_expected > 0 ? (r.bags_produced / r.bags_expected * 100) : 0
+                          // Always derive bags_expected from weight_kg × rate — never trust the stored value
+                          const bagsExpected = Math.round(r.weight_kg * BAGS_PER_KG)
+                          const remaining    = bagsExpected - r.bags_produced
+                          const utilPct      = bagsExpected > 0 ? (r.bags_produced / bagsExpected * 100) : 0
                           const util         = utilPct.toFixed(1)
                           const kgLeft       = r.kg_remaining ?? r.weight_kg
                           const remainColor  = remaining < 0 ? 'text-orange-600 font-bold' : remaining === 0 ? 'text-gray-400' : 'text-gray-700'
@@ -668,7 +670,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                                 {kgLeft.toFixed(2)}{r.kg_remaining == null ? <span className="text-gray-300 text-[9px] ml-0.5">*</span> : null}
                               </td>
                               <td className="num">{fmtGhc(r.cost)}</td>
-                              <td className="num">{fmtNum(r.bags_expected)}</td>
+                              <td className="num">{fmtNum(bagsExpected)}</td>
                               <td className="num text-green-700">{fmtNum(r.bags_produced)}</td>
                               <td className={"num " + remainColor}>{remaining < 0 ? "+" + fmtNum(Math.abs(remaining)) + " over" : fmtNum(remaining)}</td>
                               <td className={"num " + utilColor}>{util}%</td>
@@ -954,7 +956,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
                     <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'4px'}}>Expected Bags</div>
                     <div style={{fontSize:'20px',fontWeight:700,color:'#15803d'}}>{rollExpBags.toLocaleString()}</div>
-                    <div style={{fontSize:'11px',color:'#9ca3af'}}>@ 25 bags / Kg</div>
+                    <div style={{fontSize:'11px',color:'#9ca3af'}}>@ 22 bags / Kg</div>
                   </div>
                   <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
                     <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'4px'}}>Total Cost</div>

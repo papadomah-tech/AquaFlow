@@ -27,7 +27,7 @@ import { supabase, fmtGhc, fmtNum, today, monthStart, getRiderEmployeeIds, fmtDa
 // Default cost rates — match pricing module defaults
 const DEFAULTS = {
   roll_cost_per_kg:    45,
-  bags_per_kg:         25,
+  bags_per_kg:         22,
   pkg_bulk_qty:        1000,
   pkg_bulk_cost:       640,
   water_cost_per_liter:0.0318,

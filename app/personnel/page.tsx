@@ -19,7 +19,7 @@ function PersonnelPageInner() {
 
   // Pricing rates for target viability analysis
   const PRICING = {
-    roll_cost_per_kg: 45, bags_per_kg: 25,
+    roll_cost_per_kg: 45, bags_per_kg: 22,
     pkg_bulk_qty: 1000, pkg_bulk_cost: 640,
     water_cost_per_liter: 0.0318, liters_per_bag: 15,
     operator_fee_per_100: 30,

@@ -13,7 +13,7 @@ import { useRole } from '@/hooks/useRole'
 // Feeding fee always paid in full regardless of output.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BAGS_PER_KG = 25   // standard rate: 1 Kg roll film → 25 bags
+const BAGS_PER_KG = 22   // standard rate: 1 Kg roll film → 22 bags
 
 // Count Mon–Sat working days in a date range (excludes Sundays)
 function countWorkingDays(from: string, to: string): number {

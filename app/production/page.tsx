@@ -9,7 +9,7 @@ import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supabase'
 
 const OP_FEE = 30
-const BAGS_PER_KG = 25   // standard rate: 1 Kg roll film → 25 bags
+const BAGS_PER_KG = 22   // standard rate: 1 Kg roll film → 22 bags
 
 function ProductionPageInner() {
   const { userId } = useRole()
@@ -110,8 +110,11 @@ function ProductionPageInner() {
         ? (checkRoll.bags_produced - editBatch.bags_produced)
         : (checkRoll.bags_produced || 0)
       const newTotal  = prevBags + bags
-      const hardCap   = Math.floor(checkRoll.bags_expected * 1.15)   // 115% — hard block
-      const softWarn  = checkRoll.bags_expected                       // 100% — soft warning
+      // Always compute expected bags from current rate — never trust stored bags_expected
+      // (stored value may have been calculated with old 20 bags/Kg rate)
+      const liveExpected = Math.round(checkRoll.weight_kg * BAGS_PER_KG)
+      const hardCap   = Math.floor(liveExpected * 1.15)   // 115% — hard block
+      const softWarn  = liveExpected                       // 100% — soft warning
 
       if (newTotal > hardCap) {
         // HARD BLOCK — refuse save
@@ -131,12 +134,12 @@ function ProductionPageInner() {
 
       if (newTotal > softWarn) {
         // SOFT WARNING — allow user to confirm between 100%–115%
-        const over    = newTotal - checkRoll.bags_expected
-        const pct     = ((newTotal / checkRoll.bags_expected) * 100).toFixed(1)
+        const over    = newTotal - liveExpected
+        const pct     = ((newTotal / liveExpected) * 100).toFixed(1)
         const capLeft = hardCap - newTotal
         const proceed = confirm(
           `⚠️ Over-Expected Warning (${pct}% of expected)\n\n` +
-          `Roll ${checkRoll.label} expected yield: ${checkRoll.bags_expected} bags.\n` +
+          `Roll ${checkRoll.label} expected yield: ${liveExpected} bags.\n` +
           `With this batch, total will be ${newTotal} bags (+${over} over expected).\n` +
           `Hard cap remaining: ${capLeft} more bags before this roll is locked.\n\n` +
           `Are you sure these batches are correctly assigned to this roll?\n\n` +
@@ -466,7 +469,7 @@ function ProductionPageInner() {
                     </div>
                     <div className="text-xs text-blue-600 mt-0.5">
                       {(rolls[0]?.kg_remaining ?? rolls[0]?.weight_kg ?? 0).toFixed(2)} Kg remaining
-                      · {rolls[0]?.bags_expected ?? 0} bags expected
+                      · {Math.round((rolls[0]?.weight_kg ?? 0) * BAGS_PER_KG)} bags expected
                     </div>
                     <input type="hidden" value={form.roll_film_id} />
                   </div>
