@@ -5,7 +5,7 @@ import AppLayout from '@/components/layout/AppLayout'
 import ModuleGuard from '@/components/ui/ModuleGuard'
 import { supabase, fmtGhc } from '@/lib/supabase'
 
-const DEFAULT = { roll_cost_per_kg: 45, pkg_bulk_qty: 1000, pkg_bulk_cost: 640, water_cost_per_liter: 0.0318, liters_per_bag: 0.5, labor_per_bag: 0.50, utility_per_bag: 0.20, machine_per_bag: 0.10, transport_per_bag: 0.10, other_per_bag: 0.05, margin_pct: 20, bags_per_kg: 20 }
+const DEFAULT = { roll_cost_per_kg: 45, pkg_bulk_qty: 1000, pkg_bulk_cost: 640, water_cost_per_liter: 0.0318, liters_per_bag: 0.5, labor_per_bag: 0.50, utility_per_bag: 0.20, machine_per_bag: 0.10, transport_per_bag: 0.10, other_per_bag: 0.05, margin_pct: 20, bags_per_kg: 25 }
 
 function PricingPageInner() {
   const [inputs, setInputs] = useState(DEFAULT)
@@ -70,7 +70,7 @@ function PricingPageInner() {
           <div className="card">
             <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Raw Material Costs</div>
             <Input label="Roll Film — cost per Kg (GHc)" k="roll_cost_per_kg" tip="GHc 45 per Kg default" />
-            <Input label="Bags per Kg (approx)" k="bags_per_kg" step="1" tip="Default: 20 bags/Kg" />
+            <Input label="Bags per Kg (approx)" k="bags_per_kg" step="1" tip="Default: 25 bags/Kg" />
             <Input label="Packaging bags — bulk qty" k="pkg_bulk_qty" step="1" />
             <Input label="Packaging bags — bulk cost (GHc)" k="pkg_bulk_cost" />
             <Input label="Water — cost per litre (GHc)" k="water_cost_per_liter" tip="GHc 0.0318/litre" />
