@@ -196,11 +196,32 @@ function ProductionPageInner() {
     if (roll) {
       const newKgRemaining = (roll.kg_remaining ?? roll.weight_kg) - kgUsed
       if (newKgRemaining < 0) newWarnings.push(`Roll ${roll.label}: Kg went negative (${newKgRemaining.toFixed(2)} Kg)`)
+      const rollExhausted = newKgRemaining <= 0
       await supabase.from('roll_films').update({
         bags_produced: (roll.bags_produced||0) + bags,
         kg_remaining: newKgRemaining,
-        status: newKgRemaining <= 0 ? 'finished' : 'in_use',
+        status: rollExhausted ? 'finished' : 'in_use',
       }).eq('id', roll.id)
+
+      // Auto-activate the next available roll when this one is exhausted —
+      // no manual "Done" click required. Guards against race conditions.
+      if (rollExhausted) {
+        const { data: stillActive } = await supabase
+          .from('roll_films').select('id').eq('status', 'in_use').limit(1)
+        if (!stillActive || stillActive.length === 0) {
+          const { data: next } = await supabase
+            .from('roll_films').select('id,label')
+            .eq('status', 'available')
+            .order('purchase_date', { ascending: true })
+            .limit(1).single()
+          if (next) {
+            await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+            newWarnings.push(`Roll ${roll.label} exhausted — Roll ${next.label} is now active.`)
+          } else {
+            newWarnings.push(`Roll ${roll.label} exhausted — no available rolls to activate. Register a new roll to continue production.`)
+          }
+        }
+      }
     }
 
     // ── Also deduct from the aggregate "Roll Film" stock in Raw Materials ──
