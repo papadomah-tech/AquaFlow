@@ -116,21 +116,21 @@ function SalesPageInner() {
     }
 
     setLoading(false)
-  }, [filter, activeTab, isRider, employeeId, roleLoading])
 
-  useEffect(() => { load() }, [load])
-
-  // Fetch rider's available bags (bulk received minus retail sold)
-  useEffect(() => {
-    if (!isRider || !employeeId) return
-    // Fetch factory stock balance from finished_inventory (exclude archived)
+    // Always fetch factory stock — visible to all roles as a dispatch alert
     supabase.from('finished_inventory').select('bags_in,bags_out')
       .or('is_archived.is.null,is_archived.eq.false')
       .then(({ data: fi }) => {
         const stock = (fi ?? []).reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
         setFactoryStock(stock)
       })
+  }, [filter, activeTab, isRider, employeeId, roleLoading])
 
+  useEffect(() => { load() }, [load])
+
+  // Fetch rider's own bag balance (bulk received minus retail sold minus returned)
+  useEffect(() => {
+    if (!isRider || !employeeId) return
     const fetchRiderBags = async () => {
       const [{ data: bulkIn }, { data: retailOut }, { data: riderRet }] = await Promise.all([
         supabase.from('sales').select('bags_sold')
@@ -439,26 +439,48 @@ function SalesPageInner() {
         ))}
       </div>
 
-      {/* ── Factory stock balance ─────────────────────────────────────── */}
-      {!isRider && factoryStock !== null && (
-        <div className={'card mb-4 border-l-4 flex items-center gap-4 '
-          + (factoryStock > 100 ? 'border-green-500 bg-green-50'
-          : factoryStock > 0   ? 'border-orange-400 bg-orange-50'
-          : 'border-red-500 bg-red-50')}>
-          <div className={'text-4xl font-bold tabular-nums '
-            + (factoryStock > 100 ? 'text-green-700' : factoryStock > 0 ? 'text-orange-600' : 'text-red-700')}>
-            {fmtNum(factoryStock)}
+      {/* ── Factory stock balance — visible to all roles ─────────────────── */}
+      {factoryStock !== null && (
+        <div className={
+          'rounded-2xl mb-4 px-5 py-4 flex items-center justify-between gap-4 shadow-sm border '
+          + (factoryStock > 100 ? 'bg-green-50 border-green-300'
+           : factoryStock > 0   ? 'bg-amber-50 border-amber-400'
+           : 'bg-red-50 border-red-400')
+        }>
+          <div className="flex items-center gap-4">
+            <div className={
+              'text-4xl font-black tabular-nums leading-none '
+              + (factoryStock > 100 ? 'text-green-700'
+               : factoryStock > 0   ? 'text-amber-700'
+               : 'text-red-700')
+            }>
+              {fmtNum(factoryStock)}
+            </div>
+            <div>
+              <div className={
+                'text-sm font-bold uppercase tracking-wide '
+                + (factoryStock > 100 ? 'text-green-700'
+                 : factoryStock > 0   ? 'text-amber-700'
+                 : 'text-red-700')
+              }>
+                {factoryStock > 100 ? '✅ Stock Available'
+                 : factoryStock > 0  ? '⚠️ Low Stock — Dispatch with Caution'
+                 : '🚫 No Stock — Dispatching is Blocked'}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {factoryStock > 0
+                  ? `${fmtNum(factoryStock)} bag${factoryStock !== 1 ? 's' : ''} currently available for dispatch`
+                  : 'Zero bags in stock — record a production batch before dispatching'}
+              </div>
+            </div>
           </div>
-          <div>
-            <div className={'font-semibold '
-              + (factoryStock > 100 ? 'text-green-700' : factoryStock > 0 ? 'text-orange-600' : 'text-red-700')}>
-              {factoryStock > 100 ? '✅ Bags in Stock' : factoryStock > 0 ? '⚠️ Stock Running Low' : '❌ No Stock Available'}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              {factoryStock > 0
-                ? `${fmtNum(factoryStock)} bag${factoryStock !== 1 ? 's' : ''} available for dispatch`
-                : 'No bags available — record a production batch before dispatching'}
-            </div>
+          <div className={
+            'text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap '
+            + (factoryStock > 100 ? 'bg-green-200 text-green-800'
+             : factoryStock > 0   ? 'bg-amber-200 text-amber-800'
+             : 'bg-red-200 text-red-800')
+          }>
+            {factoryStock > 100 ? 'GOOD' : factoryStock > 0 ? 'LOW' : 'EMPTY'}
           </div>
         </div>
       )}
