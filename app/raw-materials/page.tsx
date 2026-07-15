@@ -548,8 +548,8 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   {materials.length === 0
                     ? <tr><td colSpan={7} className="text-center py-8 text-gray-400 italic">No materials yet — click + Add Material</td></tr>
                     : materials.map(m => (
-                      {/* Hide Water — removed from record keeping per business decision */}
-                      {m.name.toLowerCase().includes('water') ? null : (
+                      // Hide Water — removed from record keeping per business decision
+                      m.name.toLowerCase().includes('water') ? null : (
                       <tr key={m.id} className={m.name.toLowerCase().includes('roll') ? 'bg-blue-50' : ''}>
                         <td className="font-medium">
                           {m.name.toLowerCase().includes('roll') ? (
@@ -593,7 +593,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                           )}
                         </td>
                       </tr>
-                      )}
+                      )
                     ))
                   }
                 </tbody>
