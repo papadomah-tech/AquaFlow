@@ -103,7 +103,7 @@ function ProductionPageInner() {
     if (!form.roll_film_id) { alert('You must select a Roll Film before saving a production batch.'); return }
     if (bags <= 0) { alert('Enter the number of bags produced.'); return }
 
-    // Roll film production cap: cumulative total must not exceed 115% of expected
+    // Roll film production cap: cumulative total must not exceed 105% of expected
     const checkRoll = rolls.find((r: any) => r.id === parseInt(form.roll_film_id))
     if (checkRoll) {
       const prevBags  = editBatch
@@ -113,16 +113,16 @@ function ProductionPageInner() {
       // Always compute expected bags from current rate — never trust stored bags_expected
       // (stored value may have been calculated with old 20 bags/Kg rate)
       const liveExpected = Math.round(checkRoll.weight_kg * BAGS_PER_KG)
-      const hardCap   = Math.floor(liveExpected * 1.15)   // 115% — hard block
+      const hardCap   = Math.floor(liveExpected * 1.05)   // 105% — hard block
       const softWarn  = liveExpected                       // 100% — soft warning
 
       if (newTotal > hardCap) {
         // HARD BLOCK — refuse save
         alert(
           `🚫 Production Limit Reached\n\n` +
-          `Roll ${checkRoll.label} cannot exceed 115% of its expected yield.\n\n` +
-          `Expected:    ${checkRoll.bags_expected} bags\n` +
-          `Hard cap:    ${hardCap} bags (115%)\n` +
+          `Roll ${checkRoll.label} cannot exceed 105% of its expected yield.\n\n` +
+          `Expected:    ${liveExpected} bags\n` +
+          `Hard cap:    ${hardCap} bags (105%)\n` +
           `Current:     ${prevBags} bags produced\n` +
           `This batch:  ${bags} bags\n` +
           `New total:   ${newTotal} bags — exceeds cap by ${newTotal - hardCap}\n\n` +
@@ -133,7 +133,7 @@ function ProductionPageInner() {
       }
 
       if (newTotal > softWarn) {
-        // SOFT WARNING — allow user to confirm between 100%–115%
+        // SOFT WARNING — allow user to confirm between 100%–105%
         const over    = newTotal - liveExpected
         const pct     = ((newTotal / liveExpected) * 100).toFixed(1)
         const capLeft = hardCap - newTotal
