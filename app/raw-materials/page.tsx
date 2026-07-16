@@ -24,7 +24,7 @@ const emptyPurchase = () => ({ material_id: '', material_name: '', purchase_date
 
 // ─── Component ────────────────────────────────────────────────────────────────
 function RawMaterialsInner() {
-  const [tab, setTab]           = useState<'stock' | 'rolls' | 'purchases'>('stock')
+  const [tab, setTab]           = useState<'stock' | 'purchases'>('stock')
   const [materials, setMaterials] = useState<Material[]>([])
   const [rolls, setRolls]         = useState<Roll[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
@@ -413,7 +413,6 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
       {/* ── Tabs ── */}
       <div className="flex gap-2 mb-4">
         <TabBtn t="stock" label="Stock Overview" />
-        <TabBtn t="rolls" label="Roll Film Inventory" />
         <TabBtn t="purchases" label="Purchase History" />
       </div>
 
@@ -603,97 +602,6 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
           )}
 
           {/* ── ROLLS TAB ── */}
-          {tab === 'rolls' && (
-            <>
-              {/* Data integrity: multiple in_use rolls */}
-              {rolls.filter(r => r.status === 'in_use').length > 1 && (
-                <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-3">
-                  <div className="text-sm text-red-800 font-semibold">
-                    🚨 Data Integrity Issue — {rolls.filter(r => r.status === 'in_use').length} rolls are marked as In Use simultaneously.
-                  </div>
-                  <div className="text-xs text-red-700 mt-1">
-                    Only one roll can be active at a time. Mark all but the correct active roll as Done or revert them to Available.
-                    Production will use the oldest roll only until this is resolved.
-                  </div>
-                </div>
-              )}
-
-              {/* No active roll warning */}
-              {!rolls.some(r => r.status === 'in_use') && rolls.some(r => r.status === 'available') && (
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3 flex items-center justify-between">
-                  <div className="text-sm text-orange-800">
-                    ⚠️ <strong>No active roll.</strong> Production is blocked — no roll is currently in use.
-                  </div>
-                  <button onClick={activateNextRoll} className="btn btn-sm btn-warning ml-4 whitespace-nowrap">
-                    Activate Next Roll
-                  </button>
-                </div>
-              )}
-              <div className="card p-0 overflow-hidden">
-                <table className="data-table">
-                  <colgroup>
-                    <col style={{width:'145px'}} /><col style={{width:'80px'}} /><col style={{width:'90px'}} />
-                    <col style={{width:'65px'}} /><col style={{width:'70px'}} /><col style={{width:'80px'}} />
-                    <col style={{width:'72px'}} /><col style={{width:'72px'}} /><col style={{width:'72px'}} />
-                    <col style={{width:'56px'}} /><col style={{width:'78px'}} /><col style={{width:'155px'}} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Label</th><th>Date</th><th>Supplier</th>
-                      <th className="right">Wt(Kg)</th><th className="right">Kg Left</th><th className="right">Cost</th>
-                      <th className="right">Expected</th><th className="right">Produced</th><th className="right">Remaining</th>
-                      <th className="right">Util%</th><th>Status</th><th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rolls.length === 0
-                      ? <tr><td colSpan={12} className="text-center py-8 text-gray-400 italic">No rolls registered</td></tr>
-                      : rolls.map(r => {
-                          // Always derive bags_expected from weight_kg × rate — never trust the stored value
-                          const bagsExpected = Math.round(r.weight_kg * BAGS_PER_KG)
-                          const remaining    = bagsExpected - r.bags_produced
-                          const utilPct      = bagsExpected > 0 ? (r.bags_produced / bagsExpected * 100) : 0
-                          const util         = utilPct.toFixed(1)
-                          const kgLeft       = r.kg_remaining ?? r.weight_kg
-                          const remainColor  = remaining < 0 ? 'text-orange-600 font-bold' : remaining === 0 ? 'text-gray-400' : 'text-gray-700'
-                          const utilColor    = utilPct > 115 ? 'text-red-700 font-bold' : utilPct > 100 ? 'text-orange-600 font-bold' : utilPct > 80 ? 'text-blue-600' : 'text-gray-600'
-                          const isActive     = r.status === 'in_use'
-                          return (
-                            <tr key={r.id} className={isActive ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}>
-                              <td className="font-mono text-xs font-medium whitespace-nowrap">
-                                <button onClick={() => openRollDetail(r)} className="text-blue-700 hover:underline text-left">{r.label}</button>
-                              </td>
-                              <td className="muted">{fmtDate(r.purchase_date)}</td>
-                              <td className="muted">{r.supplier || '—'}</td>
-                              <td className="num">{r.weight_kg}</td>
-                              <td className={'num font-medium ' + (kgLeft <= 0 ? 'text-red-600' : kgLeft < r.weight_kg * 0.15 ? 'text-orange-600' : 'text-green-700')} title={r.kg_remaining == null ? 'No kg tracking — showing original weight' : ''}>
-                                {kgLeft.toFixed(2)}{r.kg_remaining == null ? <span className="text-gray-300 text-[9px] ml-0.5">*</span> : null}
-                              </td>
-                              <td className="num">{fmtGhc(r.cost)}</td>
-                              <td className="num">{fmtNum(bagsExpected)}</td>
-                              <td className="num text-green-700">{fmtNum(r.bags_produced)}</td>
-                              <td className={"num " + remainColor}>{remaining < 0 ? "+" + fmtNum(Math.abs(remaining)) + " over" : fmtNum(remaining)}</td>
-                              <td className={"num " + utilColor}>{util}%</td>
-                              <td><span className={'badge ' + statusBadgeClass(r.status)}>{r.status}</span></td>
-                              <td>
-                                <div className="flex gap-1">
-                                  <button onClick={() => openRoll(r)} className="btn btn-sm btn-secondary">Edit</button>
-                                  {r.status === 'in_use' && (
-                                    <button onClick={() => markFinished(r)} className="btn btn-sm btn-warning">Done</button>
-                                  )}
-                                  <button onClick={() => deleteRoll(r)} className="btn btn-sm btn-danger">Del</button>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })
-                    }
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-
           {/* ── PURCHASES TAB ── */}
           {tab === 'purchases' && (
             <div className="card p-0 overflow-hidden">

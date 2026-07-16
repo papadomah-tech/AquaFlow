@@ -10,11 +10,14 @@ import { supabase, fmtGhc, fmtNum, today, monthStart, fmtDate} from '@/lib/supab
 
 const OP_FEE = 30
 const BAGS_PER_KG = 22   // standard rate: 1 Kg roll film → 22 bags
+const statusBadgeClass = (s: string) => ({ available: 'badge-green', in_use: 'badge-blue', finished: 'badge-gray' }[s] ?? 'badge-gray')
 
 function ProductionPageInner() {
   const { userId } = useRole()
+  const [tab, setTab]           = useState<'batches' | 'rolls'>('batches')
   const [batches, setBatches]   = useState<any[]>([])
-  const [rolls, setRolls]       = useState<any[]>([])
+  const [rolls, setRolls]       = useState<any[]>([])   // in_use only — for production form
+  const [allRolls, setAllRolls] = useState<any[]>([])   // all rolls — for inventory tab
   const [materials, setMaterials] = useState<any[]>([])
   const [loading, setLoading]   = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -80,6 +83,11 @@ function ProductionPageInner() {
       if (inUse && inUse.length === 1) {
         setForm(f => ({ ...f, roll_film_id: String(inUse![0].id) }))
       }
+
+      // Load all rolls for the Roll Film Inventory tab
+      const { data: allR } = await supabase.from('roll_films')
+        .select('*').order('purchase_date', { ascending: true }).order('label', { ascending: true })
+      setAllRolls(allR ?? [])
     })()
     supabase.from('raw_materials').select('*')
       .gt('usage_per_bag', 0).order('name')
@@ -354,6 +362,20 @@ function ProductionPageInner() {
         }} className="btn btn-primary">+ New Batch</button>
       </div>
 
+      {/* ── Tabs ─────────────────────────────────────────────────────── */}
+      <div className="flex border-b border-gray-200 mb-4">
+        {(['batches', 'rolls'] as const).map(key => (
+          <button key={key} onClick={() => setTab(key)}
+            className={'px-5 py-2.5 text-sm font-medium border-b-2 transition-colors '
+              + (tab === key
+                ? 'border-[#1F4E79] text-[#1F4E79]'
+                : 'border-transparent text-gray-500 hover:text-gray-700')}>
+            {key === 'batches' ? '🏭 Production Batches' : '🎞️ Roll Film Inventory'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'batches' && (<>
       <div className="card mb-4 flex gap-3 items-end flex-wrap">
         <div><label className="form-label">From</label><input type="date" value={filter.from} onChange={e=>setFilter(f=>({...f,from:e.target.value}))} className="form-input w-36" /></div>
         <div><label className="form-label">To</label><input type="date" value={filter.to} onChange={e=>setFilter(f=>({...f,to:e.target.value}))} className="form-input w-36" /></div>
@@ -545,6 +567,83 @@ function ProductionPageInner() {
           </div>
         </div>
       )}
+      </>)}
+
+      {/* ── ROLL FILM INVENTORY TAB ────────────────────────────────────── */}
+      {tab === 'rolls' && (
+        <div className="card p-0 overflow-hidden">
+          {/* Integrity warning */}
+          {allRolls.filter(r => r.status === 'in_use').length > 1 && (
+            <div className="bg-red-50 border-b border-red-300 px-4 py-3">
+              <div className="text-sm text-red-800 font-semibold">
+                🚨 Data Integrity Issue — {allRolls.filter(r => r.status === 'in_use').length} rolls marked In Use simultaneously.
+              </div>
+              <div className="text-xs text-red-700 mt-1">
+                Go to Raw Materials to resolve. Only the oldest roll is being used for production.
+              </div>
+            </div>
+          )}
+          {/* No active roll warning */}
+          {allRolls.length > 0 && !allRolls.some(r => r.status === 'in_use') && (
+            <div className="bg-orange-50 border-b border-orange-200 px-4 py-3">
+              <div className="text-sm text-orange-800 font-semibold">
+                ⚠️ No active roll — production is blocked. Go to Raw Materials to activate a roll.
+              </div>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <colgroup>
+                <col style={{width:'145px'}} /><col style={{width:'80px'}} /><col style={{width:'90px'}} />
+                <col style={{width:'65px'}} /><col style={{width:'70px'}} />
+                <col style={{width:'72px'}} /><col style={{width:'72px'}} /><col style={{width:'72px'}} />
+                <col style={{width:'56px'}} /><col style={{width:'90px'}} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Label</th><th>Date</th><th>Supplier</th>
+                  <th className="right">Wt(Kg)</th><th className="right">Kg Left</th>
+                  <th className="right">Expected</th><th className="right">Produced</th><th className="right">Remaining</th>
+                  <th className="right">Util%</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allRolls.length === 0
+                  ? <tr><td colSpan={10} className="text-center py-8 text-gray-400 italic">No rolls registered — go to Raw Materials to register rolls.</td></tr>
+                  : allRolls.map(r => {
+                      const bagsExpected = Math.round(r.weight_kg * BAGS_PER_KG)
+                      const remaining    = bagsExpected - r.bags_produced
+                      const utilPct      = bagsExpected > 0 ? (r.bags_produced / bagsExpected * 100) : 0
+                      const kgLeft       = r.kg_remaining ?? r.weight_kg
+                      const remainColor  = remaining < 0 ? 'text-orange-600 font-bold' : remaining === 0 ? 'text-gray-400' : 'text-gray-700'
+                      const utilColor    = utilPct > 105 ? 'text-red-700 font-bold' : utilPct > 100 ? 'text-orange-600 font-bold' : utilPct > 80 ? 'text-blue-600' : 'text-gray-600'
+                      const isActive     = r.status === 'in_use'
+                      return (
+                        <tr key={r.id} className={isActive ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : ''}>
+                          <td className="font-mono text-xs font-medium">{r.label}</td>
+                          <td className="muted">{fmtDate(r.purchase_date)}</td>
+                          <td className="muted">{r.supplier || '—'}</td>
+                          <td className="num">{r.weight_kg}</td>
+                          <td className={'num font-medium ' + (kgLeft <= 0 ? 'text-red-600' : kgLeft < r.weight_kg * 0.15 ? 'text-orange-600' : 'text-green-700')}>
+                            {kgLeft.toFixed(2)}
+                          </td>
+                          <td className="num">{fmtNum(bagsExpected)}</td>
+                          <td className="num text-green-700">{fmtNum(r.bags_produced)}</td>
+                          <td className={'num ' + remainColor}>
+                            {remaining < 0 ? '+' + fmtNum(Math.abs(remaining)) + ' over' : fmtNum(remaining)}
+                          </td>
+                          <td className={'num ' + utilColor}>{utilPct.toFixed(1)}%</td>
+                          <td><span className={'badge ' + statusBadgeClass(r.status)}>{r.status}</span></td>
+                        </tr>
+                      )
+                    })
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
     </AppLayout>
   )
 }
