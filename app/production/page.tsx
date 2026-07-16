@@ -134,8 +134,8 @@ function ProductionPageInner() {
           `Current:     ${prevBags} bags produced\n` +
           `This batch:  ${bags} bags\n` +
           `New total:   ${newTotal} bags — exceeds cap by ${newTotal - hardCap}\n\n` +
-          `Close this roll first (click "Done" in Raw Materials → Roll Film), ` +
-          `then the next available roll will become active.`
+          `Close this roll first by clicking the "Done" button on this page (Roll Film Inventory tab), ` +
+          `then the next available roll will become active automatically.`
         )
         return   // hard stop — do not save
       }
