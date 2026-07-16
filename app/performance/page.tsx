@@ -64,10 +64,14 @@ function PerformancePageInner() {
   const [history, setHistory]   = useState<any[]>([])
   const [loading, setLoading]     = useState(false)
   const [loadingHist, setLoadingHist] = useState(false)
-  const [paying, setPaying]       = useState<number | null>(null)
+  const [paying, setPaying]             = useState<number | null>(null)
   const [payingFeeding, setPayingFeeding] = useState<number | null>(null)
   // Track which employees have had feeding fee paid this month
-  const [feedingPaid, setFeedingPaid] = useState<Record<number, any>>({})
+  const [feedingPaid, setFeedingPaid]   = useState<Record<number, any>>({})
+  // Discretionary pay modal
+  const [discModal, setDiscModal]       = useState<any | null>(null)  // employee data
+  const [discForm, setDiscForm]         = useState({ amount: '', reason: '' })
+  const [savingDisc, setSavingDisc]     = useState(false)
 
   // ── Calculate performance for all employees (or just current user) ──────────
   const calculate = useCallback(async () => {
@@ -159,7 +163,7 @@ function PerformancePageInner() {
     setLoadingHist(true)
     let q = supabase.from('salary_payments')
       .select('*,employees(full_name,role),expenses(id,category,description,amount,expense_date)')
-      .in('payment_type', ['performance', 'feeding'])
+      .in('payment_type', ['performance', 'feeding', 'discretionary'])
       .order('payment_date', { ascending: false })
     if (!isAdmin && myEmpId) q = q.eq('employee_id', myEmpId)
     const { data } = await q
@@ -190,7 +194,7 @@ function PerformancePageInner() {
       // Re-fetch with updated expense links
       const { data: refreshed } = await supabase.from('salary_payments')
         .select('*,employees(full_name,role),expenses(id,category,description,amount,expense_date)')
-        .in('payment_type', ['performance', 'feeding'])
+        .in('payment_type', ['performance', 'feeding', 'discretionary'])
         .order('payment_date', { ascending: false })
       setHistory(refreshed ?? [])
       setLoadingHist(false)
@@ -268,6 +272,54 @@ function PerformancePageInner() {
       expense_id: perfExp?.id ?? null,
     })
     setPaying(null)
+    calculate()
+  }
+
+  // ── Discretionary pay ────────────────────────────────────────────────────
+  // Admin overrides the formula and pays a custom amount with a mandatory reason.
+  const openDiscModal = (d: any) => {
+    setDiscModal(d)
+    setDiscForm({ amount: '', reason: '' })
+  }
+
+  const payDiscretionary = async () => {
+    if (!discModal) return
+    const amt = parseFloat(discForm.amount)
+    if (!amt || amt <= 0) { alert('Enter a valid amount.'); return }
+    if (!discForm.reason.trim()) { alert('A reason is required for discretionary pay.'); return }
+    if (!confirm(
+      `Approve discretionary payment to ${discModal.full_name}?\n\n` +
+      `Amount: ${fmtGhc(amt)}\n` +
+      `Formula amount would have been: ${fmtGhc(discModal.netPay)}\n` +
+      `Reason: ${discForm.reason}\n\n` +
+      `This will be recorded as a discretionary payment and posted to expenses.`
+    )) return
+
+    setSavingDisc(true)
+    const payDate = today()
+    const notes   = `Discretionary pay — ${period.from} → ${period.to} | Formula: ${fmtGhc(discModal.netPay)} | Approved: ${fmtGhc(amt)} | Reason: ${discForm.reason}`
+
+    const { data: discExp } = await supabase.from('expenses').insert({
+      expense_date: payDate,
+      category:    'Performance Pay',
+      description: `Discretionary pay — ${discModal.full_name} (${period.from} → ${period.to})`,
+      amount:      amt,
+      paid_to:     discModal.full_name,
+    }).select().single()
+
+    await supabase.from('salary_payments').insert({
+      employee_id:  discModal.id,
+      payment_date: payDate,
+      amount:       amt,
+      payment_type: 'discretionary',
+      period_start: period.from,
+      period_end:   period.to,
+      notes,
+      expense_id:   discExp?.id ?? null,
+    })
+
+    setSavingDisc(false)
+    setDiscModal(null)
     calculate()
   }
 
@@ -467,6 +519,13 @@ function PerformancePageInner() {
                           </button>
                         )
                       )}
+                      {/* Discretionary pay — admin only, always visible alongside Pay Base */}
+                      {canPay && !d.locked && (
+                        <button onClick={() => openDiscModal(d)}
+                          className="btn btn-secondary">
+                          💡 Discretionary
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -509,8 +568,8 @@ function PerformancePageInner() {
                         <td className="muted">{fmtDate(p.payment_date)}</td>
                         <td className="font-medium">{p.employees?.full_name ?? '—'}</td>
                         <td>
-                          <span className={'badge ' + (p.payment_type === 'feeding' ? 'badge-blue' : 'badge-green')}>
-                            {p.payment_type === 'feeding' ? '🍽️ Feeding' : '💳 Base Pay'}
+                          <span className={'badge ' + (p.payment_type === 'feeding' ? 'badge-blue' : p.payment_type === 'discretionary' ? 'badge-orange' : 'badge-green')}>
+                            {p.payment_type === 'feeding' ? '🍽️ Feeding' : p.payment_type === 'discretionary' ? '💡 Discretionary' : '💳 Base Pay'}
                           </span>
                         </td>
                         <td className="text-xs text-gray-500">{fmtDate(p.period_start)} → {fmtDate(p.period_end)}</td>
@@ -545,6 +604,100 @@ function PerformancePageInner() {
           )}
         </>
       )}
+
+      {/* ── DISCRETIONARY PAY MODAL ─────────────────────────────────────── */}
+      {discModal && (
+        <>
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9998}}
+            onClick={() => setDiscModal(null)} />
+          <div style={{
+            position:'fixed',top:'50%',left:'50%',
+            transform:'translate(-50%,-50%)',
+            width:'min(480px,94vw)',
+            background:'white',borderRadius:'1rem',
+            boxShadow:'0 20px 60px rgba(0,0,0,0.3)',
+            zIndex:9999,overflow:'hidden'
+          }}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+              padding:'1.25rem',borderBottom:'1px solid #f0f0f0',background:'#1F4E79'}}>
+              <div>
+                <div style={{fontWeight:'bold',color:'#fff',fontSize:'15px'}}>
+                  💡 Discretionary Payment
+                </div>
+                <div style={{color:'#93c5fd',fontSize:'12px',marginTop:'2px'}}>
+                  {discModal.full_name}
+                </div>
+              </div>
+              <button onClick={() => setDiscModal(null)}
+                style={{background:'none',border:'none',color:'#93c5fd',fontSize:'1.25rem',cursor:'pointer'}}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{background:'#f0f9ff',padding:'12px 20px',borderBottom:'1px solid #e0f2fe',
+              fontSize:'12px',color:'#0369a1'}}>
+              <strong>Formula amount:</strong> {fmtGhc(discModal.netPay)}
+              &nbsp;·&nbsp;
+              <strong>Base pay:</strong> {fmtGhc(discModal.periodBasePay)}
+              &nbsp;·&nbsp;
+              <strong>Performance:</strong> {discModal.pct.toFixed(1)}%
+            </div>
+
+            <div style={{padding:'1.25rem',display:'flex',flexDirection:'column',gap:'1rem'}}>
+              <div>
+                <label className="form-label">Amount to Pay (GHc) *</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={discForm.amount}
+                  onChange={e => setDiscForm(f => ({...f, amount: e.target.value}))}
+                  className="form-input"
+                  placeholder={`e.g. ${discModal.periodBasePay.toFixed(2)} (full base pay)`}
+                  autoFocus />
+                {discForm.amount && parseFloat(discForm.amount) > 0 && (() => {
+                  const amt  = parseFloat(discForm.amount)
+                  const diff = amt - discModal.netPay
+                  return (
+                    <div className={'text-xs mt-1 font-medium '
+                      + (diff > 0 ? 'text-amber-600' : diff < 0 ? 'text-blue-600' : 'text-green-600')}>
+                      {diff > 0
+                        ? `▲ GH₵${Math.abs(diff).toFixed(2)} above formula amount`
+                        : diff < 0
+                        ? `▼ GH₵${Math.abs(diff).toFixed(2)} below formula amount`
+                        : '✅ Same as formula amount'}
+                    </div>
+                  )
+                })()}
+              </div>
+
+              <div>
+                <label className="form-label">Reason / Justification *</label>
+                <textarea
+                  value={discForm.reason}
+                  onChange={e => setDiscForm(f => ({...f, reason: e.target.value}))}
+                  className="form-input" rows={3}
+                  placeholder="e.g. Employee demonstrated exceptional effort during shortage period. Approving full base pay despite lower output." />
+                <div className="text-xs text-gray-400 mt-1">
+                  This reason is recorded on the payment and visible in payment history.
+                </div>
+              </div>
+            </div>
+
+            <div style={{display:'flex',gap:'0.75rem',justifyContent:'flex-end',
+              padding:'1rem 1.25rem',borderTop:'1px solid #f0f0f0'}}>
+              <button onClick={() => setDiscModal(null)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={payDiscretionary}
+                disabled={savingDisc || !discForm.amount || !discForm.reason.trim()}
+                className="btn btn-primary">
+                {savingDisc ? '⏳ Processing...' : `✅ Approve ${discForm.amount ? fmtGhc(parseFloat(discForm.amount)||0) : ''}`}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
     </AppLayout>
   )
 }
