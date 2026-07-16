@@ -346,6 +346,48 @@ function ProductionPageInner() {
     load()
   }
 
+  // ── Mark roll done from Production module ────────────────────────────────
+  const markRollDoneFromProduction = async (roll: any) => {
+    if ((roll.bags_produced ?? 0) === 0) {
+      alert(`Cannot mark "${roll.label}" as Done — no bags have been produced from this roll yet.\n\nRecord a production batch first, then close the roll.`)
+      return
+    }
+    const liveExpected = Math.round(roll.weight_kg * BAGS_PER_KG)
+    if (!confirm(
+      `Mark ${roll.label} as Done?\n\n` +
+      `Bags produced: ${fmtNum(roll.bags_produced)} of ${fmtNum(liveExpected)} expected.\n` +
+      `This closes the roll and activates the next available roll.`
+    )) return
+
+    const { error } = await supabase.from('roll_films').update({ status: 'finished' }).eq('id', roll.id)
+    if (error) { alert('Failed to close roll: ' + error.message); return }
+
+    const { data: stillActive } = await supabase.from('roll_films')
+      .select('id').eq('status', 'in_use').limit(1)
+    if (!stillActive || stillActive.length === 0) {
+      const { data: next } = await supabase.from('roll_films')
+        .select('id,label').eq('status', 'available')
+        .order('purchase_date', { ascending: true })
+        .order('label',        { ascending: true })
+        .limit(1).single()
+      if (next) {
+        await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+        alert(`Roll ${roll.label} closed. Roll ${next.label} is now active.`)
+      } else {
+        alert(`Roll ${roll.label} closed. No available rolls — register a new roll to continue.`)
+      }
+    }
+    const [{ data: inUse }, { data: allR }] = await Promise.all([
+      supabase.from('roll_films').select('*').eq('status', 'in_use')
+        .order('purchase_date', { ascending: true }).order('label', { ascending: true }),
+      supabase.from('roll_films').select('*')
+        .order('purchase_date', { ascending: true }).order('label', { ascending: true }),
+    ])
+    setRolls(inUse ?? [])
+    setAllRolls(allR ?? [])
+    if (inUse && inUse.length === 1) setForm(f => ({ ...f, roll_film_id: String(inUse[0].id) }))
+  }
+
   const totals = batches.reduce((a: any, b: any) => ({
     bags: a.bags+b.bags_produced, batches: a.batches+1, fee: a.fee+(b.bags_produced/100)*OP_FEE
   }), {bags:0,batches:0,fee:0})
@@ -594,22 +636,22 @@ function ProductionPageInner() {
           <div className="overflow-x-auto">
             <table className="data-table">
               <colgroup>
-                <col style={{width:'145px'}} /><col style={{width:'80px'}} /><col style={{width:'90px'}} />
-                <col style={{width:'65px'}} /><col style={{width:'70px'}} />
-                <col style={{width:'72px'}} /><col style={{width:'72px'}} /><col style={{width:'72px'}} />
-                <col style={{width:'56px'}} /><col style={{width:'90px'}} />
+                <col style={{width:'140px'}} /><col style={{width:'78px'}} /><col style={{width:'88px'}} />
+                <col style={{width:'62px'}} /><col style={{width:'68px'}} />
+                <col style={{width:'70px'}} /><col style={{width:'70px'}} /><col style={{width:'70px'}} />
+                <col style={{width:'54px'}} /><col style={{width:'80px'}} /><col style={{width:'70px'}} />
               </colgroup>
               <thead>
                 <tr>
                   <th>Label</th><th>Date</th><th>Supplier</th>
                   <th className="right">Wt(Kg)</th><th className="right">Kg Left</th>
                   <th className="right">Expected</th><th className="right">Produced</th><th className="right">Remaining</th>
-                  <th className="right">Util%</th><th>Status</th>
+                  <th className="right">Util%</th><th>Status</th><th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {allRolls.length === 0
-                  ? <tr><td colSpan={10} className="text-center py-8 text-gray-400 italic">No rolls registered — go to Raw Materials to register rolls.</td></tr>
+                  ? <tr><td colSpan={11} className="text-center py-8 text-gray-400 italic">No rolls registered — go to Raw Materials to register rolls.</td></tr>
                   : allRolls.map(r => {
                       const bagsExpected = Math.round(r.weight_kg * BAGS_PER_KG)
                       const remaining    = bagsExpected - r.bags_produced
@@ -634,6 +676,14 @@ function ProductionPageInner() {
                           </td>
                           <td className={'num ' + utilColor}>{utilPct.toFixed(1)}%</td>
                           <td><span className={'badge ' + statusBadgeClass(r.status)}>{r.status}</span></td>
+                          <td>
+                            {isActive ? (
+                              <button onClick={() => markRollDoneFromProduction(r)}
+                                className="btn btn-sm btn-warning">Done</button>
+                            ) : (
+                              <span className="text-xs text-gray-300">—</span>
+                            )}
+                          </td>
                         </tr>
                       )
                     })
