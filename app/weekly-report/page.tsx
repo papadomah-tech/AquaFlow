@@ -797,7 +797,13 @@ function WeeklyReportInner() {
                           </div>
                           {physCount[week.from] && (() => {
                             const phys = parseInt(physCount[week.from]) || 0
-                            const diff = phys - (wd.weekClosingBalance ?? 0)
+                            // For the active/current week, the system baseline is the live
+                            // stock module total (excludes archived entries), not the rolling
+                            // weekClosingBalance (which includes pre-archive history).
+                            // For past weeks, use weekClosingBalance as the system reference.
+                            const isActiveWeek = week.from <= today() && week.to >= today()
+                            const systemRef = isActiveWeek ? actualStock : (wd.weekClosingBalance ?? 0)
+                            const diff = phys - systemRef
                             const reconciled = Math.abs(diff) < 2
                             return (
                               <>
@@ -808,7 +814,7 @@ function WeeklyReportInner() {
                                     {reconciled ? ' ✅' : ' ⚠️'}</span>
                                 </div>
                                 <button
-                                  onClick={() => registerPhysicalCount(week, wd.weekClosingBalance ?? 0, phys)}
+                                  onClick={() => registerPhysicalCount(week, systemRef, phys)}
                                   disabled={registering === week.from}
                                   className={'btn btn-sm w-full mt-2 '
                                     + (reconciled ? 'btn-secondary' : diff > 0 ? 'btn-primary' : 'btn-danger')}>
