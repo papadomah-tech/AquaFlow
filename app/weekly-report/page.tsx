@@ -83,6 +83,7 @@ function WeeklyReportInner() {
   const [actualStock, setActualStock]   = useState<number>(0)
   const [registering, setRegistering]   = useState<string|null>(null)
   const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
+  const [snapshots, setSnapshots]       = useState<Record<string, any>>({})  // locked weekly snapshots
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -128,6 +129,15 @@ function WeeklyReportInner() {
         .select('sale_date, bags_sold')
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false'),
     ])
+
+    // Fetch locked weekly snapshots for this month
+    const { data: snapshotRows } = await supabase
+      .from('weekly_stock_snapshots')
+      .select('*')
+      .eq('month_key', monthStr)
+    const snapshotMap: Record<string, any> = {}
+    ;(snapshotRows ?? []).forEach((s: any) => { snapshotMap[s.week_from] = s })
+    setSnapshots(snapshotMap)
 
     // Fetch imprest entries for each week and compute totals
     const ws2 = getWeeks(selYear, selMonth)
@@ -198,6 +208,7 @@ function WeeklyReportInner() {
       let openingStock: number
       if (prevWeekClosing !== null) {
         // Week 2, 3, 4: carry forward from previous week's closing
+        // If previous week has a locked snapshot, use its physical count as opening
         openingStock = prevWeekClosing
       } else {
         // Week 1: opening = previous month's closing
@@ -211,6 +222,11 @@ function WeeklyReportInner() {
           )
           .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
       }
+
+      // If this week has a locked snapshot, use its confirmed closing
+      // for the rolling chain (feeds next week's opening)
+      const lockedSnap = snapshotMap[w.from]
+      const lockedClosing = lockedSnap?.is_locked ? lockedSnap.closing_stock : null
 
       // Opening entries — for drill-down display only (not used in calculations)
       const openingEntries = (allInventory ?? [])
@@ -247,8 +263,9 @@ function WeeklyReportInner() {
       // System closing (includes adjustments) → feeds next week's opening
       const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut
 
-      // Roll forward: next week's opening = this week's systemClosing
-      prevWeekClosing = systemClosing
+      // Roll forward: if this week is locked, next week opens from the physical count
+      // otherwise from the computed systemClosing
+      prevWeekClosing = lockedClosing !== null ? lockedClosing : systemClosing
 
       // Revenue estimate per dispatch (per bag price tiers):
       // • Rider/rep (buyer_employee_id set)  → GHc 6.00
@@ -282,6 +299,7 @@ function WeeklyReportInner() {
         deposit: wDep ?? null,
         // Stock reconciliation
         openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags,
+        lockedSnap, lockedClosing,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -358,27 +376,41 @@ function WeeklyReportInner() {
     const diff = physical - systemClosing
     if (!confirm(
       `Register physical count?\n\n` +
-      `System Closing Stock: ${fmtNum(systemClosing)} bags\n` +
+      `Weekly Closing Stock: ${fmtNum(systemClosing)} bags\n` +
       `Physical Count:       ${fmtNum(physical)} bags\n` +
       `Variance:             ${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags\n\n` +
       (diff === 0
-        ? '✅ Stock reconciled — no adjustment needed.'
-        : diff > 0
-        ? `📦 Surplus: ${fmtNum(diff)} bags will be added to stock as an adjustment entry.\nNext week will open from ${fmtNum(physical)} bags.`
-        : `⚠️ Shortage: ${fmtNum(Math.abs(diff))} bags will be deducted from stock as an adjustment entry.\nNext week will open from ${fmtNum(physical)} bags.`)
+        ? '✅ Stock confirmed — weekly closing locked at ' + fmtNum(physical) + ' bags.\nNext week will open from ' + fmtNum(physical) + ' bags.\n\nThe Stock module is NOT affected.'
+        : (diff > 0
+          ? '📦 Physical count HIGHER than system.\n'
+          : '⚠️ Physical count LOWER than system.\n') +
+          'The weekly closing will be locked at the physical count of ' + fmtNum(physical) + ' bags.\n' +
+          'Next week will open from ' + fmtNum(physical) + ' bags.\n\n' +
+          '⚠️ The Stock module is NOT affected — only the weekly closing is updated.')
     )) return
 
     setRegistering(week.from)
 
-    if (diff !== 0) {
-      await supabase.from('finished_inventory').insert({
-        bags_in:          diff > 0 ? diff : 0,
-        bags_out:         diff < 0 ? Math.abs(diff) : 0,
-        transaction_date: week.to,   // post on last day of week so it falls within the week's range
-        reference_type:   'adjustment',
-        notes:            `Stock Take — Week ${week.from} to ${week.to}: Physical count ${fmtNum(physical)} vs System ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags). Next week opens from ${fmtNum(physical)}.`,
-      })
+    const wd = weekData[week.from] ?? {}
+    // Upsert into weekly_stock_snapshots — never writes to finished_inventory
+    const payload = {
+      week_from:       week.from,
+      week_to:         week.to,
+      month_key:       monthStr,
+      opening_stock:   wd.openingStock ?? 0,
+      bags_produced:   wd.weekProdIn  ?? 0,
+      bags_dispatched: wd.weekDispOut ?? 0,
+      adj_in:          wd.weekAdjIn   ?? 0,
+      adj_out:         wd.weekAdjOut  ?? 0,
+      closing_stock:   physical,        // physical count IS the confirmed closing
+      physical_count:  physical,
+      variance:        diff,
+      is_locked:       true,
+      locked_at:       new Date().toISOString(),
+      notes:           `Physical count ${fmtNum(physical)} vs computed ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags). Locked ${new Date().toLocaleDateString()}.`,
     }
+    await supabase.from('weekly_stock_snapshots')
+      .upsert(payload, { onConflict: 'week_from' })
 
     setRegistering(null)
     setPhysCount(p => ({...p, [week.from]: ''}))
@@ -801,53 +833,85 @@ function WeeklyReportInner() {
                           )
                         })()}
                         <div className="border-t border-gray-200 pt-1.5 mt-1">
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-gray-600">Physical Count (enter)</span>
-                            <input
-                              type="number" placeholder="0"
-                              value={physCount[week.from] || ''}
-                              onChange={e => setPhysCount(p => ({...p, [week.from]: e.target.value}))}
-                              className="form-input w-24 text-right"
-                              style={{padding:'0.2rem 0.4rem',fontSize:'0.75rem'}}
-                            />
-                          </div>
-                          {physCount[week.from] && (() => {
-                            const phys = parseInt(physCount[week.from]) || 0
-                            // Always reconcile physical count against the weekly systemClosing
-                            // (which now uses clean formula — prev month closing + this week only)
-                            const systemRef = wd.systemClosing ?? 0
-                            const diff = phys - systemRef
-                            const reconciled = Math.abs(diff) < 2
-                            return (
-                              <>
-                                <div className={'flex justify-between text-xs font-bold mt-1 '
-                                  + (reconciled ? 'text-green-600' : 'text-red-600')}>
-                                  <span>Stock Variance</span>
-                                  <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
-                                    {reconciled ? ' ✅' : ' ⚠️'}</span>
-                                </div>
-                                {!reconciled && (
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    Confirming will post a {diff > 0 ? '+' : ''}{fmtNum(diff)} adjustment.
-                                    Next week opens from <strong>{fmtNum(phys)}</strong> bags.
-                                  </div>
+                          {/* Show locked badge if this week is confirmed */}
+                          {wd.lockedSnap?.is_locked ? (
+                            <div className="rounded-lg bg-green-50 border border-green-300 p-2 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-green-700">🔒 Week Confirmed</span>
+                                <span className="text-green-700 font-bold tabular-nums">
+                                  {fmtNum(wd.lockedSnap.closing_stock)} bags
+                                </span>
+                              </div>
+                              <div className="text-green-600 mt-0.5">
+                                Physical count: {fmtNum(wd.lockedSnap.physical_count)} bags
+                                {wd.lockedSnap.variance !== 0 && (
+                                  <span className="ml-1">
+                                    (variance: {wd.lockedSnap.variance > 0 ? '+' : ''}{fmtNum(wd.lockedSnap.variance)})
+                                  </span>
                                 )}
-                                <button
-                                  onClick={() => registerPhysicalCount(week, systemRef, phys)}
-                                  disabled={registering === week.from}
-                                  className={'btn btn-sm w-full mt-2 '
-                                    + (reconciled ? 'btn-secondary' : diff > 0 ? 'btn-primary' : 'btn-danger')}>
-                                  {registering === week.from
-                                    ? '⏳ Registering...'
-                                    : reconciled
-                                    ? '✅ Register (no adjustment needed)'
-                                    : diff > 0
-                                    ? `📦 Register Surplus (+${fmtNum(diff)} bags)`
-                                    : `⚠️ Register Shortage (${fmtNum(diff)} bags)`}
-                                </button>
-                              </>
-                            )
-                          })()}
+                              </div>
+                              <div className="text-gray-400 mt-0.5">
+                                Next week opens from {fmtNum(wd.lockedSnap.closing_stock)} bags
+                                · Stock module unchanged
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm('Unlock this week? The closing stock will revert to computed figures.')) return
+                                  await supabase.from('weekly_stock_snapshots')
+                                    .update({ is_locked: false })
+                                    .eq('week_from', week.from)
+                                  load()
+                                }}
+                                className="btn btn-sm btn-secondary mt-1.5 w-full text-xs">
+                                🔓 Unlock to re-enter
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-gray-600">Physical Count (enter)</span>
+                                <input
+                                  type="number" placeholder="0"
+                                  value={physCount[week.from] || ''}
+                                  onChange={e => setPhysCount(p => ({...p, [week.from]: e.target.value}))}
+                                  className="form-input w-24 text-right"
+                                  style={{padding:'0.2rem 0.4rem',fontSize:'0.75rem'}}
+                                />
+                              </div>
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                ⚠️ Locking the physical count does NOT affect the Stock module.
+                              </div>
+                              {physCount[week.from] && (() => {
+                                const phys = parseInt(physCount[week.from]) || 0
+                                const systemRef = wd.systemClosing ?? 0
+                                const diff = phys - systemRef
+                                const reconciled = Math.abs(diff) < 2
+                                return (
+                                  <>
+                                    <div className={'flex justify-between text-xs font-bold mt-1 '
+                                      + (reconciled ? 'text-green-600' : 'text-red-600')}>
+                                      <span>Variance vs Weekly Closing</span>
+                                      <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
+                                        {reconciled ? ' ✅' : ' ⚠️'}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      Weekly closing will be locked at <strong>{fmtNum(phys)}</strong> bags.
+                                      Next week opens from <strong>{fmtNum(phys)}</strong> bags.
+                                    </div>
+                                    <button
+                                      onClick={() => registerPhysicalCount(week, systemRef, phys)}
+                                      disabled={registering === week.from}
+                                      className={'btn btn-sm w-full mt-2 '
+                                        + (reconciled ? 'btn-secondary' : diff > 0 ? 'btn-primary' : 'btn-danger')}>
+                                      {registering === week.from
+                                        ? '⏳ Locking...'
+                                        : `🔒 Lock at ${fmtNum(phys)} bags`}
+                                    </button>
+                                  </>
+                                )
+                              })()}
+                            </>
+                          )}
                           {Math.abs(wd.stockVarianceBags ?? 0) > 0 && (
                             <div className={'flex justify-between text-xs mt-1 '
                               + (Math.abs(wd.stockVarianceBags ?? 0) < 5 ? 'text-gray-500' : 'text-orange-600')}>
