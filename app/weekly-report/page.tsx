@@ -186,57 +186,62 @@ function WeeklyReportInner() {
       const totalCollected  = wBulk.reduce((a: number, s: any) => a + s.amount_paid, 0)
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
-      // ── Stock reconciliation ────────────────────────────────────────────────
-      // Opening entries (for drill-down display only)
-      const openingEntries = (allInventory ?? [])
-        .filter((r: any) => r.transaction_date < w.from)
+      // ── Stock reconciliation ─────────────────────────────────────────────
+      // Formula (same for every week):
+      //   Closing = Opening + Production(this week) + AdjIn(this week)
+      //             − AdjOut(this week) − Dispatches(this week)
+      //
+      // Week 1 Opening = previous month's closing stock
+      //   = sum of ALL non-archived finished_inventory up to last day of prev month
+      // Week 2+ Opening = previous week's systemClosing (rolling)
 
-      // Opening stock:
-      //   Week 1 → calculated from ALL production before this week minus ALL dispatches before
-      //            (using ONLY production_batches and bulk sales — no retail/stale entries)
-      //   Week 2+ → previous week's closing (rolling, guaranteed continuity)
       let openingStock: number
       if (prevWeekClosing !== null) {
+        // Week 2, 3, 4: carry forward from previous week's closing
         openingStock = prevWeekClosing
       } else {
-        // Week 1 opening: use actualStock (live stock module total, excludes archived)
-        // minus anything that happened WITHIN the current month up to this week's start.
-        // This anchors the rolling calc to the same base as the stock module,
-        // eliminating phantom bags from pre-archive history.
-        const monthMovements = (allInventory ?? [])
-          .filter((r: any) => r.transaction_date >= w.from.slice(0, 7) + '-01'
-                           && r.transaction_date < w.from
-                           && (r.is_archived === null || r.is_archived === false))
+        // Week 1: opening = previous month's closing
+        // Compute as: sum of all non-archived finished_inventory before this month's start
+        const prevMonthEnd = new Date(selYear, selMonth - 1, 0) // last day of prev month
+        const prevMonthEndStr = prevMonthEnd.toISOString().slice(0, 10)
+        openingStock = (allInventory ?? [])
+          .filter((r: any) =>
+            r.transaction_date <= prevMonthEndStr &&
+            (r.is_archived === null || r.is_archived === false)
+          )
           .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
-        openingStock = actualStock - monthMovements
       }
 
       // This week's production (from production_batches — authoritative)
       const weekProdIn = totalProduced
 
-      // This week's adjustments (from finished_inventory — stock takes etc)
+      // This week's adjustments — ONLY entries dated within this week
       const weekEntries = (allInventory ?? [])
-        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to)
-      const weekAdjIn = weekEntries
-        .filter((r: any) => r.bags_in > 0 && r.reference_type === 'adjustment')
+        .filter((r: any) =>
+          r.transaction_date >= w.from &&
+          r.transaction_date <= w.to &&
+          (r.is_archived === null || r.is_archived === false)
+        )
+      const weekAdjIn  = weekEntries
+        .filter((r: any) => r.bags_in  > 0 && r.reference_type === 'adjustment')
         .reduce((a: number, r: any) => a + r.bags_in, 0)
+      const weekAdjOut = weekEntries
+        .filter((r: any) => r.bags_out > 0 && r.reference_type === 'adjustment')
+        .reduce((a: number, r: any) => a + r.bags_out, 0)
+
       const weekAllBagsIn = weekProdIn + weekAdjIn
 
-      // Dispatches = from bulk sales records (authoritative — no stale retail entries)
+      // Dispatches = from bulk sales records (authoritative)
       const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Week's Closing Stock Balance (pure: opening + produced − dispatched)
+      // Week's Closing Stock Balance (pure: opening + produced − dispatched, no adjustments)
       const weekClosingBalance = openingStock + weekProdIn - weekDispOut
 
       // System closing (includes adjustments) → feeds next week's opening
-      const systemClosing = openingStock + weekAllBagsIn - weekDispOut
-      const weekAdjOut = 0
+      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut
 
-      // Roll forward: next week's opening = this week's closing
+      // Roll forward: next week's opening = this week's systemClosing
       prevWeekClosing = systemClosing
-
-      // Reconciliation check: systemClosing should equal Stock module current stock
-      // at the end of this week (for the last/current week, this IS current stock)
 
       // Revenue estimate per dispatch (per bag price tiers):
       // • Rider/rep (buyer_employee_id set)  → GHc 6.00
@@ -352,8 +357,8 @@ function WeeklyReportInner() {
       (diff === 0
         ? '✅ Stock reconciled — no adjustment needed.'
         : diff > 0
-        ? `📦 Surplus: ${fmtNum(diff)} bags will be added to stock as an adjustment entry.`
-        : `⚠️ Shortage: ${fmtNum(Math.abs(diff))} bags will be deducted from stock as an adjustment entry.`)
+        ? `📦 Surplus: ${fmtNum(diff)} bags will be added to stock as an adjustment entry.\nNext week will open from ${fmtNum(physical)} bags.`
+        : `⚠️ Shortage: ${fmtNum(Math.abs(diff))} bags will be deducted from stock as an adjustment entry.\nNext week will open from ${fmtNum(physical)} bags.`)
     )) return
 
     setRegistering(week.from)
@@ -362,14 +367,13 @@ function WeeklyReportInner() {
       await supabase.from('finished_inventory').insert({
         bags_in:          diff > 0 ? diff : 0,
         bags_out:         diff < 0 ? Math.abs(diff) : 0,
-        transaction_date: week.to,  // post on the last day of the week
+        transaction_date: week.to,   // post on last day of week so it falls within the week's range
         reference_type:   'adjustment',
-        notes:            `Weekly Report — ${week.from} to ${week.to}: Physical ${fmtNum(physical)} vs System ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags)`,
+        notes:            `Stock Take — Week ${week.from} to ${week.to}: Physical count ${fmtNum(physical)} vs System ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags). Next week opens from ${fmtNum(physical)}.`,
       })
     }
 
     setRegistering(null)
-    // Clear the physical count input and reload
     setPhysCount(p => ({...p, [week.from]: ''}))
     load()
   }
@@ -802,7 +806,8 @@ function WeeklyReportInner() {
                           </div>
                           {physCount[week.from] && (() => {
                             const phys = parseInt(physCount[week.from]) || 0
-                            // systemClosing now anchors to actualStock base — matches stock module
+                            // Always reconcile physical count against the weekly systemClosing
+                            // (which now uses clean formula — prev month closing + this week only)
                             const systemRef = wd.systemClosing ?? 0
                             const diff = phys - systemRef
                             const reconciled = Math.abs(diff) < 2
@@ -814,6 +819,12 @@ function WeeklyReportInner() {
                                   <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
                                     {reconciled ? ' ✅' : ' ⚠️'}</span>
                                 </div>
+                                {!reconciled && (
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    Confirming will post a {diff > 0 ? '+' : ''}{fmtNum(diff)} adjustment.
+                                    Next week opens from <strong>{fmtNum(phys)}</strong> bags.
+                                  </div>
+                                )}
                                 <button
                                   onClick={() => registerPhysicalCount(week, systemRef, phys)}
                                   disabled={registering === week.from}
