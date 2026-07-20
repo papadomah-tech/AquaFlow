@@ -212,6 +212,13 @@ function WeeklyReportInner() {
           .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
       }
 
+      // Opening entries — for drill-down display only (not used in calculations)
+      const openingEntries = (allInventory ?? [])
+        .filter((r: any) =>
+          r.transaction_date < w.from &&
+          (r.is_archived === null || r.is_archived === false)
+        )
+
       // This week's production (from production_batches — authoritative)
       const weekProdIn = totalProduced
 
