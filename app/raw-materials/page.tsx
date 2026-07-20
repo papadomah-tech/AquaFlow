@@ -45,6 +45,10 @@ function RawMaterialsInner() {
   const [rollDetail, setRollDetail]   = useState<Roll | null>(null)
   const [rollBatches, setRollBatches] = useState<any[]>([])
   const [loadingBatches, setLoadingBatches] = useState(false)
+  // Inline batch expansion — tracks which roll's batches are expanded in the table
+  const [expandedRollId, setExpandedRollId]   = useState<number | null>(null)
+  const [inlineBatches,  setInlineBatches]    = useState<Record<number, any[]>>({})
+  const [loadingInline,  setLoadingInline]    = useState<number | null>(null)
 
   const [saving, setSaving] = useState(false)
 
@@ -162,6 +166,24 @@ function RawMaterialsInner() {
       .order('batch_date', { ascending: true })
     setRollBatches(data ?? [])
     setLoadingBatches(false)
+  }
+
+  // Toggle inline batch expansion in the roll table row
+  const toggleInlineBatches = async (roll: Roll) => {
+    if (expandedRollId === roll.id) {
+      // Collapse
+      setExpandedRollId(null)
+      return
+    }
+    setExpandedRollId(roll.id)
+    if (inlineBatches[roll.id]) return   // already cached
+    setLoadingInline(roll.id)
+    const { data } = await supabase.from('production_batches')
+      .select('batch_number, batch_date, bags_produced, roll_kg_used')
+      .eq('roll_film_id', roll.id)
+      .order('batch_date', { ascending: true })
+    setInlineBatches(prev => ({ ...prev, [roll.id]: data ?? [] }))
+    setLoadingInline(null)
   }
 
   const openMatDetail = async (m: Material) => {
@@ -659,6 +681,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                           const utilColor    = utilPct > 105 ? 'text-red-700 font-bold' : utilPct > 100 ? 'text-orange-600 font-bold' : utilPct > 80 ? 'text-blue-600' : 'text-gray-600'
                           const isActive     = r.status === 'in_use'
                           return (
+                          <>
                             <tr key={r.id} className={isActive ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}>
                               <td className="font-mono text-xs font-medium whitespace-nowrap">
                                 <button onClick={() => openRollDetail(r)} className="text-blue-700 hover:underline text-left">{r.label}</button>
@@ -671,7 +694,25 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                               </td>
                               <td className="num">{fmtGhc(r.cost)}</td>
                               <td className="num">{fmtNum(bagsExpected)}</td>
-                              <td className="num text-green-700">{fmtNum(r.bags_produced)}</td>
+                              <td className="num">
+                                <button
+                                  onClick={() => toggleInlineBatches(r)}
+                                  className={'font-bold tabular-nums text-sm transition-colors '
+                                    + (expandedRollId === r.id
+                                      ? 'text-blue-700 underline'
+                                      : r.bags_produced > 0
+                                      ? 'text-green-700 hover:text-blue-600 hover:underline cursor-pointer'
+                                      : 'text-gray-400 cursor-default')}
+                                  disabled={r.bags_produced === 0}
+                                  title={r.bags_produced > 0 ? 'Click to see batch breakdown' : 'No batches yet'}>
+                                  {loadingInline === r.id ? '...' : fmtNum(r.bags_produced)}
+                                  {r.bags_produced > 0 && (
+                                    <span className="ml-0.5 text-[10px]">
+                                      {expandedRollId === r.id ? ' ▲' : ' ▼'}
+                                    </span>
+                                  )}
+                                </button>
+                              </td>
                               <td className={"num " + remainColor}>{remaining < 0 ? "+" + fmtNum(Math.abs(remaining)) + " over" : fmtNum(remaining)}</td>
                               <td className={"num " + utilColor}>{util}%</td>
                               <td><span className={'badge ' + statusBadgeClass(r.status)}>{r.status}</span></td>
@@ -685,8 +726,62 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                                 </div>
                               </td>
                             </tr>
-                          )
-                        })
+                          {/* Inline batch dropdown */}
+                          {expandedRollId === r.id && (
+                            <tr key={`batches-${r.id}`}>
+                              <td colSpan={12} style={{padding:0,background:'#f8faff',borderBottom:'2px solid #dbeafe'}}>
+                                <div style={{padding:'12px 16px'}}>
+                                  <div className="text-xs font-semibold text-blue-700 mb-2">
+                                    📦 Batch breakdown for {r.label}
+                                    <span className="text-gray-400 font-normal ml-2">
+                                      {(inlineBatches[r.id] ?? []).length} batch{(inlineBatches[r.id] ?? []).length !== 1 ? 'es' : ''}
+                                    </span>
+                                  </div>
+                                  {loadingInline === r.id ? (
+                                    <div className="text-xs text-gray-400">Loading...</div>
+                                  ) : (inlineBatches[r.id] ?? []).length === 0 ? (
+                                    <div className="text-xs text-gray-400 italic">No batches recorded for this roll.</div>
+                                  ) : (
+                                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                                      <thead>
+                                        <tr style={{background:'#dbeafe'}}>
+                                          <th style={{padding:'4px 10px',textAlign:'left',color:'#1e40af',fontWeight:600}}>Batch #</th>
+                                          <th style={{padding:'4px 10px',textAlign:'left',color:'#1e40af',fontWeight:600}}>Date</th>
+                                          <th style={{padding:'4px 10px',textAlign:'right',color:'#1e40af',fontWeight:600}}>Bags Produced</th>
+                                          <th style={{padding:'4px 10px',textAlign:'right',color:'#1e40af',fontWeight:600}}>Kg Used</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(inlineBatches[r.id] ?? []).map((b: any, bi: number) => (
+                                          <tr key={b.batch_number}
+                                            style={{background: bi % 2 === 0 ? '#fff' : '#f0f7ff'}}>
+                                            <td style={{padding:'4px 10px',fontFamily:'monospace',color:'#374151'}}>{b.batch_number}</td>
+                                            <td style={{padding:'4px 10px',color:'#6b7280'}}>{fmtDate(b.batch_date)}</td>
+                                            <td style={{padding:'4px 10px',textAlign:'right',fontWeight:700,color:'#15803d'}}>{fmtNum(b.bags_produced)}</td>
+                                            <td style={{padding:'4px 10px',textAlign:'right',color:'#6b7280'}}>{b.roll_kg_used ? b.roll_kg_used.toFixed(3) + ' Kg' : '—'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                      <tfoot>
+                                        <tr style={{background:'#1e40af'}}>
+                                          <td colSpan={2} style={{padding:'5px 10px',color:'#fff',fontWeight:700,fontSize:'11px'}}>TOTAL</td>
+                                          <td style={{padding:'5px 10px',textAlign:'right',color:'#86efac',fontWeight:800,fontSize:'13px'}}>
+                                            {fmtNum((inlineBatches[r.id] ?? []).reduce((a: number, b: any) => a + b.bags_produced, 0))}
+                                          </td>
+                                          <td style={{padding:'5px 10px',textAlign:'right',color:'#bfdbfe',fontWeight:700}}>
+                                            {(inlineBatches[r.id] ?? []).reduce((a: number, b: any) => a + (b.roll_kg_used || 0), 0).toFixed(3)} Kg
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </>
+                        )
+                      })
                     }
                   </tbody>
                 </table>
