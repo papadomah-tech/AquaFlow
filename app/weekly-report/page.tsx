@@ -199,11 +199,16 @@ function WeeklyReportInner() {
       if (prevWeekClosing !== null) {
         openingStock = prevWeekClosing
       } else {
-        // Week 1: use finished_inventory as single source of truth
-        // Sum ALL bags_in minus ALL bags_out before this week's start date
-        openingStock = (allInventory ?? [])
-          .filter((r: any) => r.transaction_date < w.from)
-          .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
+        // Week 1 opening: use actualStock (live stock module total, excludes archived)
+        // minus anything that happened WITHIN the current month up to this week's start.
+        // This anchors the rolling calc to the same base as the stock module,
+        // eliminating phantom bags from pre-archive history.
+        const monthMovements = (allInventory ?? [])
+          .filter((r: any) => r.transaction_date >= w.from.slice(0, 7) + '-01'
+                           && r.transaction_date < w.from
+                           && (r.is_archived === null || r.is_archived === false))
+          .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
+        openingStock = actualStock - monthMovements
       }
 
       // This week's production (from production_batches — authoritative)
@@ -797,12 +802,8 @@ function WeeklyReportInner() {
                           </div>
                           {physCount[week.from] && (() => {
                             const phys = parseInt(physCount[week.from]) || 0
-                            // For the active/current week, the system baseline is the live
-                            // stock module total (excludes archived entries), not the rolling
-                            // weekClosingBalance (which includes pre-archive history).
-                            // For past weeks, use weekClosingBalance as the system reference.
-                            const isActiveWeek = week.from <= today() && week.to >= today()
-                            const systemRef = isActiveWeek ? actualStock : (wd.weekClosingBalance ?? 0)
+                            // systemClosing now anchors to actualStock base — matches stock module
+                            const systemRef = wd.systemClosing ?? 0
                             const diff = phys - systemRef
                             const reconciled = Math.abs(diff) < 2
                             return (
