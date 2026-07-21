@@ -66,6 +66,7 @@ function WeeklyReportInner() {
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1)
   const [weeks, setWeeks]       = useState<any[]>([])
   const [weekData, setWeekData] = useState<Record<string, any>>({})
+  const [selWeekIdx, setSelWeekIdx] = useState<number>(0)  // which week is displayed
   const [loading, setLoading]   = useState(false)
 
   // Imprest totals auto-fetched per week (replaces manual opCash input)
@@ -92,6 +93,10 @@ function WeeklyReportInner() {
     setLoading(true)
     const ws = getWeeks(selYear, selMonth)
     setWeeks(ws)
+    // Default to the week that contains today; fall back to last week
+    const todayStr = today()
+    const activeIdx = ws.findIndex((w: any) => todayStr >= w.from && todayStr <= w.to)
+    setSelWeekIdx(activeIdx >= 0 ? activeIdx : ws.length - 1)
 
     // Fetch all data for the month in one go
     const monthFrom = `${monthStr}-01`
@@ -510,17 +515,59 @@ function WeeklyReportInner() {
 
       {loading ? (
         <div className="text-center py-12 text-gray-400">Building report...</div>
-      ) : (
-        <div className="space-y-6">
-          {weeks.map((week, wi) => {
-            const wd  = weekData[week.from] ?? {}
-            const op     = parseFloat(opCash[week.from] || '0') || 0
-            const opFee  = Math.floor((wd.weekProdIn ?? 0) / 100) * 30
-            const exp    = Math.max(0, (wd.totalCollected ?? 0) - op - opFee)
-            const dep    = deposited[week.from]
-            const isDeposited = !!dep
+      ) : weeks.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">No weeks found for this period.</div>
+      ) : (() => {
+        const wi   = selWeekIdx
+        const week = weeks[wi]
+        const wd   = weekData[week.from] ?? {}
+        const op     = parseFloat(opCash[week.from] || '0') || 0
+        const opFee  = Math.floor((wd.weekProdIn ?? 0) / 100) * 30
+        const exp    = Math.max(0, (wd.totalCollected ?? 0) - op - opFee)
+        const dep    = deposited[week.from]
+        const isDeposited = !!dep
+        const todayStr = today()
+        const isActiveWeek = todayStr >= week.from && todayStr <= week.to
 
-            return (
+        return (
+          <div className="space-y-4">
+            {/* ── Week navigator ──────────────────────────────────────── */}
+            <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-2.5 shadow-sm">
+              <button
+                onClick={() => setSelWeekIdx(i => Math.max(0, i - 1))}
+                disabled={wi === 0}
+                className={'btn btn-secondary btn-sm ' + (wi === 0 ? 'opacity-30 cursor-not-allowed' : '')}>
+                ← Previous
+              </button>
+
+              <div className="text-center">
+                <div className="font-bold text-[#1F4E79] text-sm">
+                  Week {wi + 1} of {weeks.length}
+                  {isActiveWeek && (
+                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                      Active Week
+                    </span>
+                  )}
+                  {isDeposited && (
+                    <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                      ✅ Deposited
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {fmtDate(week.from)} → {fmtDate(week.to)}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelWeekIdx(i => Math.min(weeks.length - 1, i + 1))}
+                disabled={wi === weeks.length - 1}
+                className={'btn btn-secondary btn-sm ' + (wi === weeks.length - 1 ? 'opacity-30 cursor-not-allowed' : '')}>
+                Next →
+              </button>
+            </div>
+
+            {/* ── Week card ────────────────────────────────────────────── */}
               <div key={week.from} className={'card border-l-4 '
                 + (isDeposited ? 'border-green-500' : 'border-[#1F4E79]')}>
 
@@ -1131,10 +1178,9 @@ function WeeklyReportInner() {
                   )}
                 </div>
               </div>
-            )
-          })}
-        </div>
-      )}
+            </div>
+          )
+        })()}
     </AppLayout>
   )
 }
