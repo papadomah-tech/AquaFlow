@@ -422,10 +422,11 @@ function WeeklyReportInner() {
   }
 
   const recordDeposit = async (week: any) => {
-    const wd   = weekData[week.from]
-    const op   = parseFloat(opCash[week.from] || '0') || 0
-    const amt  = Math.max(0, (wd?.totalCollected ?? 0) - op)
-    if (amt <= 0) { alert('No amount to deposit after operational cash deduction.'); return }
+    const wd    = weekData[week.from]
+    const op    = parseFloat(opCash[week.from] || '0') || 0
+    const opFee = Math.floor((wd?.weekProdIn ?? 0) / 100) * 30
+    const amt   = Math.max(0, (wd?.totalCollected ?? 0) - op - opFee)
+    if (amt <= 0) { alert('No amount to deposit after operational cash and operator fee deductions.'); return }
 
     const ref  = depRef[week.from] || ''
     setDepositing(week.from)
@@ -439,7 +440,7 @@ function WeeklyReportInner() {
       amount:        amt,
       reference:     ref || null,
       deposited_by:  'Admin',
-      notes:         `Weekly Report — ${week.from} | Collected: ${fmtGhc(wd.totalCollected)} − Ops: ${fmtGhc(op)} = ${fmtGhc(amt)}`,
+      notes:         `Weekly Report — ${week.from} | Collected: ${fmtGhc(wd.totalCollected)} − Ops: ${fmtGhc(op)} − Op Fee: ${fmtGhc(opFee)} = ${fmtGhc(amt)}`,
     })
 
     // Record operational cash as expense if > 0
@@ -513,9 +514,10 @@ function WeeklyReportInner() {
         <div className="space-y-6">
           {weeks.map((week, wi) => {
             const wd  = weekData[week.from] ?? {}
-            const op  = parseFloat(opCash[week.from] || '0') || 0
-            const exp = Math.max(0, (wd.totalCollected ?? 0) - op)
-            const dep = deposited[week.from]
+            const op     = parseFloat(opCash[week.from] || '0') || 0
+            const opFee  = Math.floor((wd.weekProdIn ?? 0) / 100) * 30
+            const exp    = Math.max(0, (wd.totalCollected ?? 0) - op - opFee)
+            const dep    = deposited[week.from]
             const isDeposited = !!dep
 
             return (
@@ -1042,6 +1044,23 @@ function WeeklyReportInner() {
                             </span>
                           </div>
                         </div>
+                        {/* Operator fee — deducted from deposit */}
+                        {opFee > 0 && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600">
+                              Operator Fee
+                              <span className="ml-1 text-xs text-gray-400">
+                                ({fmtNum(wd.weekProdIn)} bags ÷ 100 × GHc 30)
+                              </span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-500">−</span>
+                              <span className="font-semibold text-red-600 tabular-nums w-32 text-right">
+                                {fmtGhc(opFee)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-bold">
                           <span className="text-[#1F4E79]">Expected Deposit</span>
                           <span className={'tabular-nums '
