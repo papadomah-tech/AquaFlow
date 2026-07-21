@@ -1002,18 +1002,55 @@ function WeeklyReportInner() {
 
                   {isDeposited ? (
                     <>
-                    <div className="grid grid-cols-3 gap-3 text-center mb-3">
-                      {[
-                        ['Collected',   fmtGhc(wd.totalCollected),  '#1B5E20'],
-                        ['Deposited',   fmtGhc(dep.amount),          '#1F4E79'],
-                        ['Date',        fmtDate(dep.deposit_date),    '#374151'],
-                      ].map(([l,v,c]) => (
-                        <div key={l as string} className="bg-white rounded-lg p-2.5 text-center">
-                          <div className="text-xs text-gray-500">{l}</div>
-                          <div className="font-bold text-sm tabular-nums" style={{color:c as string}}>{v}</div>
+                    {/* Parse breakdown from deposit notes — format:
+                        "Weekly Report — ... | Collected: GHc X − Ops: GHc Y − Op Fee: GHc Z = GHc W"
+                        Older deposits: "Collected: GHc X − Ops: GHc Y = GHc W" (no Op Fee) */}
+                    {(() => {
+                      const notes = dep.notes ?? ''
+                      const parseAmt = (label: string) => {
+                        const m = notes.match(new RegExp(label + '[:\\s]+GH[₵¢C]?\\s*([\\d,]+\\.?\\d*)'))
+                        return m ? parseFloat(m[1].replace(/,/g, '')) : null
+                      }
+                      const parsedCollected = parseAmt('Collected')
+                      const parsedOps      = parseAmt('Ops')
+                      const parsedOpFee    = parseAmt('Op Fee')
+                      // Fall back to weekData if notes don't parse
+                      const collected = parsedCollected ?? wd.totalCollected ?? 0
+                      const ops       = parsedOps      ?? (parseFloat(opCash[week.from] || '0') || 0)
+                      const opFeeAmt  = parsedOpFee    ?? opFee
+                      return (
+                        <div className="space-y-1.5 mb-3">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600 font-medium">Total Cash Collected</span>
+                            <span className="font-bold text-green-700 tabular-nums">{fmtGhc(collected)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-500">
+                              − Cash used for operations
+                              <span className="ml-1 text-xs text-blue-400">(Imprest)</span>
+                            </span>
+                            <span className="text-red-600 tabular-nums">{fmtGhc(ops)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-500">
+                              − Operator Fee
+                              {opFeeAmt === 0 && parsedOpFee === null && (
+                                <span className="ml-1 text-xs text-gray-400">(pre-update deposit)</span>
+                              )}
+                            </span>
+                            <span className="text-red-600 tabular-nums">{fmtGhc(opFeeAmt)}</span>
+                          </div>
+                          <div className="border-t border-green-200 pt-1.5 flex justify-between items-center">
+                            <span className="font-bold text-[#1F4E79]">Deposited to Bank</span>
+                            <span className="font-bold text-[#1F4E79] tabular-nums text-base">{fmtGhc(dep.amount)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs text-gray-400">
+                            <span>Bank: {dep.bank_name || 'Revenue Collection Account'}</span>
+                            <span>{fmtDate(dep.deposit_date)}</span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      )
+                    })()}
                     <button
                       onClick={() => reverseDeposit(week)}
                       className="btn btn-danger btn-sm w-full">
