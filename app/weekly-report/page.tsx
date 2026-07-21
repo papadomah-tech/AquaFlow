@@ -58,6 +58,7 @@ function getWeeks(year: number, month: number) {
 const PRICE_RIDER    = 6.0   // Bulk to riders / sales reps
 const PRICE_EXTERNAL = 4.8   // Bulk to outside / wholesale customers
 const PRICE_WALKIN   = 6.0   // Walk-in / direct retail
+const PRICE_OT       = 5.0   // Overtime dispatches (is_overtime = true)
 
 function WeeklyReportInner() {
   const now   = new Date()
@@ -108,7 +109,7 @@ function WeeklyReportInner() {
         .select('batch_date, bags_produced, roll_ref')
         .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
-        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,buyer:employees!buyer_employee_id(full_name),customers(name)')
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false')
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
@@ -272,15 +273,18 @@ function WeeklyReportInner() {
       // • Walk-in Customer (no employee, customer name = 'Walk-in Customer') → GHc 6.00
       // • Registered external/wholesale customer → GHc 4.80
       let estRevenue = 0
-      let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0
+      let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0, estOvertimeBags = 0
       wBulk.forEach((s: any) => {
-        const isRider   = !!s.buyer
-        const isWalkin  = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
-        const price     = (isRider || isWalkin) ? PRICE_RIDER : PRICE_EXTERNAL
-        estRevenue     += s.bags_sold * price
-        if (isRider)       estRiderBags    += s.bags_sold
-        else if (isWalkin) estWalkinBags   += s.bags_sold
-        else               estExternalBags += s.bags_sold
+        const isOvertime = !!s.is_overtime
+        const isRider    = !!s.buyer
+        const isWalkin   = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
+        // Overtime bags use PRICE_OT regardless of buyer type
+        const price      = isOvertime ? PRICE_OT : ((isRider || isWalkin) ? PRICE_RIDER : PRICE_EXTERNAL)
+        estRevenue      += s.bags_sold * price
+        if (isOvertime)      estOvertimeBags += s.bags_sold
+        else if (isRider)    estRiderBags    += s.bags_sold
+        else if (isWalkin)   estWalkinBags   += s.bags_sold
+        else                 estExternalBags += s.bags_sold
       })
 
       // Variance: expected dispatch from stock vs actual bulk records
@@ -298,7 +302,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
         lockedSnap, lockedClosing,
         estRevenue, stockVarianceBags, collectionVariance,
       }
@@ -948,6 +952,15 @@ function WeeklyReportInner() {
                             <div className="flex justify-between">
                               <span className="text-gray-600">Wholesale/External ({fmtNum(wd.estExternalBags)} × GHc {PRICE_EXTERNAL})</span>
                               <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estExternalBags ?? 0) * PRICE_EXTERNAL)}</span>
+                            </div>
+                          )}
+                          {(wd.estOvertimeBags ?? 0) > 0 && (
+                            <div className="flex justify-between bg-amber-50 rounded px-1.5 py-0.5">
+                              <span className="text-amber-700 text-sm">
+                                ⏰ Overtime ({fmtNum(wd.estOvertimeBags)} × GHc {PRICE_OT})
+                                <span className="text-xs text-amber-500 ml-1">after-hours dispatches</span>
+                              </span>
+                              <span className="tabular-nums text-amber-700 font-medium">{fmtGhc((wd.estOvertimeBags ?? 0) * PRICE_OT)}</span>
                             </div>
                           )}
                           <div className="flex justify-between font-bold border-t border-blue-200 pt-1">
