@@ -429,7 +429,7 @@ function WeeklyReportInner() {
   const recordDeposit = async (week: any) => {
     const wd    = weekData[week.from]
     const op    = parseFloat(opCash[week.from] || '0') || 0
-    const opFee = Math.floor((wd?.weekProdIn ?? 0) / 100) * 30
+    const opFee = ((wd?.weekProdIn ?? 0) / 100) * 30
     const amt   = Math.max(0, (wd?.totalCollected ?? 0) - op - opFee)
     if (amt <= 0) { alert('No amount to deposit after operational cash and operator fee deductions.'); return }
 
@@ -522,7 +522,7 @@ function WeeklyReportInner() {
         const week = weeks[wi]
         const wd   = weekData[week.from] ?? {}
         const op     = parseFloat(opCash[week.from] || '0') || 0
-        const opFee  = Math.floor((wd.weekProdIn ?? 0) / 100) * 30
+        const opFee  = ((wd.weekProdIn ?? 0) / 100) * 30
         const exp    = Math.max(0, (wd.totalCollected ?? 0) - op - opFee)
         const dep    = deposited[week.from]
         const isDeposited = !!dep
