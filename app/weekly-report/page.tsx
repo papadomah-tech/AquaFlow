@@ -115,7 +115,7 @@ function WeeklyReportInner() {
       { data: allBulkSales },
     ] = await Promise.all([
       supabase.from('production_batches')
-        .select('batch_date, bags_produced, roll_ref')
+        .select('batch_number, batch_date, bags_produced, roll_ref')
         .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
         .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,buyer:employees!buyer_employee_id(full_name),customers(name)')
@@ -437,7 +437,9 @@ function WeeklyReportInner() {
   const recordDeposit = async (week: any) => {
     const wd    = weekData[week.from]
     const op    = parseFloat(opCash[week.from] || '0') || 0
-    const opFee = ((wd?.weekProdIn ?? 0) / 100) * 30
+    // Use actual batch sum — avoids week-boundary drift in weekProdIn
+    const batchSum1 = (wd?.batchDetails ?? []).reduce((a: number, b: any) => a + b.bags_produced, 0)
+    const opFee = (batchSum1 > 0 ? batchSum1 : (wd?.weekProdIn ?? 0)) / 100 * 30
     const amt   = Math.max(0, (wd?.totalCollected ?? 0) - op - opFee)
     if (amt <= 0) { alert('No amount to deposit after operational cash and operator fee deductions.'); return }
 
@@ -530,7 +532,9 @@ function WeeklyReportInner() {
         const week = weeks[wi]
         const wd   = weekData[week.from] ?? {}
         const op     = parseFloat(opCash[week.from] || '0') || 0
-        const opFee  = ((wd.weekProdIn ?? 0) / 100) * 30
+        // Use actual batch sum — avoids week-boundary drift in weekProdIn
+        const batchSum2 = ((wd.batchDetails ?? []) as any[]).reduce((a: number, b: any) => a + b.bags_produced, 0)
+        const opFee  = (batchSum2 > 0 ? batchSum2 : (wd.weekProdIn ?? 0)) / 100 * 30
         const exp    = Math.max(0, (wd.totalCollected ?? 0) - op - opFee)
         const dep    = deposited[week.from]
         const isDeposited = !!dep
@@ -1134,17 +1138,17 @@ function WeeklyReportInner() {
                             <span className="text-red-600 tabular-nums">{fmtGhc(opFeeAmt)}</span>
                           </div>
                           {showOpFeeBreakdown[week.from] && (() => {
-                            const batches = (wd.batchDetails ?? []) as any[]
-                            const prodTotal = wd.weekProdIn ?? 0
-                            const feePerBag = 30 / 100
+                            const batches    = (wd.batchDetails ?? []) as any[]
+                            // Sum directly from batches — source of truth, avoids weekProdIn drift
+                            const actualProd = batches.reduce((a: number, b: any) => a + b.bags_produced, 0)
+                            const actualFee  = (actualProd / 100) * 30
                             return (
                               <div className="ml-3 bg-orange-50 rounded-lg p-2 space-y-1 border border-orange-100">
                                 <div className="text-xs font-semibold text-orange-600 mb-1">
                                   Operator Fee Calculation
                                 </div>
                                 <div className="text-xs text-gray-600">
-                                  Formula: {fmtNum(prodTotal)} bags produced × GHc {feePerBag.toFixed(2)}/bag
-                                  = {fmtNum(prodTotal)} ÷ 100 × GHc 30
+                                  Formula: {fmtNum(actualProd)} bags ÷ 100 × GHc 30
                                 </div>
                                 {batches.length > 0 && (
                                   <div className="mt-1 space-y-0.5">
@@ -1152,7 +1156,7 @@ function WeeklyReportInner() {
                                     {batches.map((b: any, i: number) => (
                                       <div key={i} className="flex justify-between text-xs">
                                         <span className="text-gray-600">
-                                          {fmtDate(b.batch_date)} — {b.batch_number} ({fmtNum(b.bags_produced)} bags)
+                                          {fmtDate(b.batch_date)} — {b.batch_number ?? ''} ({fmtNum(b.bags_produced)} bags)
                                         </span>
                                         <span className="text-orange-600 tabular-nums ml-2 shrink-0">
                                           {fmtGhc((b.bags_produced / 100) * 30)}
@@ -1163,7 +1167,7 @@ function WeeklyReportInner() {
                                 )}
                                 <div className="flex justify-between text-xs font-bold border-t border-orange-200 pt-1 mt-1">
                                   <span className="text-orange-700">Total Operator Fee</span>
-                                  <span className="text-orange-700 tabular-nums">{fmtGhc(opFeeAmt)}</span>
+                                  <span className="text-orange-700 tabular-nums">{fmtGhc(actualFee)}</span>
                                 </div>
                               </div>
                             )
