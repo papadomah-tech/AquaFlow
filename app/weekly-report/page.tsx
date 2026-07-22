@@ -1076,7 +1076,13 @@ function WeeklyReportInner() {
                       // Fall back to weekData if notes don't parse
                       const collected = parsedCollected ?? wd.totalCollected ?? 0
                       const ops       = parsedOps      ?? (parseFloat(opCash[week.from] || '0') || 0)
-                      const opFeeAmt  = parsedOpFee    ?? opFee
+                      // Always recompute operator fee from actual batches — notes may be stale
+                      // (recorded before batch_number was tracked or before opFee formula was fixed)
+                      const batchesForFee = (wd.batchDetails ?? []) as any[]
+                      const batchProd     = batchesForFee.reduce((a: number, b: any) => a + b.bags_produced, 0)
+                      const opFeeAmt      = batchProd > 0
+                        ? (batchProd / 100) * 30
+                        : (parsedOpFee ?? opFee)
                       return (
                         <div className="space-y-1.5 mb-3">
                           <div className="flex justify-between items-center text-sm">
