@@ -24,7 +24,7 @@ function ProductionPageInner() {
   const [editBatch, setEditBatch] = useState<any>(null)
   const [filter, setFilter]     = useState({ from: monthStart(), to: today() })
   const [form, setForm] = useState({
-    batch_date: today(), roll_film_id: '', bags_produced: '', notes: ''
+    batch_date: today(), bags_produced: '', notes: ''
   })
   const [saving, setSaving]       = useState(false)
   const [warnings, setWarnings]   = useState<string[]>([])
@@ -327,7 +327,7 @@ function ProductionPageInner() {
         <button onClick={() => {
           setEditBatch(null); setWarnings([])
           const activeRoll = rolls.find((r: any) => r.status === 'in_use') ?? rolls[0]
-          setForm({batch_date:today(),roll_film_id:activeRoll ? String(activeRoll.id) : '',bags_produced:'',notes:''})
+          setForm({batch_date:today(),bags_produced:'',notes:''})
           setShowForm(true)
         }} className="btn btn-primary">+ New Batch</button>
       </div>
