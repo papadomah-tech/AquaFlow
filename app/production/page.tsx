@@ -80,9 +80,7 @@ function ProductionPageInner() {
       }
 
       setRolls(inUse ?? [])
-      if (inUse && inUse.length === 1) {
-        setForm(f => ({ ...f, roll_film_id: String(inUse![0].id) }))
-      }
+      // rolls state is for audit trail only — form no longer needs roll_film_id
 
       // Load all rolls for the Roll Film Inventory tab
       const { data: allR } = await supabase.from('roll_films')
@@ -94,10 +92,13 @@ function ProductionPageInner() {
       .then(({data}) => setMaterials(data ?? []))
   }, [])
 
-  const bags = parseInt(form.bags_produced) || 0
-  const selectedRoll = rolls.find((r:any) => r.id === parseInt(form.roll_film_id))
-  const kgNeeded = bags / BAGS_PER_KG
-  const kgAvailable = selectedRoll ? (selectedRoll.kg_remaining ?? selectedRoll.weight_kg) : 0
+  const bags        = parseInt(form.bags_produced) || 0
+  const kgNeeded    = bags / BAGS_PER_KG
+  // Aggregate Kg stock from raw_materials (Roll Film row)
+  const rfMaterial  = materials.find((m: any) => m.name.toLowerCase().includes('roll'))
+  const kgAvailable = rfMaterial?.current_stock ?? 0
+  // Active roll — used for audit trail only, not for validation
+  const activeRoll  = rolls[0] ?? null
 
   // Live preview of material consumption for this batch
   const materialPreview = materials.map((m:any) => ({
@@ -108,85 +109,48 @@ function ProductionPageInner() {
   }))
 
   const saveBatch = async () => {
-    if (!form.roll_film_id) { alert('You must select a Roll Film before saving a production batch.'); return }
     if (bags <= 0) { alert('Enter the number of bags produced.'); return }
 
-    // Roll film production cap: cumulative total must not exceed 105% of expected
-    const checkRoll = rolls.find((r: any) => r.id === parseInt(form.roll_film_id))
-    if (checkRoll) {
-      const prevBags  = editBatch
-        ? (checkRoll.bags_produced - editBatch.bags_produced)
-        : (checkRoll.bags_produced || 0)
-      const newTotal  = prevBags + bags
-      // Always compute expected bags from current rate — never trust stored bags_expected
-      // (stored value may have been calculated with old 20 bags/Kg rate)
-      const liveExpected = Math.round(checkRoll.weight_kg * BAGS_PER_KG)
-      const hardCap   = Math.floor(liveExpected * 1.05)   // 105% — hard block
-      const softWarn  = liveExpected                       // 100% — soft warning
-
-      if (newTotal > hardCap) {
-        // HARD BLOCK — refuse save
-        alert(
-          `🚫 Production Limit Reached\n\n` +
-          `Roll ${checkRoll.label} cannot exceed 105% of its expected yield.\n\n` +
-          `Expected:    ${liveExpected} bags\n` +
-          `Hard cap:    ${hardCap} bags (105%)\n` +
-          `Current:     ${prevBags} bags produced\n` +
-          `This batch:  ${bags} bags\n` +
-          `New total:   ${newTotal} bags — exceeds cap by ${newTotal - hardCap}\n\n` +
-          `Close this roll first by clicking the "Done" button on this page (Roll Film Inventory tab), ` +
-          `then the next available roll will become active automatically.`
-        )
-        return   // hard stop — do not save
-      }
-
-      if (newTotal > softWarn) {
-        // SOFT WARNING — allow user to confirm between 100%–105%
-        const over    = newTotal - liveExpected
-        const pct     = ((newTotal / liveExpected) * 100).toFixed(1)
-        const capLeft = hardCap - newTotal
-        const proceed = confirm(
-          `⚠️ Over-Expected Warning (${pct}% of expected)\n\n` +
-          `Roll ${checkRoll.label} expected yield: ${liveExpected} bags.\n` +
-          `With this batch, total will be ${newTotal} bags (+${over} over expected).\n` +
-          `Hard cap remaining: ${capLeft} more bags before this roll is locked.\n\n` +
-          `Are you sure these batches are correctly assigned to this roll?\n\n` +
-          `• OK — save and continue using this roll.\n` +
-          `• Cancel — go back and review.`
-        )
-        if (!proceed) return
-      }
+    // ── Stock check: block only if aggregate Kg stock is zero ──────────────
+    const { data: rfmCheck } = await supabase.from('raw_materials')
+      .select('current_stock').ilike('name', 'Roll Film').single()
+    const currentAggKg = rfmCheck?.current_stock ?? 0
+    if (currentAggKg <= 0) {
+      alert('🚫 No Roll Film stock available.\n\nRegister new rolls in Raw Materials before recording production.')
+      return
     }
 
     setSaving(true)
     const newWarnings: string[] = []
 
-    const roll = rolls.find((r: any) => r.id === parseInt(form.roll_film_id))
+    // Active roll — for audit trail only, not validated against
+    const roll     = activeRoll
     const batchNum = editBatch?.batch_number
       ?? ('BATCH-' + form.batch_date.replace(/-/g,'') + '-' + String(Math.floor(Math.random()*900+100)))
 
     const kgUsed = bags / BAGS_PER_KG
 
     const payload = {
-      batch_date: form.batch_date, batch_number: batchNum,
-      roll_film_id: parseInt(form.roll_film_id), roll_ref: roll?.label ?? '',
-      bags_produced: bags, bags_consumed: bags,
-      roll_kg_used: kgUsed, notes: form.notes,
+      batch_date:    form.batch_date,
+      batch_number:  batchNum,
+      roll_film_id:  roll ? roll.id : null,    // audit trail — which roll was active
+      roll_ref:      roll ? roll.label : '',
+      bags_produced: bags,
+      bags_consumed: bags,
+      roll_kg_used:  kgUsed,
+      notes:         form.notes,
     }
 
     if (editBatch) {
-      // Reverse previous deductions first
-      const prevRoll = rolls.find((r:any) => r.id === editBatch.roll_film_id) ?? editBatch.roll_films
-      if (prevRoll) {
-        await supabase.from('roll_films').update({
-          bags_produced: Math.max(0, (prevRoll.bags_produced||0) - editBatch.bags_produced),
-          kg_remaining: (prevRoll.kg_remaining ?? prevRoll.weight_kg) + (editBatch.roll_kg_used || 0),
-        }).eq('id', prevRoll.id)
-        // Reverse aggregate Roll Film stock too
-        const { data: rfm } = await supabase.from('raw_materials').select('id,current_stock').ilike('name','Roll Film').single()
-        if (rfm) await supabase.from('raw_materials').update({ current_stock: rfm.current_stock + (editBatch.roll_kg_used || 0) }).eq('id', rfm.id)
+      // Reverse previous aggregate Kg deduction
+      const { data: rfmRev } = await supabase.from('raw_materials')
+        .select('id,current_stock').ilike('name','Roll Film').single()
+      if (rfmRev) {
+        await supabase.from('raw_materials')
+          .update({ current_stock: rfmRev.current_stock + (editBatch.roll_kg_used || 0) })
+          .eq('id', rfmRev.id)
       }
-      // Reverse previous material deductions — read fresh to avoid stale state
+      // Reverse previous recipe material deductions
       const { data: freshForReversal } = await supabase
         .from('raw_materials').select('id,current_stock,usage_per_bag').gt('usage_per_bag', 0)
       for (const m of (freshForReversal ?? []).filter((m: any) => !m.name.toLowerCase().includes('water'))) {
@@ -203,53 +167,17 @@ function ProductionPageInner() {
       await supabase.from('production_batches').insert(payload)
     }
 
-    // ── Deduct roll film Kg (per-roll tracking) ───────────────────────────
-    if (roll) {
-      const newKgRemaining = (roll.kg_remaining ?? roll.weight_kg) - kgUsed
-      if (newKgRemaining < 0) newWarnings.push(`Roll ${roll.label}: Kg went negative (${newKgRemaining.toFixed(2)} Kg)`)
-      const rollExhausted = newKgRemaining <= 0
-      await supabase.from('roll_films').update({
-        bags_produced: (roll.bags_produced||0) + bags,
-        kg_remaining: newKgRemaining,
-        status: rollExhausted ? 'finished' : 'in_use',
-      }).eq('id', roll.id)
-
-      // Auto-activate the next available roll when this one is exhausted —
-      // no manual "Done" click required. Guards against race conditions.
-      if (rollExhausted) {
-        const { data: stillActive } = await supabase
-          .from('roll_films').select('id').eq('status', 'in_use').limit(1)
-        if (!stillActive || stillActive.length === 0) {
-          const { data: next } = await supabase
-            .from('roll_films').select('id,label')
-            .eq('status', 'available')
-            .order('purchase_date', { ascending: true })
-            .limit(1).single()
-          if (next) {
-            await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
-            newWarnings.push(`Roll ${roll.label} exhausted — Roll ${next.label} is now active.`)
-          } else {
-            newWarnings.push(`Roll ${roll.label} exhausted — no available rolls to activate. Register a new roll to continue production.`)
-          }
-        }
-      }
-    }
-
-    // ── Also deduct from the aggregate "Roll Film" stock in Raw Materials ──
-    const { data: rollFilmMat } = await supabase
-      .from('raw_materials').select('id,current_stock')
-      .ilike('name', 'Roll Film').single()
+    // ── Deduct Kg from aggregate Roll Film stock only ──────────────────────
+    const { data: rollFilmMat } = await supabase.from('raw_materials')
+      .select('id,current_stock').ilike('name', 'Roll Film').single()
     if (rollFilmMat) {
       const newAggStock = rollFilmMat.current_stock - kgUsed
-      if (newAggStock < 0) newWarnings.push(`Roll Film stock went negative (${newAggStock.toFixed(2)} Kg)`)
+      if (newAggStock < 0) newWarnings.push(`Roll Film stock went negative (${newAggStock.toFixed(2)} Kg) — register new rolls.`)
       await supabase.from('raw_materials')
         .update({ current_stock: newAggStock }).eq('id', rollFilmMat.id)
     }
 
-    // ── Deduct all raw materials by recipe ratio ────────────────────────────
-    // Re-read current stock values fresh from the DB immediately before deducting.
-    // Using the `materials` state variable here would deduct from stale values
-    // if multiple batches are saved in the same session without a page reload.
+    // ── Deduct all recipe materials by usage_per_bag ──────────────────────
     const { data: freshMaterials } = await supabase
       .from('raw_materials').select('*').gt('usage_per_bag', 0)
     for (const m of (freshMaterials ?? []).filter((m: any) => !m.name.toLowerCase().includes('water'))) {
@@ -385,7 +313,7 @@ function ProductionPageInner() {
     ])
     setRolls(inUse ?? [])
     setAllRolls(allR ?? [])
-    if (inUse && inUse.length === 1) setForm(f => ({ ...f, roll_film_id: String(inUse[0].id) }))
+    // rolls state is for audit trail only
   }
 
   const totals = batches.reduce((a: any, b: any) => ({
@@ -484,7 +412,7 @@ function ProductionPageInner() {
                     }
                     <button onClick={()=>{
                       setEditBatch(b); setWarnings([])
-                      setForm({batch_date:b.batch_date,roll_film_id:String(b.roll_film_id??''),bags_produced:String(b.bags_produced),notes:b.notes??''})
+                      setForm({batch_date:b.batch_date,bags_produced:String(b.bags_produced),notes:b.notes??''})
                       setShowForm(true)
                     }} className="btn btn-sm btn-secondary">Edit</button>
                     <button onClick={()=>deleteBatch(b)} className="btn btn-sm btn-danger">Del</button>
@@ -512,32 +440,39 @@ function ProductionPageInner() {
                 </div>
               )}
 
-              <div className="form-group">
-                <label className="form-label">Date</label>
-                <input type="date" value={form.batch_date} onChange={e=>setForm(f=>({...f,batch_date:e.target.value}))} className="form-input" />
+              {/* Aggregate Roll Film stock — info only */}
+              <div className={'rounded-xl px-4 py-3 border '
+                + (kgAvailable <= 0 ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-200')}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className={'text-sm font-semibold '
+                      + (kgAvailable <= 0 ? 'text-red-700' : 'text-[#1F4E79]')}>
+                      🎞️ Roll Film Stock
+                    </div>
+                    <div className={'text-xs mt-0.5 '
+                      + (kgAvailable <= 0 ? 'text-red-500' : 'text-blue-600')}>
+                      {kgAvailable <= 0
+                        ? '⚠️ No stock — register new rolls before recording production'
+                        : `${kgAvailable.toFixed(2)} Kg available — approx. ${Math.floor(kgAvailable * BAGS_PER_KG).toLocaleString()} bags possible`}
+                    </div>
+                    {activeRoll && (
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Active roll: {activeRoll.label}
+                      </div>
+                    )}
+                  </div>
+                  <div className={'text-2xl font-black tabular-nums '
+                    + (kgAvailable <= 0 ? 'text-red-600' : 'text-[#1F4E79]')}>
+                    {kgAvailable.toFixed(1)} Kg
+                  </div>
+                </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Active Roll Film
-                  <span className="text-red-500 ml-1">(auto-selected)</span>
-                </label>
-                {rolls.length === 0 ? (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
-                    ⚠️ No active roll. Go to <strong>Raw Materials → Roll Film</strong> and
-                    register a new roll or mark one as active before recording production.
-                  </div>
-                ) : (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-                    <div className="font-medium text-[#1F4E79]">
-                      🎬 {rolls[0]?.label}
-                    </div>
-                    <div className="text-xs text-blue-600 mt-0.5">
-                      {(rolls[0]?.kg_remaining ?? rolls[0]?.weight_kg ?? 0).toFixed(2)} Kg remaining
-                      · {Math.round((rolls[0]?.weight_kg ?? 0) * BAGS_PER_KG)} bags expected
-                    </div>
-                    <input type="hidden" value={form.roll_film_id} />
-                  </div>
-                )}
+                <label className="form-label">Date</label>
+                <input type="date" value={form.batch_date}
+                  onChange={e=>setForm(f=>({...f,batch_date:e.target.value}))}
+                  className="form-input" />
               </div>
 
               <div className="form-group">
@@ -547,9 +482,9 @@ function ProductionPageInner() {
                   className="form-input text-xl font-bold text-center" placeholder="0" />
               </div>
 
-              {bags > 0 && selectedRoll && (
+              {bags > 0 && (
                 <div className={'rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm '
-                  + (kgNeeded > kgAvailable ? 'bg-red-50 border border-red-200' : 'bg-blue-50')}>
+                  + (kgNeeded > kgAvailable ? 'bg-red-50 border border-red-200' : 'bg-gray-50')}>
                   <div>
                     <div className="text-xs text-gray-500">Film Needed</div>
                     <div className="font-bold text-[#1F4E79]">{kgNeeded.toFixed(2)} Kg</div>
@@ -564,9 +499,9 @@ function ProductionPageInner() {
                     <div className="text-xs text-gray-500">Op. Fee</div>
                     <div className="font-bold text-orange-600">{fmtGhc((bags/100)*OP_FEE)}</div>
                   </div>
-                  {kgNeeded > kgAvailable && (
+                  {kgNeeded > kgAvailable && kgAvailable > 0 && (
                     <div className="col-span-3 text-xs text-red-600 mt-1">
-                      ⚠️ This will use more film than remains on the roll — stock will go negative.
+                      ⚠️ This batch will consume more film than is in stock.
                     </div>
                   )}
                 </div>
@@ -595,13 +530,15 @@ function ProductionPageInner() {
 
               <div className="form-group">
                 <label className="form-label">Notes</label>
-                <textarea value={form.notes} rows={2} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} className="form-input" />
+                <textarea value={form.notes} rows={2}
+                  onChange={e=>setForm(f=>({...f,notes:e.target.value}))}
+                  className="form-input" />
               </div>
             </div>
             <div className="modal-footer">
               <button onClick={()=>setShowForm(false)} className="btn btn-secondary">Cancel</button>
               <button onClick={saveBatch}
-                disabled={saving || !form.bags_produced || !form.roll_film_id || rolls.length === 0}
+                disabled={saving || !form.bags_produced || kgAvailable <= 0}
                 className="btn btn-primary">
                 {saving ? 'Saving...' : 'Save Batch'}
               </button>
