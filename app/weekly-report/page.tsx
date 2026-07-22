@@ -70,7 +70,11 @@ function WeeklyReportInner() {
   const [loading, setLoading]   = useState(false)
 
   // Imprest totals auto-fetched per week (replaces manual opCash input)
-  const [imprestTotals, setImprestTotals] = useState<Record<string, number>>({})
+  const [imprestTotals,  setImprestTotals]  = useState<Record<string, number>>({})
+  const [imprestEntries, setImprestEntries] = useState<Record<string, any[]>>({})
+  // Toggle drill-down visibility in deposit recorded banner
+  const [showImprestBreakdown, setShowImprestBreakdown] = useState<Record<string, boolean>>({})
+  const [showOpFeeBreakdown,   setShowOpFeeBreakdown]   = useState<Record<string, boolean>>({})
   // Per-week operational cash — kept for backward compat but auto-populated from imprest
   const [opCash, setOpCash]     = useState<Record<string, string>>({})
   // Track which weeks are already deposited
@@ -150,17 +154,20 @@ function WeeklyReportInner() {
     if (ws2.length > 0) {
       const { data: imprestData } = await supabase
         .from('imprest_entries')
-        .select('entry_date, amount').or('is_archived.is.null,is_archived.eq.false')
+        .select('entry_date, amount, description').or('is_archived.is.null,is_archived.eq.false')
         .gte('entry_date', monthFrom)
         .lte('entry_date', monthTo)
       const totals: Record<string, number> = {}
+      const entries: Record<string, any[]> = {}
       ws2.forEach((w: any) => {
         const weekEntries = (imprestData ?? []).filter((e: any) =>
           e.entry_date >= w.from && e.entry_date <= w.to
         )
-        totals[w.from] = weekEntries.reduce((s: number, e: any) => s + e.amount, 0)
+        totals[w.from]  = weekEntries.reduce((s: number, e: any) => s + e.amount, 0)
+        entries[w.from] = weekEntries
       })
       setImprestTotals(totals)
+      setImprestEntries(entries)
       // Auto-populate opCash so the deposit calculation uses imprest totals
       const opMap: Record<string, string> = {}
       ws2.forEach((w: any) => {
@@ -309,6 +316,7 @@ function WeeklyReportInner() {
         // Stock reconciliation
         openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
         lockedSnap, lockedClosing,
+        batchDetails: wBatches,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -1075,18 +1083,91 @@ function WeeklyReportInner() {
                             <span className="text-gray-500">
                               − Cash used for operations
                               <span className="ml-1 text-xs text-blue-400">(Imprest)</span>
+                              {ops > 0 && (
+                                <button
+                                  onClick={() => setShowImprestBreakdown(p => ({...p, [week.from]: !p[week.from]}))}
+                                  className="ml-1 text-xs text-blue-500 hover:text-blue-700 underline">
+                                  {showImprestBreakdown[week.from] ? '▲ hide' : '▼ details'}
+                                </button>
+                              )}
                             </span>
                             <span className="text-red-600 tabular-nums">{fmtGhc(ops)}</span>
                           </div>
+                          {showImprestBreakdown[week.from] && (() => {
+                            const entries = imprestEntries[week.from] ?? []
+                            return (
+                              <div className="ml-3 bg-blue-50 rounded-lg p-2 space-y-1 border border-blue-100">
+                                <div className="text-xs font-semibold text-blue-600 mb-1">
+                                  Imprest Entries ({entries.length})
+                                </div>
+                                {entries.length === 0 ? (
+                                  <div className="text-xs text-gray-400 italic">No imprest entries found</div>
+                                ) : entries.map((e: any, i: number) => (
+                                  <div key={i} className="flex justify-between text-xs">
+                                    <span className="text-gray-600">
+                                      {fmtDate(e.entry_date)} — {e.description || 'Operational expense'}
+                                    </span>
+                                    <span className="text-red-500 tabular-nums ml-2 shrink-0">{fmtGhc(e.amount)}</span>
+                                  </div>
+                                ))}
+                                <div className="flex justify-between text-xs font-bold border-t border-blue-200 pt-1 mt-1">
+                                  <span className="text-blue-700">Total</span>
+                                  <span className="text-blue-700 tabular-nums">{fmtGhc(ops)}</span>
+                                </div>
+                              </div>
+                            )
+                          })()}
                           <div className="flex justify-between items-center text-sm">
                             <span className="text-gray-500">
                               − Operator Fee
                               {opFeeAmt === 0 && parsedOpFee === null && (
                                 <span className="ml-1 text-xs text-gray-400">(pre-update deposit)</span>
                               )}
+                              {opFeeAmt > 0 && (
+                                <button
+                                  onClick={() => setShowOpFeeBreakdown(p => ({...p, [week.from]: !p[week.from]}))}
+                                  className="ml-1 text-xs text-blue-500 hover:text-blue-700 underline">
+                                  {showOpFeeBreakdown[week.from] ? '▲ hide' : '▼ details'}
+                                </button>
+                              )}
                             </span>
                             <span className="text-red-600 tabular-nums">{fmtGhc(opFeeAmt)}</span>
                           </div>
+                          {showOpFeeBreakdown[week.from] && (() => {
+                            const batches = (wd.batchDetails ?? []) as any[]
+                            const prodTotal = wd.weekProdIn ?? 0
+                            const feePerBag = 30 / 100
+                            return (
+                              <div className="ml-3 bg-orange-50 rounded-lg p-2 space-y-1 border border-orange-100">
+                                <div className="text-xs font-semibold text-orange-600 mb-1">
+                                  Operator Fee Calculation
+                                </div>
+                                <div className="text-xs text-gray-600">
+                                  Formula: {fmtNum(prodTotal)} bags produced × GHc {feePerBag.toFixed(2)}/bag
+                                  = {fmtNum(prodTotal)} ÷ 100 × GHc 30
+                                </div>
+                                {batches.length > 0 && (
+                                  <div className="mt-1 space-y-0.5">
+                                    <div className="text-xs font-medium text-orange-700">Batches this week:</div>
+                                    {batches.map((b: any, i: number) => (
+                                      <div key={i} className="flex justify-between text-xs">
+                                        <span className="text-gray-600">
+                                          {fmtDate(b.batch_date)} — {b.batch_number} ({fmtNum(b.bags_produced)} bags)
+                                        </span>
+                                        <span className="text-orange-600 tabular-nums ml-2 shrink-0">
+                                          {fmtGhc((b.bags_produced / 100) * 30)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex justify-between text-xs font-bold border-t border-orange-200 pt-1 mt-1">
+                                  <span className="text-orange-700">Total Operator Fee</span>
+                                  <span className="text-orange-700 tabular-nums">{fmtGhc(opFeeAmt)}</span>
+                                </div>
+                              </div>
+                            )
+                          })()}
                           <div className="border-t border-green-200 pt-1.5 flex justify-between items-center">
                             <span className="font-bold text-[#1F4E79]">Deposited to Bank</span>
                             <span className="font-bold text-[#1F4E79] tabular-nums text-base">{fmtGhc(dep.amount)}</span>
