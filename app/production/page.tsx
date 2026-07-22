@@ -87,8 +87,7 @@ function ProductionPageInner() {
         .select('*').order('purchase_date', { ascending: true }).order('label', { ascending: true })
       setAllRolls(allR ?? [])
     })()
-    supabase.from('raw_materials').select('*')
-      .gt('usage_per_bag', 0).order('name')
+    supabase.from('raw_materials').select('*').order('name')
       .then(({data}) => setMaterials(data ?? []))
   }, [])
 
@@ -100,8 +99,10 @@ function ProductionPageInner() {
   // Active roll — used for audit trail only, not for validation
   const activeRoll  = rolls[0] ?? null
 
-  // Live preview of material consumption for this batch
-  const materialPreview = materials.map((m:any) => ({
+  // Live preview of material consumption for this batch (recipe materials only)
+  const materialPreview = materials
+    .filter((m: any) => m.usage_per_bag > 0 && !m.name.toLowerCase().includes('roll'))
+    .map((m:any) => ({
     ...m,
     needed: bags * m.usage_per_bag,
     afterStock: m.current_stock - (bags * m.usage_per_bag),
@@ -153,7 +154,11 @@ function ProductionPageInner() {
       // Reverse previous recipe material deductions
       const { data: freshForReversal } = await supabase
         .from('raw_materials').select('id,current_stock,usage_per_bag').gt('usage_per_bag', 0)
-      for (const m of (freshForReversal ?? []).filter((m: any) => !m.name.toLowerCase().includes('water'))) {
+      for (const m of (freshForReversal ?? []).filter((m: any) =>
+        m.usage_per_bag > 0 &&
+        !m.name.toLowerCase().includes('water') &&
+        !m.name.toLowerCase().includes('roll')
+      )) {
         const prevUsed = editBatch.bags_produced * m.usage_per_bag
         if (prevUsed > 0) {
           await supabase.from('raw_materials')
@@ -180,7 +185,11 @@ function ProductionPageInner() {
     // ── Deduct all recipe materials by usage_per_bag ──────────────────────
     const { data: freshMaterials } = await supabase
       .from('raw_materials').select('*').gt('usage_per_bag', 0)
-    for (const m of (freshMaterials ?? []).filter((m: any) => !m.name.toLowerCase().includes('water'))) {
+    for (const m of (freshMaterials ?? []).filter((m: any) =>
+      m.usage_per_bag > 0 &&
+      !m.name.toLowerCase().includes('water') &&
+      !m.name.toLowerCase().includes('roll')
+    )) {
       const used = bags * m.usage_per_bag
       if (used <= 0) continue
       const newStock = m.current_stock - used
