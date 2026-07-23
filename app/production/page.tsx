@@ -151,6 +151,21 @@ function ProductionPageInner() {
           .update({ current_stock: rfmRev.current_stock + (editBatch.roll_kg_used || 0) })
           .eq('id', rfmRev.id)
       }
+      // Reverse per-roll deduction on the roll that was active for this batch
+      if (editBatch.roll_film_id) {
+        const { data: prevRollData } = await supabase.from('roll_films')
+          .select('id,bags_produced,kg_remaining,weight_kg,status').eq('id', editBatch.roll_film_id).single()
+        if (prevRollData) {
+          await supabase.from('roll_films').update({
+            bags_produced: Math.max(0, (prevRollData.bags_produced || 0) - editBatch.bags_produced),
+            kg_remaining:  (prevRollData.kg_remaining ?? prevRollData.weight_kg) + (editBatch.roll_kg_used || 0),
+            // Reopen roll if it was finished by this batch
+            status: prevRollData.status === 'finished'
+              ? 'in_use'   // reopen so re-save can deduct from it again
+              : prevRollData.status,
+          }).eq('id', prevRollData.id)
+        }
+      }
       // Reverse previous recipe material deductions
       const { data: freshForReversal } = await supabase
         .from('raw_materials').select('id,current_stock,usage_per_bag').gt('usage_per_bag', 0)
@@ -172,14 +187,84 @@ function ProductionPageInner() {
       await supabase.from('production_batches').insert(payload)
     }
 
-    // ── Deduct Kg from aggregate Roll Film stock only ──────────────────────
+    // ── Deduct Kg across rolls in sequence, auto-advancing when each is exhausted ──
+    // 1. Deduct from the aggregate Roll Film stock in raw_materials
     const { data: rollFilmMat } = await supabase.from('raw_materials')
       .select('id,current_stock').ilike('name', 'Roll Film').single()
     if (rollFilmMat) {
       const newAggStock = rollFilmMat.current_stock - kgUsed
-      if (newAggStock < 0) newWarnings.push(`Roll Film stock went negative (${newAggStock.toFixed(2)} Kg) — register new rolls.`)
+      if (newAggStock < 0) newWarnings.push(`Roll Film aggregate stock went negative (${newAggStock.toFixed(2)} Kg) — register new rolls.`)
       await supabase.from('raw_materials')
         .update({ current_stock: newAggStock }).eq('id', rollFilmMat.id)
+    }
+
+    // 2. Deduct Kg from individual rolls in order, advancing when each is exhausted
+    let kgToDeduct = kgUsed
+    let primaryRollLabel = roll ? roll.label : ''  // first roll consumed — for audit trail
+
+    while (kgToDeduct > 0.001) {  // 0.001 tolerance for floating point
+      // Get current active roll fresh from DB each iteration
+      const { data: activeRolls } = await supabase.from('roll_films')
+        .select('*').eq('status', 'in_use')
+        .order('purchase_date', { ascending: true })
+        .order('label',        { ascending: true })
+        .limit(1)
+
+      const currentRoll = activeRolls?.[0]
+      if (!currentRoll) {
+        // No more rolls — try to activate next available
+        const { data: nextAvail } = await supabase.from('roll_films')
+          .select('*').eq('status', 'available')
+          .order('purchase_date', { ascending: true })
+          .order('label',        { ascending: true })
+          .limit(1)
+        if (nextAvail && nextAvail.length > 0) {
+          await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', nextAvail[0].id)
+          newWarnings.push(`Advanced to Roll ${nextAvail[0].label} — previous roll exhausted.`)
+          continue  // re-enter loop with new active roll
+        } else {
+          newWarnings.push(`No more rolls available after deducting ${(kgUsed - kgToDeduct).toFixed(2)} Kg. Remaining ${kgToDeduct.toFixed(2)} Kg untracked on individual rolls.`)
+          break
+        }
+      }
+
+      const rollKgLeft = currentRoll.kg_remaining ?? currentRoll.weight_kg
+      const deductFromThisRoll = Math.min(kgToDeduct, rollKgLeft)
+      const newKgRemaining = rollKgLeft - deductFromThisRoll
+      const rollExhausted  = newKgRemaining <= 0.001
+
+      // Portion of bags attributed to this roll (proportional to Kg consumed)
+      const bagsFromThisRoll = Math.round((deductFromThisRoll / kgUsed) * bags)
+
+      await supabase.from('roll_films').update({
+        bags_produced: (currentRoll.bags_produced || 0) + bagsFromThisRoll,
+        kg_remaining:  newKgRemaining,
+        status:        rollExhausted ? 'finished' : 'in_use',
+      }).eq('id', currentRoll.id)
+
+      if (rollExhausted) {
+        // Activate next available roll
+        const { data: nextRoll } = await supabase.from('roll_films')
+          .select('id,label').eq('status', 'available')
+          .order('purchase_date', { ascending: true })
+          .order('label',        { ascending: true })
+          .limit(1).single()
+        if (nextRoll) {
+          await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', nextRoll.id)
+          newWarnings.push(`Roll ${currentRoll.label} exhausted mid-batch — Roll ${nextRoll.label} is now active.`)
+        } else {
+          newWarnings.push(`Roll ${currentRoll.label} exhausted. No available rolls remaining — register new rolls.`)
+        }
+      }
+
+      kgToDeduct -= deductFromThisRoll
+    }
+
+    // Update batch roll_ref to the primary roll (first one consumed)
+    if (primaryRollLabel) {
+      await supabase.from('production_batches')
+        .update({ roll_ref: primaryRollLabel })
+        .eq('batch_number', batchNum)
     }
 
     // ── Deduct all recipe materials by usage_per_bag ──────────────────────
