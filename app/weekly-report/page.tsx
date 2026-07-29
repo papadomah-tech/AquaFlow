@@ -1336,6 +1336,12 @@ function WeeklyReportInner() {
                             })()}
                           </>
                         )}
+                        <div className="border-t border-gray-100 pt-2 flex justify-between text-sm text-gray-500">
+                          <span>Total Deductions</span>
+                          <span className="tabular-nums text-red-600 font-medium">
+                            − {fmtGhc((imprestTotals[week.from] ?? 0) + opFee)}
+                          </span>
+                        </div>
                         <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-bold">
                           <span className="text-[#1F4E79]">Expected Deposit</span>
                           <span className={'tabular-nums '
