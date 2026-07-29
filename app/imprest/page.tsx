@@ -98,12 +98,21 @@ function ImprestPageInner() {
 
   const del = async (e: any) => {
     if (!confirm(`Delete "${e.description}"?`)) return
-    const { error } = await supabase.from('imprest_entries').delete().eq('id', e.id)
-    if (error) { alert('Delete failed: ' + error.message); return }
+    await supabase.from('imprest_entries').delete().eq('id', e.id)
     load()
   }
 
+  const [search, setSearch] = useState('')
+
+  const filteredEntries = search.trim()
+    ? entries.filter(e =>
+        e.category?.toLowerCase().includes(search.toLowerCase()) ||
+        e.description?.toLowerCase().includes(search.toLowerCase())
+      )
+    : entries
+
   const totalSpent = entries.reduce((a, e) => a + e.amount, 0)
+  const filteredTotal = filteredEntries.reduce((a: number, e: any) => a + e.amount, 0)
 
   return (
     <AppLayout>
@@ -155,6 +164,28 @@ function ImprestPageInner() {
 
       {/* ── Entries table ── */}
       <div className="card p-0 overflow-hidden">
+        {/* Search bar */}
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+          <span className="text-gray-400 text-sm">🔍</span>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by category or description..."
+            className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+          />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="text-gray-400 hover:text-gray-600 text-xs px-2 py-0.5 rounded border border-gray-200">
+              Clear
+            </button>
+          )}
+          {search && (
+            <span className="text-xs text-gray-400 whitespace-nowrap">
+              {filteredEntries.length} of {entries.length} entries
+            </span>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="data-table">
             <colgroup>
@@ -175,7 +206,9 @@ function ImprestPageInner() {
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400 italic">
                   No expenses recorded for this period. Click + Record Expense to add one.
                 </td></tr>
-              ) : entries.map(e => (
+              ) : filteredEntries.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-8 text-gray-400 italic">No entries match your search.</td></tr>
+              ) : filteredEntries.map(e => (
                 <tr key={e.id}>
                   <td className="muted text-xs">{fmtDate(e.entry_date)}</td>
                   <td><span className={'badge ' + (CAT_COLORS[e.category] ?? 'badge-gray')}>{e.category}</span></td>
@@ -195,7 +228,7 @@ function ImprestPageInner() {
               <tfoot>
                 <tr className="bg-[#1F4E79] text-white font-semibold">
                   <td className="px-3 py-2 text-xs uppercase tracking-wide" colSpan={4}>Total</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtGhc(totalSpent)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtGhc(search ? filteredTotal : totalSpent)}{search && filteredTotal !== totalSpent ? <span className="text-xs font-normal ml-1 opacity-70">(filtered)</span> : null}</td>
                   <td />
                 </tr>
               </tfoot>
