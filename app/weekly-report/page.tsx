@@ -58,7 +58,6 @@ function getWeeks(year: number, month: number) {
 const PRICE_RIDER    = 6.0   // Bulk to riders / sales reps
 const PRICE_EXTERNAL = 4.8   // Bulk to outside / wholesale customers
 const PRICE_WALKIN   = 6.0   // Walk-in / direct retail
-const PRICE_OT       = 5.0   // Overtime dispatches (is_overtime = true)
 
 function WeeklyReportInner() {
   const now   = new Date()
@@ -66,15 +65,10 @@ function WeeklyReportInner() {
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1)
   const [weeks, setWeeks]       = useState<any[]>([])
   const [weekData, setWeekData] = useState<Record<string, any>>({})
-  const [selWeekIdx, setSelWeekIdx] = useState<number>(0)  // which week is displayed
   const [loading, setLoading]   = useState(false)
 
   // Imprest totals auto-fetched per week (replaces manual opCash input)
-  const [imprestTotals,  setImprestTotals]  = useState<Record<string, number>>({})
-  const [imprestEntries, setImprestEntries] = useState<Record<string, any[]>>({})
-  // Toggle drill-down visibility in deposit recorded banner
-  const [showImprestBreakdown, setShowImprestBreakdown] = useState<Record<string, boolean>>({})
-  const [showOpFeeBreakdown,   setShowOpFeeBreakdown]   = useState<Record<string, boolean>>({})
+  const [imprestTotals, setImprestTotals] = useState<Record<string, number>>({})
   // Per-week operational cash — kept for backward compat but auto-populated from imprest
   const [opCash, setOpCash]     = useState<Record<string, string>>({})
   // Track which weeks are already deposited
@@ -89,7 +83,6 @@ function WeeklyReportInner() {
   const [actualStock, setActualStock]   = useState<number>(0)
   const [registering, setRegistering]   = useState<string|null>(null)
   const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
-  const [snapshots, setSnapshots]       = useState<Record<string, any>>({})  // locked weekly snapshots
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -97,10 +90,6 @@ function WeeklyReportInner() {
     setLoading(true)
     const ws = getWeeks(selYear, selMonth)
     setWeeks(ws)
-    // Default to the week that contains today; fall back to last week
-    const todayStr = today()
-    const activeIdx = ws.findIndex((w: any) => todayStr >= w.from && todayStr <= w.to)
-    setSelWeekIdx(activeIdx >= 0 ? activeIdx : ws.length - 1)
 
     // Fetch all data for the month in one go
     const monthFrom = `${monthStr}-01`
@@ -115,10 +104,10 @@ function WeeklyReportInner() {
       { data: allBulkSales },
     ] = await Promise.all([
       supabase.from('production_batches')
-        .select('batch_number, batch_date, bags_produced, roll_ref')
+        .select('batch_date, bags_produced, roll_ref')
         .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
-        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,buyer:employees!buyer_employee_id(full_name),customers(name)')
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false')
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
@@ -140,34 +129,22 @@ function WeeklyReportInner() {
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false'),
     ])
 
-    // Fetch locked weekly snapshots for this month
-    const { data: snapshotRows } = await supabase
-      .from('weekly_stock_snapshots')
-      .select('*')
-      .eq('month_key', monthStr)
-    const snapshotMap: Record<string, any> = {}
-    ;(snapshotRows ?? []).forEach((s: any) => { snapshotMap[s.week_from] = s })
-    setSnapshots(snapshotMap)
-
     // Fetch imprest entries for each week and compute totals
     const ws2 = getWeeks(selYear, selMonth)
     if (ws2.length > 0) {
       const { data: imprestData } = await supabase
         .from('imprest_entries')
-        .select('entry_date, amount, description').or('is_archived.is.null,is_archived.eq.false')
+        .select('entry_date, amount').or('is_archived.is.null,is_archived.eq.false')
         .gte('entry_date', monthFrom)
         .lte('entry_date', monthTo)
       const totals: Record<string, number> = {}
-      const entries: Record<string, any[]> = {}
       ws2.forEach((w: any) => {
         const weekEntries = (imprestData ?? []).filter((e: any) =>
           e.entry_date >= w.from && e.entry_date <= w.to
         )
-        totals[w.from]  = weekEntries.reduce((s: number, e: any) => s + e.amount, 0)
-        entries[w.from] = weekEntries
+        totals[w.from] = weekEntries.reduce((s: number, e: any) => s + e.amount, 0)
       })
       setImprestTotals(totals)
-      setImprestEntries(entries)
       // Auto-populate opCash so the deposit calculation uses imprest totals
       const opMap: Record<string, string> = {}
       ws2.forEach((w: any) => {
@@ -209,94 +186,67 @@ function WeeklyReportInner() {
       const totalCollected  = wBulk.reduce((a: number, s: any) => a + s.amount_paid, 0)
       const totalOutstanding= wBulk.reduce((a: number, s: any) => a + s.outstanding_balance, 0)
 
-      // ── Stock reconciliation ─────────────────────────────────────────────
-      // Formula (same for every week):
-      //   Closing = Opening + Production(this week) + AdjIn(this week)
-      //             − AdjOut(this week) − Dispatches(this week)
-      //
-      // Week 1 Opening = previous month's closing stock
-      //   = sum of ALL non-archived finished_inventory up to last day of prev month
-      // Week 2+ Opening = previous week's systemClosing (rolling)
+      // ── Stock reconciliation ────────────────────────────────────────────────
+      // Opening entries (for drill-down display only)
+      const openingEntries = (allInventory ?? [])
+        .filter((r: any) => r.transaction_date < w.from)
 
+      // Opening stock:
+      //   Week 1 → calculated from ALL production before this week minus ALL dispatches before
+      //            (using ONLY production_batches and bulk sales — no retail/stale entries)
+      //   Week 2+ → previous week's closing (rolling, guaranteed continuity)
       let openingStock: number
       if (prevWeekClosing !== null) {
-        // Week 2, 3, 4: carry forward from previous week's closing
-        // If previous week has a locked snapshot, use its physical count as opening
         openingStock = prevWeekClosing
       } else {
-        // Week 1: opening = previous month's closing
-        // Compute as: sum of all non-archived finished_inventory before this month's start
-        const prevMonthEnd = new Date(selYear, selMonth - 1, 0) // last day of prev month
-        const prevMonthEndStr = prevMonthEnd.toISOString().slice(0, 10)
+        // Week 1: use finished_inventory as single source of truth
+        // Sum ALL bags_in minus ALL bags_out before this week's start date
         openingStock = (allInventory ?? [])
-          .filter((r: any) =>
-            r.transaction_date <= prevMonthEndStr &&
-            (r.is_archived === null || r.is_archived === false)
-          )
-          .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
+          .filter((r: any) => r.transaction_date < w.from)
+          .reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
       }
-
-      // If this week has a locked snapshot, use its confirmed closing
-      // for the rolling chain (feeds next week's opening)
-      const lockedSnap = snapshotMap[w.from]
-      const lockedClosing = lockedSnap?.is_locked ? lockedSnap.closing_stock : null
-
-      // Opening entries — for drill-down display only (not used in calculations)
-      const openingEntries = (allInventory ?? [])
-        .filter((r: any) =>
-          r.transaction_date < w.from &&
-          (r.is_archived === null || r.is_archived === false)
-        )
 
       // This week's production (from production_batches — authoritative)
       const weekProdIn = totalProduced
 
-      // This week's adjustments — ONLY entries dated within this week
+      // This week's adjustments (from finished_inventory — stock takes etc)
       const weekEntries = (allInventory ?? [])
-        .filter((r: any) =>
-          r.transaction_date >= w.from &&
-          r.transaction_date <= w.to &&
-          (r.is_archived === null || r.is_archived === false)
-        )
-      const weekAdjIn  = weekEntries
-        .filter((r: any) => r.bags_in  > 0 && r.reference_type === 'adjustment')
+        .filter((r: any) => r.transaction_date >= w.from && r.transaction_date <= w.to)
+      const weekAdjIn = weekEntries
+        .filter((r: any) => r.bags_in > 0 && r.reference_type === 'adjustment')
         .reduce((a: number, r: any) => a + r.bags_in, 0)
-      const weekAdjOut = weekEntries
-        .filter((r: any) => r.bags_out > 0 && r.reference_type === 'adjustment')
-        .reduce((a: number, r: any) => a + r.bags_out, 0)
-
       const weekAllBagsIn = weekProdIn + weekAdjIn
 
-      // Dispatches = from bulk sales records (authoritative)
+      // Dispatches = from bulk sales records (authoritative — no stale retail entries)
       const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Week's Closing Stock Balance (pure: opening + produced − dispatched, no adjustments)
+      // Week's Closing Stock Balance (pure: opening + produced − dispatched)
       const weekClosingBalance = openingStock + weekProdIn - weekDispOut
 
       // System closing (includes adjustments) → feeds next week's opening
-      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut
+      const systemClosing = openingStock + weekAllBagsIn - weekDispOut
+      const weekAdjOut = 0
 
-      // Roll forward: if this week is locked, next week opens from the physical count
-      // otherwise from the computed systemClosing
-      prevWeekClosing = lockedClosing !== null ? lockedClosing : systemClosing
+      // Roll forward: next week's opening = this week's closing
+      prevWeekClosing = systemClosing
+
+      // Reconciliation check: systemClosing should equal Stock module current stock
+      // at the end of this week (for the last/current week, this IS current stock)
 
       // Revenue estimate per dispatch (per bag price tiers):
       // • Rider/rep (buyer_employee_id set)  → GHc 6.00
       // • Walk-in Customer (no employee, customer name = 'Walk-in Customer') → GHc 6.00
       // • Registered external/wholesale customer → GHc 4.80
       let estRevenue = 0
-      let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0, estOvertimeBags = 0
+      let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0
       wBulk.forEach((s: any) => {
-        const isOvertime = !!s.is_overtime
-        const isRider    = !!s.buyer
-        const isWalkin   = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
-        // Overtime bags use PRICE_OT regardless of buyer type
-        const price      = isOvertime ? PRICE_OT : ((isRider || isWalkin) ? PRICE_RIDER : PRICE_EXTERNAL)
-        estRevenue      += s.bags_sold * price
-        if (isOvertime)      estOvertimeBags += s.bags_sold
-        else if (isRider)    estRiderBags    += s.bags_sold
-        else if (isWalkin)   estWalkinBags   += s.bags_sold
-        else                 estExternalBags += s.bags_sold
+        const isRider   = !!s.buyer
+        const isWalkin  = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
+        const price     = (isRider || isWalkin) ? PRICE_RIDER : PRICE_EXTERNAL
+        estRevenue     += s.bags_sold * price
+        if (isRider)       estRiderBags    += s.bags_sold
+        else if (isWalkin) estWalkinBags   += s.bags_sold
+        else               estExternalBags += s.bags_sold
       })
 
       // Variance: expected dispatch from stock vs actual bulk records
@@ -314,9 +264,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
-        lockedSnap, lockedClosing,
-        batchDetails: wBatches,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags,
         estRevenue, stockVarianceBags, collectionVariance,
       }
     })
@@ -393,55 +341,39 @@ function WeeklyReportInner() {
     const diff = physical - systemClosing
     if (!confirm(
       `Register physical count?\n\n` +
-      `Weekly Closing Stock: ${fmtNum(systemClosing)} bags\n` +
+      `System Closing Stock: ${fmtNum(systemClosing)} bags\n` +
       `Physical Count:       ${fmtNum(physical)} bags\n` +
       `Variance:             ${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags\n\n` +
       (diff === 0
-        ? '✅ Stock confirmed — weekly closing locked at ' + fmtNum(physical) + ' bags.\nNext week will open from ' + fmtNum(physical) + ' bags.\n\nThe Stock module is NOT affected.'
-        : (diff > 0
-          ? '📦 Physical count HIGHER than system.\n'
-          : '⚠️ Physical count LOWER than system.\n') +
-          'The weekly closing will be locked at the physical count of ' + fmtNum(physical) + ' bags.\n' +
-          'Next week will open from ' + fmtNum(physical) + ' bags.\n\n' +
-          '⚠️ The Stock module is NOT affected — only the weekly closing is updated.')
+        ? '✅ Stock reconciled — no adjustment needed.'
+        : diff > 0
+        ? `📦 Surplus: ${fmtNum(diff)} bags will be added to stock as an adjustment entry.`
+        : `⚠️ Shortage: ${fmtNum(Math.abs(diff))} bags will be deducted from stock as an adjustment entry.`)
     )) return
 
     setRegistering(week.from)
 
-    const wd = weekData[week.from] ?? {}
-    // Upsert into weekly_stock_snapshots — never writes to finished_inventory
-    const payload = {
-      week_from:       week.from,
-      week_to:         week.to,
-      month_key:       monthStr,
-      opening_stock:   wd.openingStock ?? 0,
-      bags_produced:   wd.weekProdIn  ?? 0,
-      bags_dispatched: wd.weekDispOut ?? 0,
-      adj_in:          wd.weekAdjIn   ?? 0,
-      adj_out:         wd.weekAdjOut  ?? 0,
-      closing_stock:   physical,        // physical count IS the confirmed closing
-      physical_count:  physical,
-      variance:        diff,
-      is_locked:       true,
-      locked_at:       new Date().toISOString(),
-      notes:           `Physical count ${fmtNum(physical)} vs computed ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags). Locked ${new Date().toLocaleDateString()}.`,
+    if (diff !== 0) {
+      await supabase.from('finished_inventory').insert({
+        bags_in:          diff > 0 ? diff : 0,
+        bags_out:         diff < 0 ? Math.abs(diff) : 0,
+        transaction_date: week.to,  // post on the last day of the week
+        reference_type:   'adjustment',
+        notes:            `Weekly Report — ${week.from} to ${week.to}: Physical ${fmtNum(physical)} vs System ${fmtNum(systemClosing)} (${diff >= 0 ? '+' : ''}${fmtNum(diff)} bags)`,
+      })
     }
-    await supabase.from('weekly_stock_snapshots')
-      .upsert(payload, { onConflict: 'week_from' })
 
     setRegistering(null)
+    // Clear the physical count input and reload
     setPhysCount(p => ({...p, [week.from]: ''}))
     load()
   }
 
   const recordDeposit = async (week: any) => {
-    const wd    = weekData[week.from]
-    const op    = parseFloat(opCash[week.from] || '0') || 0
-    // Use actual batch sum — avoids week-boundary drift in weekProdIn
-    const batchSum1 = (wd?.batchDetails ?? []).reduce((a: number, b: any) => a + b.bags_produced, 0)
-    const opFee = (batchSum1 > 0 ? batchSum1 : (wd?.weekProdIn ?? 0)) / 100 * 30
-    const amt   = Math.max(0, (wd?.totalCollected ?? 0) - op - opFee)
-    if (amt <= 0) { alert('No amount to deposit after operational cash and operator fee deductions.'); return }
+    const wd   = weekData[week.from]
+    const op   = parseFloat(opCash[week.from] || '0') || 0
+    const amt  = Math.max(0, (wd?.totalCollected ?? 0) - op)
+    if (amt <= 0) { alert('No amount to deposit after operational cash deduction.'); return }
 
     const ref  = depRef[week.from] || ''
     setDepositing(week.from)
@@ -455,7 +387,7 @@ function WeeklyReportInner() {
       amount:        amt,
       reference:     ref || null,
       deposited_by:  'Admin',
-      notes:         `Weekly Report — ${week.from} | Collected: ${fmtGhc(wd.totalCollected)} − Ops: ${fmtGhc(op)} − Op Fee: ${fmtGhc(opFee)} = ${fmtGhc(amt)}`,
+      notes:         `Weekly Report — ${week.from} | Collected: ${fmtGhc(wd.totalCollected)} − Ops: ${fmtGhc(op)} = ${fmtGhc(amt)}`,
     })
 
     // Record operational cash as expense if > 0
@@ -525,61 +457,16 @@ function WeeklyReportInner() {
 
       {loading ? (
         <div className="text-center py-12 text-gray-400">Building report...</div>
-      ) : weeks.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">No weeks found for this period.</div>
-      ) : (() => {
-        const wi   = selWeekIdx
-        const week = weeks[wi]
-        const wd   = weekData[week.from] ?? {}
-        const op     = parseFloat(opCash[week.from] || '0') || 0
-        // Use actual batch sum — avoids week-boundary drift in weekProdIn
-        const batchSum2 = ((wd.batchDetails ?? []) as any[]).reduce((a: number, b: any) => a + b.bags_produced, 0)
-        const opFee  = (batchSum2 > 0 ? batchSum2 : (wd.weekProdIn ?? 0)) / 100 * 30
-        const exp    = Math.max(0, (wd.totalCollected ?? 0) - op - opFee)
-        const dep    = deposited[week.from]
-        const isDeposited = !!dep
-        const todayStr = today()
-        const isActiveWeek = todayStr >= week.from && todayStr <= week.to
+      ) : (
+        <div className="space-y-6">
+          {weeks.map((week, wi) => {
+            const wd  = weekData[week.from] ?? {}
+            const op  = parseFloat(opCash[week.from] || '0') || 0
+            const exp = Math.max(0, (wd.totalCollected ?? 0) - op)
+            const dep = deposited[week.from]
+            const isDeposited = !!dep
 
-        return (
-          <div className="space-y-4">
-            {/* ── Week navigator ──────────────────────────────────────── */}
-            <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-2.5 shadow-sm">
-              <button
-                onClick={() => setSelWeekIdx(i => Math.max(0, i - 1))}
-                disabled={wi === 0}
-                className={'btn btn-secondary btn-sm ' + (wi === 0 ? 'opacity-30 cursor-not-allowed' : '')}>
-                ← Previous
-              </button>
-
-              <div className="text-center">
-                <div className="font-bold text-[#1F4E79] text-sm">
-                  Week {wi + 1} of {weeks.length}
-                  {isActiveWeek && (
-                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                      Active Week
-                    </span>
-                  )}
-                  {isDeposited && (
-                    <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                      ✅ Deposited
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-gray-400 mt-0.5">
-                  {fmtDate(week.from)} → {fmtDate(week.to)}
-                </div>
-              </div>
-
-              <button
-                onClick={() => setSelWeekIdx(i => Math.min(weeks.length - 1, i + 1))}
-                disabled={wi === weeks.length - 1}
-                className={'btn btn-secondary btn-sm ' + (wi === weeks.length - 1 ? 'opacity-30 cursor-not-allowed' : '')}>
-                Next →
-              </button>
-            </div>
-
-            {/* ── Week card ────────────────────────────────────────────── */}
+            return (
               <div key={week.from} className={'card border-l-4 '
                 + (isDeposited ? 'border-green-500' : 'border-[#1F4E79]')}>
 
@@ -898,85 +785,50 @@ function WeeklyReportInner() {
                           )
                         })()}
                         <div className="border-t border-gray-200 pt-1.5 mt-1">
-                          {/* Show locked badge if this week is confirmed */}
-                          {wd.lockedSnap?.is_locked ? (
-                            <div className="rounded-lg bg-green-50 border border-green-300 p-2 text-xs">
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold text-green-700">🔒 Week Confirmed</span>
-                                <span className="text-green-700 font-bold tabular-nums">
-                                  {fmtNum(wd.lockedSnap.closing_stock)} bags
-                                </span>
-                              </div>
-                              <div className="text-green-600 mt-0.5">
-                                Physical count: {fmtNum(wd.lockedSnap.physical_count)} bags
-                                {wd.lockedSnap.variance !== 0 && (
-                                  <span className="ml-1">
-                                    (variance: {wd.lockedSnap.variance > 0 ? '+' : ''}{fmtNum(wd.lockedSnap.variance)})
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-gray-400 mt-0.5">
-                                Next week opens from {fmtNum(wd.lockedSnap.closing_stock)} bags
-                                · Stock module unchanged
-                              </div>
-                              <button
-                                onClick={async () => {
-                                  if (!confirm('Unlock this week? The closing stock will revert to computed figures.')) return
-                                  await supabase.from('weekly_stock_snapshots')
-                                    .update({ is_locked: false })
-                                    .eq('week_from', week.from)
-                                  load()
-                                }}
-                                className="btn btn-sm btn-secondary mt-1.5 w-full text-xs">
-                                🔓 Unlock to re-enter
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="text-gray-600">Physical Count (enter)</span>
-                                <input
-                                  type="number" placeholder="0"
-                                  value={physCount[week.from] || ''}
-                                  onChange={e => setPhysCount(p => ({...p, [week.from]: e.target.value}))}
-                                  className="form-input w-24 text-right"
-                                  style={{padding:'0.2rem 0.4rem',fontSize:'0.75rem'}}
-                                />
-                              </div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                ⚠️ Locking the physical count does NOT affect the Stock module.
-                              </div>
-                              {physCount[week.from] && (() => {
-                                const phys = parseInt(physCount[week.from]) || 0
-                                const systemRef = wd.systemClosing ?? 0
-                                const diff = phys - systemRef
-                                const reconciled = Math.abs(diff) < 2
-                                return (
-                                  <>
-                                    <div className={'flex justify-between text-xs font-bold mt-1 '
-                                      + (reconciled ? 'text-green-600' : 'text-red-600')}>
-                                      <span>Variance vs Weekly Closing</span>
-                                      <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
-                                        {reconciled ? ' ✅' : ' ⚠️'}</span>
-                                    </div>
-                                    <div className="text-xs text-gray-500 mt-0.5">
-                                      Weekly closing will be locked at <strong>{fmtNum(phys)}</strong> bags.
-                                      Next week opens from <strong>{fmtNum(phys)}</strong> bags.
-                                    </div>
-                                    <button
-                                      onClick={() => registerPhysicalCount(week, systemRef, phys)}
-                                      disabled={registering === week.from}
-                                      className={'btn btn-sm w-full mt-2 '
-                                        + (reconciled ? 'btn-secondary' : diff > 0 ? 'btn-primary' : 'btn-danger')}>
-                                      {registering === week.from
-                                        ? '⏳ Locking...'
-                                        : `🔒 Lock at ${fmtNum(phys)} bags`}
-                                    </button>
-                                  </>
-                                )
-                              })()}
-                            </>
-                          )}
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-gray-600">Physical Count (enter)</span>
+                            <input
+                              type="number" placeholder="0"
+                              value={physCount[week.from] || ''}
+                              onChange={e => setPhysCount(p => ({...p, [week.from]: e.target.value}))}
+                              className="form-input w-24 text-right"
+                              style={{padding:'0.2rem 0.4rem',fontSize:'0.75rem'}}
+                            />
+                          </div>
+                          {physCount[week.from] && (() => {
+                            const phys = parseInt(physCount[week.from]) || 0
+                            // For the active/current week, the system baseline is the live
+                            // stock module total (excludes archived entries), not the rolling
+                            // weekClosingBalance (which includes pre-archive history).
+                            // For past weeks, use weekClosingBalance as the system reference.
+                            const isActiveWeek = week.from <= today() && week.to >= today()
+                            const systemRef = isActiveWeek ? actualStock : (wd.weekClosingBalance ?? 0)
+                            const diff = phys - systemRef
+                            const reconciled = Math.abs(diff) < 2
+                            return (
+                              <>
+                                <div className={'flex justify-between text-xs font-bold mt-1 '
+                                  + (reconciled ? 'text-green-600' : 'text-red-600')}>
+                                  <span>Stock Variance</span>
+                                  <span>{diff >= 0 ? '+' : ''}{fmtNum(diff)} bags
+                                    {reconciled ? ' ✅' : ' ⚠️'}</span>
+                                </div>
+                                <button
+                                  onClick={() => registerPhysicalCount(week, systemRef, phys)}
+                                  disabled={registering === week.from}
+                                  className={'btn btn-sm w-full mt-2 '
+                                    + (reconciled ? 'btn-secondary' : diff > 0 ? 'btn-primary' : 'btn-danger')}>
+                                  {registering === week.from
+                                    ? '⏳ Registering...'
+                                    : reconciled
+                                    ? '✅ Register (no adjustment needed)'
+                                    : diff > 0
+                                    ? `📦 Register Surplus (+${fmtNum(diff)} bags)`
+                                    : `⚠️ Register Shortage (${fmtNum(diff)} bags)`}
+                                </button>
+                              </>
+                            )
+                          })()}
                           {Math.abs(wd.stockVarianceBags ?? 0) > 0 && (
                             <div className={'flex justify-between text-xs mt-1 '
                               + (Math.abs(wd.stockVarianceBags ?? 0) < 5 ? 'text-gray-500' : 'text-orange-600')}>
@@ -1013,15 +865,6 @@ function WeeklyReportInner() {
                             <div className="flex justify-between">
                               <span className="text-gray-600">Wholesale/External ({fmtNum(wd.estExternalBags)} × GHc {PRICE_EXTERNAL})</span>
                               <span className="tabular-nums text-[#1F4E79]">{fmtGhc((wd.estExternalBags ?? 0) * PRICE_EXTERNAL)}</span>
-                            </div>
-                          )}
-                          {(wd.estOvertimeBags ?? 0) > 0 && (
-                            <div className="flex justify-between bg-amber-50 rounded px-1.5 py-0.5">
-                              <span className="text-amber-700 text-sm">
-                                ⏰ Overtime ({fmtNum(wd.estOvertimeBags)} × GHc {PRICE_OT})
-                                <span className="text-xs text-amber-500 ml-1">after-hours dispatches</span>
-                              </span>
-                              <span className="tabular-nums text-amber-700 font-medium">{fmtGhc((wd.estOvertimeBags ?? 0) * PRICE_OT)}</span>
                             </div>
                           )}
                           <div className="flex justify-between font-bold border-t border-blue-200 pt-1">
@@ -1061,162 +904,18 @@ function WeeklyReportInner() {
 
                   {isDeposited ? (
                     <>
-                    {/* Parse breakdown from deposit notes — format:
-                        "Weekly Report — ... | Collected: GHc X − Ops: GHc Y − Op Fee: GHc Z = GHc W"
-                        Older deposits: "Collected: GHc X − Ops: GHc Y = GHc W" (no Op Fee) */}
-                    {(() => {
-                      const notes = dep.notes ?? ''
-                      const parseAmt = (label: string) => {
-                        const m = notes.match(new RegExp(label + '[:\\s]+GH[₵¢C]?\\s*([\\d,]+\\.?\\d*)'))
-                        return m ? parseFloat(m[1].replace(/,/g, '')) : null
-                      }
-                      const parsedCollected = parseAmt('Collected')
-                      const parsedOps      = parseAmt('Ops')
-                      const parsedOpFee    = parseAmt('Op Fee')
-                      // Fall back to weekData if notes don't parse
-                      const collected = parsedCollected ?? wd.totalCollected ?? 0
-                      const ops       = parsedOps      ?? (parseFloat(opCash[week.from] || '0') || 0)
-                      // Always recompute operator fee from actual batches — notes may be stale
-                      // (recorded before batch_number was tracked or before opFee formula was fixed)
-                      const batchesForFee = (wd.batchDetails ?? []) as any[]
-                      const batchProd     = batchesForFee.reduce((a: number, b: any) => a + b.bags_produced, 0)
-                      const opFeeAmt      = batchProd > 0
-                        ? (batchProd / 100) * 30
-                        : (parsedOpFee ?? opFee)
-                      return (
-                        <div className="space-y-1.5 mb-3">
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-600 font-medium">Total Cash Collected</span>
-                            <span className="font-bold text-green-700 tabular-nums">{fmtGhc(collected)}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-500">
-                              − Cash used for operations
-                              <span className="ml-1 text-xs text-blue-400">(Imprest)</span>
-                              {ops > 0 && (
-                                <button
-                                  onClick={() => setShowImprestBreakdown(p => ({...p, [week.from]: !p[week.from]}))}
-                                  className="ml-1 text-xs text-blue-500 hover:text-blue-700 underline">
-                                  {showImprestBreakdown[week.from] ? '▲ hide' : '▼ details'}
-                                </button>
-                              )}
-                            </span>
-                            <span className="text-red-600 tabular-nums">{fmtGhc(ops)}</span>
-                          </div>
-                          {showImprestBreakdown[week.from] && (() => {
-                            const entries = imprestEntries[week.from] ?? []
-                            return (
-                              <div className="ml-3 bg-blue-50 rounded-lg p-2 space-y-1 border border-blue-100">
-                                <div className="text-xs font-semibold text-blue-600 mb-1">
-                                  Imprest Entries ({entries.length})
-                                </div>
-                                {entries.length === 0 ? (
-                                  <div className="text-xs text-gray-400 italic">No imprest entries found</div>
-                                ) : entries.map((e: any, i: number) => (
-                                  <div key={i} className="flex justify-between text-xs">
-                                    <span className="text-gray-600">
-                                      {fmtDate(e.entry_date)} — {e.description || 'Operational expense'}
-                                    </span>
-                                    <span className="text-red-500 tabular-nums ml-2 shrink-0">{fmtGhc(e.amount)}</span>
-                                  </div>
-                                ))}
-                                <div className="flex justify-between text-xs font-bold border-t border-blue-200 pt-1 mt-1">
-                                  <span className="text-blue-700">Total</span>
-                                  <span className="text-blue-700 tabular-nums">{fmtGhc(ops)}</span>
-                                </div>
-                              </div>
-                            )
-                          })()}
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-500">
-                              − Operator Fee
-                              {opFeeAmt === 0 && parsedOpFee === null && (
-                                <span className="ml-1 text-xs text-gray-400">(pre-update deposit)</span>
-                              )}
-                              {opFeeAmt > 0 && (
-                                <button
-                                  onClick={() => setShowOpFeeBreakdown(p => ({...p, [week.from]: !p[week.from]}))}
-                                  className="ml-1 text-xs text-blue-500 hover:text-blue-700 underline">
-                                  {showOpFeeBreakdown[week.from] ? '▲ hide' : '▼ details'}
-                                </button>
-                              )}
-                            </span>
-                            <span className="text-red-600 tabular-nums">{fmtGhc(opFeeAmt)}</span>
-                          </div>
-                          {showOpFeeBreakdown[week.from] && (() => {
-                            const batches    = (wd.batchDetails ?? []) as any[]
-                            // Sum directly from batches — source of truth, avoids weekProdIn drift
-                            const actualProd = batches.reduce((a: number, b: any) => a + b.bags_produced, 0)
-                            const actualFee  = (actualProd / 100) * 30
-                            return (
-                              <div className="ml-3 bg-orange-50 rounded-lg p-2 space-y-1 border border-orange-100">
-                                <div className="text-xs font-semibold text-orange-600 mb-1">
-                                  Operator Fee Calculation
-                                </div>
-                                <div className="text-xs text-gray-600">
-                                  Formula: {fmtNum(actualProd)} bags ÷ 100 × GHc 30
-                                </div>
-                                {batches.length > 0 && (
-                                  <div className="mt-1 space-y-0.5">
-                                    <div className="text-xs font-medium text-orange-700">Batches this week:</div>
-                                    {batches.map((b: any, i: number) => (
-                                      <div key={i} className="flex justify-between text-xs">
-                                        <span className="text-gray-600">
-                                          {fmtDate(b.batch_date)} — {b.batch_number ?? ''} ({fmtNum(b.bags_produced)} bags)
-                                        </span>
-                                        <span className="text-orange-600 tabular-nums ml-2 shrink-0">
-                                          {fmtGhc((b.bags_produced / 100) * 30)}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                <div className="flex justify-between text-xs font-bold border-t border-orange-200 pt-1 mt-1">
-                                  <span className="text-orange-700">Total Operator Fee</span>
-                                  <span className="text-orange-700 tabular-nums">{fmtGhc(actualFee)}</span>
-                                </div>
-                              </div>
-                            )
-                          })()}
-                          <div className="border-t border-green-200 pt-1.5">
-                            {/* If recalculated amount differs from stored, flag it */}
-                            {(() => {
-                              const correctAmt = Math.max(0, collected - ops - opFeeAmt)
-                              const storedAmt  = dep.amount
-                              const diff       = Math.abs(correctAmt - storedAmt)
-                              const hasGap     = diff >= 0.01
-                              return hasGap ? (
-                                <>
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="font-bold text-[#1F4E79]">Deposited to Bank</span>
-                                    <span className="font-bold text-[#1F4E79] tabular-nums text-base">{fmtGhc(storedAmt)}</span>
-                                  </div>
-                                  <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 text-xs">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-amber-700 font-semibold">⚠️ Recalculated correct amount</span>
-                                      <span className="text-amber-700 font-bold tabular-nums">{fmtGhc(correctAmt)}</span>
-                                    </div>
-                                    <div className="text-amber-600 mt-0.5">
-                                      Deposit was recorded with an outdated operator fee (GHc {fmtGhc(storedAmt)} stored vs GHc {fmtGhc(correctAmt)} correct).
-                                      Use <strong>Reverse / Correct</strong> below to re-deposit at the correct amount.
-                                    </div>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="flex justify-between items-center">
-                                  <span className="font-bold text-[#1F4E79]">Deposited to Bank</span>
-                                  <span className="font-bold text-[#1F4E79] tabular-nums text-base">{fmtGhc(storedAmt)}</span>
-                                </div>
-                              )
-                            })()}
-                          </div>
-                          <div className="flex justify-between items-center text-xs text-gray-400">
-                            <span>Bank: {dep.bank_name || 'Revenue Collection Account'}</span>
-                            <span>{fmtDate(dep.deposit_date)}</span>
-                          </div>
+                    <div className="grid grid-cols-3 gap-3 text-center mb-3">
+                      {[
+                        ['Collected',   fmtGhc(wd.totalCollected),  '#1B5E20'],
+                        ['Deposited',   fmtGhc(dep.amount),          '#1F4E79'],
+                        ['Date',        fmtDate(dep.deposit_date),    '#374151'],
+                      ].map(([l,v,c]) => (
+                        <div key={l as string} className="bg-white rounded-lg p-2.5 text-center">
+                          <div className="text-xs text-gray-500">{l}</div>
+                          <div className="font-bold text-sm tabular-nums" style={{color:c as string}}>{v}</div>
                         </div>
-                      )
-                    })()}
+                      ))}
+                    </div>
                     <button
                       onClick={() => reverseDeposit(week)}
                       className="btn btn-danger btn-sm w-full">
@@ -1239,13 +938,6 @@ function WeeklyReportInner() {
                           <span className="text-gray-600">
                             Cash used for operations
                             <span className="ml-1 text-xs text-blue-500">(from Imprest)</span>
-                            {(imprestTotals[week.from] ?? 0) > 0 && (
-                              <button
-                                onClick={() => setShowImprestBreakdown(p => ({...p, [week.from]: !p[week.from]}))}
-                                className="ml-1 text-xs text-blue-500 hover:text-blue-700 underline">
-                                {showImprestBreakdown[week.from] ? '▲ hide' : '▼ details'}
-                              </button>
-                            )}
                           </span>
                           <div className="flex items-center gap-2">
                             <span className="text-red-500">−</span>
@@ -1253,94 +945,6 @@ function WeeklyReportInner() {
                               {fmtGhc(imprestTotals[week.from] ?? 0)}
                             </span>
                           </div>
-                        </div>
-                        {showImprestBreakdown[week.from] && (() => {
-                          const entries = imprestEntries[week.from] ?? []
-                          return (
-                            <div className="ml-3 bg-blue-50 rounded-lg p-2 space-y-1 border border-blue-100">
-                              <div className="text-xs font-semibold text-blue-600 mb-1">
-                                Imprest Entries ({entries.length})
-                              </div>
-                              {entries.length === 0 ? (
-                                <div className="text-xs text-gray-400 italic">No imprest entries found</div>
-                              ) : entries.map((e: any, i: number) => (
-                                <div key={i} className="flex justify-between text-xs">
-                                  <span className="text-gray-600">
-                                    {fmtDate(e.entry_date)} — {e.description || 'Operational expense'}
-                                  </span>
-                                  <span className="text-red-500 tabular-nums ml-2 shrink-0">{fmtGhc(e.amount)}</span>
-                                </div>
-                              ))}
-                              <div className="flex justify-between text-xs font-bold border-t border-blue-200 pt-1 mt-1">
-                                <span className="text-blue-700">Total</span>
-                                <span className="text-blue-700 tabular-nums">{fmtGhc(imprestTotals[week.from] ?? 0)}</span>
-                              </div>
-                            </div>
-                          )
-                        })()}
-                        {/* Operator fee — deducted from deposit */}
-                        {opFee > 0 && (
-                          <>
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-gray-600">
-                                Operator Fee
-                                <span className="ml-1 text-xs text-gray-400">
-                                  ({fmtNum(wd.weekProdIn)} bags ÷ 100 × GHc 30)
-                                </span>
-                                <button
-                                  onClick={() => setShowOpFeeBreakdown(p => ({...p, [week.from]: !p[week.from]}))}
-                                  className="ml-1 text-xs text-blue-500 hover:text-blue-700 underline">
-                                  {showOpFeeBreakdown[week.from] ? '▲ hide' : '▼ details'}
-                                </button>
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-red-500">−</span>
-                                <span className="font-semibold text-red-600 tabular-nums w-32 text-right">
-                                  {fmtGhc(opFee)}
-                                </span>
-                              </div>
-                            </div>
-                            {showOpFeeBreakdown[week.from] && (() => {
-                              const batches    = (wd.batchDetails ?? []) as any[]
-                              const actualProd = batches.reduce((a: number, b: any) => a + b.bags_produced, 0)
-                              const actualFee  = (actualProd / 100) * 30
-                              return (
-                                <div className="ml-3 bg-orange-50 rounded-lg p-2 space-y-1 border border-orange-100">
-                                  <div className="text-xs font-semibold text-orange-600 mb-1">
-                                    Operator Fee Calculation
-                                  </div>
-                                  <div className="text-xs text-gray-600">
-                                    Formula: {fmtNum(actualProd)} bags ÷ 100 × GHc 30
-                                  </div>
-                                  {batches.length > 0 && (
-                                    <div className="mt-1 space-y-0.5">
-                                      <div className="text-xs font-medium text-orange-700">Batches this week:</div>
-                                      {batches.map((b: any, i: number) => (
-                                        <div key={i} className="flex justify-between text-xs">
-                                          <span className="text-gray-600">
-                                            {fmtDate(b.batch_date)} — {b.batch_number ?? ''} ({fmtNum(b.bags_produced)} bags)
-                                          </span>
-                                          <span className="text-orange-600 tabular-nums ml-2 shrink-0">
-                                            {fmtGhc((b.bags_produced / 100) * 30)}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <div className="flex justify-between text-xs font-bold border-t border-orange-200 pt-1 mt-1">
-                                    <span className="text-orange-700">Total Operator Fee</span>
-                                    <span className="text-orange-700 tabular-nums">{fmtGhc(actualFee)}</span>
-                                  </div>
-                                </div>
-                              )
-                            })()}
-                          </>
-                        )}
-                        <div className="border-t border-gray-100 pt-2 flex justify-between text-sm text-gray-500">
-                          <span>Total Deductions</span>
-                          <span className="tabular-nums text-red-600 font-medium">
-                            − {fmtGhc((imprestTotals[week.from] ?? 0) + opFee)}
-                          </span>
                         </div>
                         <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-bold">
                           <span className="text-[#1F4E79]">Expected Deposit</span>
@@ -1375,9 +979,10 @@ function WeeklyReportInner() {
                   )}
                 </div>
               </div>
-            </div>
-          )
-        })()}
+            )
+          })}
+        </div>
+      )}
     </AppLayout>
   )
 }
