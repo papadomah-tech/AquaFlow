@@ -1290,7 +1290,7 @@ function WeeklyReportInner() {
                                 ))}
                                 <div className="flex justify-between text-xs font-bold border-t border-blue-200 pt-1 mt-1">
                                   <span className="text-blue-700">Total</span>
-                                  <span className="text-blue-700 tabular-nums">{fmtGhc(ops)}</span>
+                                  <span className="text-blue-700 tabular-nums">{fmtGhc(entries.reduce((a: number, e: any) => a + e.amount, 0))}</span>
                                 </div>
                               </div>
                             )
