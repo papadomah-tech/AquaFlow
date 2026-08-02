@@ -90,6 +90,7 @@ function WeeklyReportInner() {
   const [registering, setRegistering]   = useState<string|null>(null)
   const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
   const [snapshots, setSnapshots]       = useState<Record<string, any>>({})  // locked weekly snapshots
+  const [activeTab, setActiveTab]       = useState<'weekly' | 'revenue'>('weekly')
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -539,7 +540,159 @@ function WeeklyReportInner() {
         )
       })()}
 
-      {loading ? (
+      {/* ── Tab toggle ────────────────────────────────────────────────── */}
+      {!loading && weeks.length > 0 && (
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-4 w-fit">
+          {([['weekly', '📋 Weekly Detail'], ['revenue', '📊 Revenue Summary']] as const).map(([tab, label]) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab
+                  ? 'bg-white text-[#1F4E79] shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Revenue Summary Tab ───────────────────────────────────────── */}
+      {!loading && activeTab === 'revenue' && weeks.length > 0 && (() => {
+        const totBags      = weeks.reduce((a,w) => a + (weekData[w.from]?.weekDispOut ?? 0), 0)
+        const totProd      = weeks.reduce((a,w) => a + (weekData[w.from]?.weekProdIn ?? 0), 0)
+        const totEst       = weeks.reduce((a,w) => a + (weekData[w.from]?.estRevenue ?? 0), 0)
+        const totInv       = weeks.reduce((a,w) => a + (weekData[w.from]?.totalInvoiced ?? 0), 0)
+        const totColl      = weeks.reduce((a,w) => a + (weekData[w.from]?.totalCollected ?? 0), 0)
+        const totOut       = weeks.reduce((a,w) => a + (weekData[w.from]?.totalOutstanding ?? 0), 0)
+        const totDep       = weeks.reduce((a,w) => a + (weekData[w.from]?.deposit?.amount ?? 0), 0)
+        const totGap       = weeks.reduce((a,w) => a + (weekData[w.from]?.collectionVariance ?? 0), 0)
+        return (
+          <div className="space-y-4">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Bags Dispatched', value: fmtNum(totBags),  color: '#1F4E79' },
+                { label: 'Est. Revenue',    value: fmtGhc(totEst),   color: '#5C6BC0' },
+                { label: 'Actual Collected',value: fmtGhc(totColl),  color: '#1B5E20' },
+                { label: 'Outstanding',     value: fmtGhc(totOut),   color: totOut > 0 ? '#BF4D00' : '#1B5E20' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="card text-center py-4">
+                  <div className="text-xs text-gray-400 mb-1">{label}</div>
+                  <div className="text-lg font-bold tabular-nums" style={{ color }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Week-by-week table */}
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1F4E79] text-white">
+                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Week</th>
+                    <th className="text-left px-3 py-3 text-blue-200 text-xs font-normal">Period</th>
+                    <th className="text-right px-3 py-3 font-semibold">Produced</th>
+                    <th className="text-right px-3 py-3 font-semibold">Dispatched</th>
+                    <th className="text-right px-3 py-3 font-semibold">Est. Revenue</th>
+                    <th className="text-right px-3 py-3 font-semibold">Invoiced</th>
+                    <th className="text-right px-3 py-3 font-semibold">Collected</th>
+                    <th className="text-right px-3 py-3 font-semibold">Outstanding</th>
+                    <th className="text-right px-3 py-3 font-semibold">Est. Gap</th>
+                    <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Deposited</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeks.map((w, wi) => {
+                    const wd  = weekData[w.from] ?? {}
+                    const dep = weekData[w.from]?.deposit
+                    const gap = wd.collectionVariance ?? 0
+                    const todayStr = today()
+                    const isActive = todayStr >= w.from && todayStr <= w.to
+                    return (
+                      <tr key={w.from}
+                        className={`border-b border-gray-100 transition-colors hover:bg-blue-50/40 cursor-pointer ${
+                          isActive ? 'bg-blue-50' : wi % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                        }`}
+                        onClick={() => { setSelWeekIdx(wi); setActiveTab('weekly') }}>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-[#1F4E79]">
+                            Week {wi + 1}
+                            {isActive && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Active</span>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">
+                          {fmtDate(w.from)} → {fmtDate(w.to)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-gray-700">
+                          {fmtNum(wd.weekProdIn ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums font-medium text-[#1F4E79]">
+                          {fmtNum(wd.weekDispOut ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-purple-700">
+                          {fmtGhc(wd.estRevenue ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#BF4D00' }}>
+                          {fmtGhc(wd.totalInvoiced ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums font-semibold" style={{ color: '#1B5E20' }}>
+                          {fmtGhc(wd.totalCollected ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums" style={{ color: (wd.totalOutstanding ?? 0) > 0 ? '#BF4D00' : '#1B5E20' }}>
+                          {fmtGhc(wd.totalOutstanding ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-xs">
+                          <span className={`px-2 py-0.5 rounded-full font-medium ${
+                            Math.abs(gap) < 0.01 ? 'bg-green-100 text-green-700'
+                            : gap > 0 ? 'bg-orange-100 text-orange-700'
+                            : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {gap > 0.01 ? '+' : ''}{fmtGhc(gap)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {dep
+                            ? <span className="text-green-700 font-semibold">{fmtGhc(dep.amount)}</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
+                    <td className="px-4 py-3 text-[#1F4E79]" colSpan={2}>Month Total</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-gray-700">{fmtNum(totProd)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-[#1F4E79]">{fmtNum(totBags)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(totEst)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#BF4D00' }}>{fmtGhc(totInv)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1B5E20' }}>{fmtGhc(totColl)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: totOut > 0 ? '#BF4D00' : '#1B5E20' }}>{fmtGhc(totOut)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-xs">
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${
+                        Math.abs(totGap) < 0.01 ? 'bg-green-100 text-green-700'
+                        : totGap > 0 ? 'bg-orange-100 text-orange-700'
+                        : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {totGap > 0.01 ? '+' : ''}{fmtGhc(totGap)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-green-700">{fmtGhc(totDep)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
+                💡 Click any row to jump to that week's detail view.
+                &nbsp;Est. Gap = Estimated Revenue − Actual Collected (positive = under-collection).
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Weekly Detail Tab ─────────────────────────────────────────── */}
+      {activeTab === 'weekly' && (loading ? (
         <div className="text-center py-12 text-gray-400">Building report...</div>
       ) : weeks.length === 0 ? (
         <div className="text-center py-12 text-gray-400">No weeks found for this period.</div>
@@ -1393,7 +1546,7 @@ function WeeklyReportInner() {
               </div>
             </div>
           )
-        })()}
+        })())}
     </AppLayout>
   )
 }
