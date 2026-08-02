@@ -597,6 +597,8 @@ function WeeklyReportInner() {
                     <th className="text-right px-3 py-3 font-semibold">Invoiced</th>
                     <th className="text-right px-3 py-3 font-semibold">Collected</th>
                     <th className="text-right px-3 py-3 font-semibold">Outstanding</th>
+                    <th className="text-right px-3 py-3 font-semibold">Imprest</th>
+                    <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
                     <th className="text-right px-3 py-3 font-semibold">Est. Gap</th>
                     <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Deposited</th>
                   </tr>
@@ -641,6 +643,16 @@ function WeeklyReportInner() {
                         <td className="px-3 py-3 text-right tabular-nums" style={{ color: (wd.totalOutstanding ?? 0) > 0 ? '#BF4D00' : '#1B5E20' }}>
                           {fmtGhc(wd.totalOutstanding ?? 0)}
                         </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-600">
+                          {(imprestTotals[w.from] ?? 0) > 0 ? fmtGhc(imprestTotals[w.from]) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-600">
+                          {(() => {
+                            const bSum = ((wd.batchDetails ?? []) as any[]).reduce((a: number, b: any) => a + b.bags_produced, 0)
+                            const fee  = (bSum > 0 ? bSum : (wd.weekProdIn ?? 0)) / 100 * 30
+                            return fee > 0 ? fmtGhc(fee) : <span className="text-gray-300">—</span>
+                          })()}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums text-xs">
                           <span className={`px-2 py-0.5 rounded-full font-medium ${
                             Math.abs(gap) < 0.01 ? 'bg-green-100 text-green-700'
@@ -668,6 +680,12 @@ function WeeklyReportInner() {
                     <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#BF4D00' }}>{fmtGhc(totInv)}</td>
                     <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1B5E20' }}>{fmtGhc(totColl)}</td>
                     <td className="px-3 py-3 text-right tabular-nums" style={{ color: totOut > 0 ? '#BF4D00' : '#1B5E20' }}>{fmtGhc(totOut)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-600">{fmtGhc(weeks.reduce((a,w) => a + (imprestTotals[w.from] ?? 0), 0))}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-600">{fmtGhc(weeks.reduce((a,w) => {
+                      const wd2 = weekData[w.from] ?? {}
+                      const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s: number, b: any) => s + b.bags_produced, 0)
+                      return a + (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
+                    }, 0))}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-xs">
                       <span className={`px-2 py-0.5 rounded-full font-medium ${
                         Math.abs(totGap) < 0.01 ? 'bg-green-100 text-green-700'
@@ -1346,6 +1364,12 @@ function WeeklyReportInner() {
                               </div>
                             )
                           })()}
+                          <div className="border-t border-green-100 pt-1.5 flex justify-between text-sm text-gray-500">
+                            <span>Total Deductions</span>
+                            <span className="tabular-nums text-red-600 font-medium">
+                              − {fmtGhc(ops + opFeeAmt)}
+                            </span>
+                          </div>
                           <div className="border-t border-green-200 pt-1.5">
                             {/* If recalculated amount differs from stored, flag it */}
                             {(() => {
