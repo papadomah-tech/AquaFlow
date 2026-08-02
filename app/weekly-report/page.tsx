@@ -599,6 +599,7 @@ function WeeklyReportInner() {
                     <th className="text-right px-3 py-3 font-semibold">Outstanding</th>
                     <th className="text-right px-3 py-3 font-semibold">Imprest</th>
                     <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
+                    <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
                     <th className="text-right px-3 py-3 font-semibold">Est. Gap</th>
                     <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Deposited</th>
                   </tr>
@@ -653,6 +654,15 @@ function WeeklyReportInner() {
                             return fee > 0 ? fmtGhc(fee) : <span className="text-gray-300">—</span>
                           })()}
                         </td>
+                        <td className="px-3 py-3 text-right tabular-nums font-semibold text-red-700">
+                          {(() => {
+                            const imp  = imprestTotals[w.from] ?? 0
+                            const bSum = ((wd.batchDetails ?? []) as any[]).reduce((a: number, b: any) => a + b.bags_produced, 0)
+                            const fee  = (bSum > 0 ? bSum : (wd.weekProdIn ?? 0)) / 100 * 30
+                            const tot  = imp + fee
+                            return tot > 0 ? `− ${fmtGhc(tot)}` : <span className="text-gray-300">—</span>
+                          })()}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums text-xs">
                           <span className={`px-2 py-0.5 rounded-full font-medium ${
                             Math.abs(gap) < 0.01 ? 'bg-green-100 text-green-700'
@@ -686,6 +696,15 @@ function WeeklyReportInner() {
                       const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s: number, b: any) => s + b.bags_produced, 0)
                       return a + (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
                     }, 0))}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold text-red-700">
+                      {`− ${fmtGhc(weeks.reduce((a,w) => {
+                        const wd2 = weekData[w.from] ?? {}
+                        const imp  = imprestTotals[w.from] ?? 0
+                        const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s: number, b: any) => s + b.bags_produced, 0)
+                        const fee  = (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
+                        return a + imp + fee
+                      }, 0))}`}
+                    </td>
                     <td className="px-3 py-3 text-right tabular-nums text-xs">
                       <span className={`px-2 py-0.5 rounded-full font-medium ${
                         Math.abs(totGap) < 0.01 ? 'bg-green-100 text-green-700'
