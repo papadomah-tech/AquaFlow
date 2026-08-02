@@ -124,7 +124,6 @@ function WeeklyReportInner() {
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
         .select('*')
-        .gte('deposit_date', monthFrom).lte('deposit_date', monthTo)
         .ilike('notes', '%Weekly Report%'),
       // All inventory up to end of month for running stock calc
       supabase.from('finished_inventory')
