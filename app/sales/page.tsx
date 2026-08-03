@@ -58,13 +58,13 @@ function SalesPageInner() {
     bags_sold: '', unit_price: '6', amount_paid: '',
     protocol_bags: '0', notes: ''
   })
-  const blankBulk = () => ({
-    sale_date: today(), buyer_employee_id: '',
+  const blankBulk = () => ({\n    sale_date: today(), buyer_employee_id: '',
     teammate_employee_id: '',
     buyer_type: 'rider',          // 'rider' | 'external'
     external_customer_id: '',     // for external bulk customers
     bags_sold: '', unit_price: '', amount_paid: '', notes: '',
     is_overtime: false,
+    protocol_bags: '0',           // bags given for free (written off from this dispatch)
   })
   // retailForm removed — retail sales disabled
   const [bulkForm, setBulkForm]     = useState(blankBulk())
@@ -237,6 +237,7 @@ function SalesPageInner() {
       amount_paid: paid, outstanding_balance: bal,
       payment_status: status, notes: bulkForm.notes,
       is_overtime: bulkForm.is_overtime ?? false,
+      protocol_bags: parseInt(bulkForm.protocol_bags) || 0,
     }
 
     let saleId: number | undefined
@@ -267,6 +268,17 @@ function SalesPageInner() {
     })
     if (fiErr) {
       alert(`Sale saved but stock ledger failed to update: ${fiErr.message}\nPlease notify admin to fix manually.`)
+    }
+
+    // Protocol bags write-off — deducted from stock separately, zero revenue
+    const protocolBags = parseInt(bulkForm.protocol_bags) || 0
+    if (protocolBags > 0) {
+      await supabase.from('finished_inventory').insert({
+        bags_in: 0, bags_out: protocolBags,
+        transaction_date: bulkForm.sale_date, reference_type: 'protocol',
+        sale_id: saleId,
+        notes: `Protocol bags — ${protocolBags} bag${protocolBags !== 1 ? 's' : ''} given free with dispatch to ${dispatchName}`,
+      })
     }
     setShowForm(false); load()
   }
@@ -544,6 +556,11 @@ function SalesPageInner() {
                     <td className="num">
                       {fmtNum(s.bags_sold)}
                       {s.is_overtime && <span className="badge badge-yellow ml-1" style={{fontSize:'9px'}}>OT</span>}
+                      {(s.protocol_bags ?? 0) > 0 && (
+                        <span className="ml-1 text-xs text-orange-500" title={`${s.protocol_bags} protocol bags`}>
+                          +{s.protocol_bags}🎁
+                        </span>
+                      )}
                     </td>
                     <td className="num">{fmtGhc(s.total_amount)}</td>
                     <td className="num-green">{fmtGhc(s.amount_paid)}</td>
@@ -553,7 +570,7 @@ function SalesPageInner() {
                       <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
-                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false })
+                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false, protocol_bags: String(s.protocol_bags ?? 0) })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
                         <button onClick={() => {
@@ -726,8 +743,27 @@ function SalesPageInner() {
                     className="form-input" placeholder="Bulk/wholesale price" />
                 </div>
               </div>
-              {bulkTotal > 0 && (
-                <div className="bg-orange-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm">
+              {/* Protocol Bags — free bags written off from this dispatch */}
+              <div className="form-group">
+                <label className="form-label">
+                  🎁 Protocol Bags
+                  <span className="ml-1 text-gray-400 font-normal">(free bags — zero revenue)</span>
+                </label>
+                <input
+                  type="number" min="0"
+                  value={bulkForm.protocol_bags}
+                  onChange={e => setBulkForm(f => ({...f, protocol_bags: e.target.value}))}
+                  className="form-input"
+                  placeholder="0"
+                />
+                {(parseInt(bulkForm.protocol_bags) || 0) > 0 && (
+                  <div className="text-xs text-orange-600 mt-1 font-medium">
+                    ⚠️ {bulkForm.protocol_bags} bag{parseInt(bulkForm.protocol_bags) !== 1 ? 's' : ''} will be written off from stock at zero value
+                  </div>
+                )}
+              </div>
+
+              {bulkTotal > 0 && (                <div className="bg-orange-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm">
                   <div><div className="text-xs text-gray-500">Total</div><div className="font-bold text-orange-700">{fmtGhc(bulkTotal)}</div></div>
                   <div><div className="text-xs text-gray-500">Balance</div><div className="font-bold text-red-600">{fmtGhc(bulkBal)}</div></div>
                   <div><div className="text-xs text-gray-500">Status</div><div className="font-bold">{parseFloat(bulkForm.amount_paid||'0')>=bulkTotal?'Paid':parseFloat(bulkForm.amount_paid||'0')>0?'Partial':'Unpaid'}</div></div>

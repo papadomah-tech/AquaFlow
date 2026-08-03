@@ -283,6 +283,9 @@ function WeeklyReportInner() {
 
       const weekAllBagsIn = weekProdIn + weekAdjIn
 
+      // Protocol bags — free write-offs linked to dispatches this week
+      const weekProtocolOut = wBulk.reduce((a: number, s: any) => a + (s.protocol_bags || 0), 0)
+
       // Dispatches = from bulk sales records (authoritative)
       const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
@@ -330,7 +333,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekProtocolOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
         lockedSnap, lockedClosing,
         batchDetails: wBatches,
         estRevenue, stockVarianceBags, collectionVariance,
@@ -600,6 +603,7 @@ function WeeklyReportInner() {
                     <th className="text-right px-3 py-3 font-semibold">Imprest</th>
                     <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
                     <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
+                    <th className="text-right px-3 py-3 font-semibold">Protocol Bags</th>
                     <th className="text-right px-3 py-3 font-semibold">Est. Gap</th>
                     <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Deposited</th>
                   </tr>
@@ -663,6 +667,11 @@ function WeeklyReportInner() {
                             return tot > 0 ? `− ${fmtGhc(tot)}` : <span className="text-gray-300">—</span>
                           })()}
                         </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {(wd.weekProtocolOut ?? 0) > 0
+                            ? <span className="text-orange-600 font-medium">{fmtNum(wd.weekProtocolOut)} 🎁</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums text-xs">
                           <span className={`px-2 py-0.5 rounded-full font-medium ${
                             Math.abs(gap) < 0.01 ? 'bg-green-100 text-green-700'
@@ -704,6 +713,12 @@ function WeeklyReportInner() {
                         const fee  = (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
                         return a + imp + fee
                       }, 0))}`}
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-orange-600 font-bold">
+                      {(() => {
+                        const tot = weeks.reduce((a,w) => a + ((weekData[w.from]?.weekProtocolOut) ?? 0), 0)
+                        return tot > 0 ? `${fmtNum(tot)} 🎁` : <span className="text-gray-300">—</span>
+                      })()}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-xs">
                       <span className={`px-2 py-0.5 rounded-full font-medium ${
@@ -1024,6 +1039,18 @@ function WeeklyReportInner() {
                           )}
                         </div>
 
+                        {/* Protocol Bags — free write-offs, zero revenue, flagged separately */}
+                        {(wd.weekProtocolOut ?? 0) > 0 && (
+                          <div className="flex justify-between text-xs items-center bg-orange-50 rounded-lg px-2 py-1.5 border border-orange-200">
+                            <span className="text-orange-700 font-medium">
+                              🎁 Protocol Bags (free — zero revenue)
+                            </span>
+                            <span className="tabular-nums font-semibold text-orange-600">
+                              {fmtNum(wd.weekProtocolOut)} bags
+                            </span>
+                          </div>
+                        )}
+
                         {/* Week's Closing Stock Balance */}
                         <div style={{background:'#1F4E79',borderRadius:'0.5rem',padding:'0.5rem 0.75rem',marginTop:'0.5rem'}}>
                           <div style={{fontSize:'0.7rem',color:'#93c5fd',marginBottom:'0.15rem'}}>
@@ -1233,6 +1260,12 @@ function WeeklyReportInner() {
                             <span className="text-blue-800">Total Estimated</span>
                             <span className="tabular-nums text-[#1F4E79]">{fmtGhc(wd.estRevenue ?? 0)}</span>
                           </div>
+                          {(wd.weekProtocolOut ?? 0) > 0 && (
+                            <div className="flex justify-between text-xs mt-0.5 bg-orange-50 rounded px-1.5 py-1 border border-orange-200">
+                              <span className="text-orange-700 font-medium">🎁 Protocol Bags (free — GH₵ 0.00)</span>
+                              <span className="tabular-nums text-orange-600 font-semibold">{fmtNum(wd.weekProtocolOut)} bags</span>
+                            </div>
+                          )}
                         </div>
                         {([
                           ['Actual Invoiced',    fmtGhc(wd.totalInvoiced ?? 0),   'text-gray-600'],
