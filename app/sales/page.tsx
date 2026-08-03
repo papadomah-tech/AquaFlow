@@ -559,12 +559,12 @@ function SalesPageInner() {
                     <td className="font-medium">{s.buyer?.full_name ?? s.customers?.name ?? '—'}</td>
                     <td className="muted">{s.employees?.full_name ?? 'Factory'}</td>
                     <td className="num">
-                      {fmtNum(s.bags_sold)}
-                      {s.is_overtime && <span className="badge badge-yellow ml-1" style={{fontSize:'9px'}}>OT</span>}
+                      <div>{fmtNum(s.bags_sold)}</div>
+                      {s.is_overtime && <span className="badge badge-yellow" style={{fontSize:'9px'}}>OT</span>}
                       {(s.protocol_bags ?? 0) > 0 && (
-                        <span className="ml-1 text-xs text-orange-500" title={`${s.protocol_bags} protocol bags`}>
-                          +{s.protocol_bags}🎁
-                        </span>
+                        <div className="text-xs text-orange-500 font-medium mt-0.5">
+                          +{s.protocol_bags} 🎁 protocol
+                        </div>
                       )}
                     </td>
                     <td className="num">{fmtGhc(s.total_amount)}</td>
