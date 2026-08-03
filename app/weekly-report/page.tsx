@@ -520,21 +520,32 @@ function WeeklyReportInner() {
         const totalInv  = weeks.reduce((a,w) => a + (weekData[w.from]?.totalInvoiced||0), 0)
         const totalColl = weeks.reduce((a,w) => a + (weekData[w.from]?.totalCollected||0), 0)
         const totalDep  = weeks.reduce((a,w) => a + (weekData[w.from]?.deposit?.amount||0), 0)
+        const totalImprest = weeks.reduce((a,w) => a + (imprestTotals[w.from] ?? 0), 0)
+        const totalOpFee   = weeks.reduce((a,w) => {
+          const wd2 = weekData[w.from] ?? {}
+          const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s:number,b:any) => s + b.bags_produced, 0)
+          return a + (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
+        }, 0)
+        const totalDeductions = totalImprest + totalOpFee
+        const netAvailable    = Math.max(0, totalColl - totalDeductions)
         return (
           <div className="rounded-2xl p-5 mb-5 bg-[#1F4E79] text-white shadow-lg">
             <div className="text-blue-200 text-sm font-medium mb-1">
               {MONTHS[selMonth-1]} {selYear} — Monthly Summary
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
               {[
-                ['Bags Dispatched',  fmtNum(totalProd)],
-                ['Total Invoiced',   fmtGhc(totalInv)],
-                ['Total Collected',  fmtGhc(totalColl)],
-                ['Total Deposited',  fmtGhc(totalDep)],
-              ].map(([l,v]) => (
-                <div key={l} className="bg-white/10 rounded-xl p-3 text-center">
-                  <div className="text-blue-200 text-xs">{l}</div>
-                  <div className="text-white font-bold tabular-nums mt-0.5">{v}</div>
+                { label: 'Bags Dispatched', value: fmtNum(totalProd),        sub: null },
+                { label: 'Total Invoiced',  value: fmtGhc(totalInv),         sub: null },
+                { label: 'Total Collected', value: fmtGhc(totalColl),        sub: null },
+                { label: 'Total Deductions',value: `− ${fmtGhc(totalDeductions)}`, sub: `Imprest ${fmtGhc(totalImprest)} · Op Fee ${fmtGhc(totalOpFee)}` },
+                { label: 'Net Available Cash', value: fmtGhc(netAvailable),  sub: 'Collected minus deductions' },
+                { label: 'Total Deposited', value: fmtGhc(totalDep),         sub: totalDep < netAvailable ? `${fmtGhc(netAvailable - totalDep)} undeposited` : '✓ Fully deposited' },
+              ].map(({ label, value, sub }) => (
+                <div key={label} className="bg-white/10 rounded-xl p-3 text-center">
+                  <div className="text-blue-200 text-xs">{label}</div>
+                  <div className="text-white font-bold tabular-nums mt-0.5">{value}</div>
+                  {sub && <div className="text-blue-300 text-xs mt-0.5 opacity-80">{sub}</div>}
                 </div>
               ))}
             </div>
