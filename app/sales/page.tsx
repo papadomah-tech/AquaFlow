@@ -58,7 +58,8 @@ function SalesPageInner() {
     bags_sold: '', unit_price: '6', amount_paid: '',
     protocol_bags: '0', notes: ''
   })
-  const blankBulk = () => ({\n    sale_date: today(), buyer_employee_id: '',
+  const blankBulk = () => ({
+    sale_date: today(), buyer_employee_id: '',
     teammate_employee_id: '',
     buyer_type: 'rider',          // 'rider' | 'external'
     external_customer_id: '',     // for external bulk customers
