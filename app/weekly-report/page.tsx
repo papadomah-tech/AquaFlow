@@ -498,7 +498,7 @@ function WeeklyReportInner() {
     <AppLayout>
       <div className="page-header">
         <div>
-          <h1 className="page-title">📅 Monthly Deposit Report</h1>
+          <h1 className="page-title">📅 Weekly Report</h1>
           <div className="text-xs text-gray-400 mt-0.5">Weekly breakdown — bulk dispatches, production & deposits</div>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
@@ -1639,7 +1639,7 @@ function WeeklyReportInner() {
 
 export default function WeeklyReportPage() {
   return (
-    <ModuleGuard moduleKey="weekly-report" moduleLabel="Monthly Deposit Report">
+    <ModuleGuard moduleKey="weekly-report" moduleLabel="Weekly Report">
       <WeeklyReportInner />
     </ModuleGuard>
   )
