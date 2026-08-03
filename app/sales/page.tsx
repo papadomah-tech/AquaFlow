@@ -175,18 +175,23 @@ function SalesPageInner() {
     const bal   = Math.max(0, total - paid)
     const status = paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
 
+    const protocolBags = parseInt(bulkForm.protocol_bags) || 0
+    const totalBagsOut = bags + protocolBags
+
     // Stock check — always verify, even on edits (re-check against current stock)
     // Must exclude archived entries so we only count live post-archive stock
     const { data: fi } = await supabase.from('finished_inventory').select('bags_in,bags_out')
       .or('is_archived.is.null,is_archived.eq.false')
     const currentStock = (fi ?? []).reduce((a: number, r: any) => a + (r.bags_in||0) - (r.bags_out||0), 0)
-    // For edits, add back the bags from the original dispatch so we compare fairly
-    const stockAvailable = editSale ? currentStock + (parseInt(String(editSale.bags_sold)) || 0) : currentStock
-    if (bags > stockAvailable) {
+    // For edits, add back BOTH the original dispatch bags AND original protocol bags so we compare fairly
+    const origBags     = editSale ? (parseInt(String(editSale.bags_sold)) || 0) : 0
+    const origProtocol = editSale ? (parseInt(String(editSale.protocol_bags)) || 0) : 0
+    const stockAvailable = editSale ? currentStock + origBags + origProtocol : currentStock
+    if (totalBagsOut > stockAvailable) {
       alert(
         `🚫 Insufficient stock!\n\n` +
         `Available: ${stockAvailable} bags\n` +
-        `Requested: ${bags} bags\n\n` +
+        `Dispatch: ${bags} bags${protocolBags > 0 ? ` + ${protocolBags} protocol bags = ${totalBagsOut} total` : ''}\n\n` +
         `Record a production batch first before dispatching.`
       )
       return
@@ -272,7 +277,6 @@ function SalesPageInner() {
     }
 
     // Protocol bags write-off — deducted from stock separately, zero revenue
-    const protocolBags = parseInt(bulkForm.protocol_bags) || 0
     if (protocolBags > 0) {
       await supabase.from('finished_inventory').insert({
         bags_in: 0, bags_out: protocolBags,
@@ -718,22 +722,21 @@ function SalesPageInner() {
                   <label className="form-label">Bags Dispatched *</label>
                   <input type="number" value={bulkForm.bags_sold}
                     onChange={e => setBulkForm(f => ({...f, bags_sold:e.target.value}))}
-                    className="form-input"
-                    max={factoryStock !== null
-                      ? (editSale ? factoryStock + (parseInt(String(editSale.bags_sold)) || 0) : factoryStock)
-                      : undefined} />
+                    className="form-input" />
                   {factoryStock !== null && (() => {
-                    const maxBags = editSale
-                      ? factoryStock + (parseInt(String(editSale.bags_sold)) || 0)
-                      : factoryStock
+                    const origBags     = editSale ? (parseInt(String(editSale.bags_sold)) || 0) : 0
+                    const origProtocol = editSale ? (parseInt(String(editSale.protocol_bags)) || 0) : 0
+                    const maxStock = editSale ? factoryStock + origBags + origProtocol : factoryStock
                     const enteredBags = parseInt(bulkForm.bags_sold) || 0
-                    const over = enteredBags > maxBags
+                    const protocol    = parseInt(bulkForm.protocol_bags) || 0
+                    const totalOut    = enteredBags + protocol
+                    const over = totalOut > maxStock
                     return (
                       <div className={'text-xs mt-1 font-medium '
-                        + (over ? 'text-red-600' : maxBags > 0 ? 'text-amber-600' : 'text-red-600')}>
+                        + (over ? 'text-red-600' : maxStock > 0 ? 'text-amber-600' : 'text-red-600')}>
                         {over
-                          ? `⚠️ Exceeds stock — max ${fmtNum(maxBags)} bags available`
-                          : `Max: ${fmtNum(maxBags)} bag${maxBags !== 1 ? 's' : ''} available`}
+                          ? `⚠️ Exceeds stock — ${enteredBags} dispatch${protocol > 0 ? ` + ${protocol} protocol` : ''} = ${totalOut} total, max ${maxStock} available`
+                          : `Max: ${fmtNum(maxStock)} bag${maxStock !== 1 ? 's' : ''} available`}
                       </div>
                     )
                   })()}</div>
