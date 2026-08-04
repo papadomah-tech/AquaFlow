@@ -212,7 +212,7 @@ function WeeklyReportInner() {
         riderMap[name].invoiced    += s.total_amount
         riderMap[name].collected   += s.amount_paid
         riderMap[name].outstanding += s.outstanding_balance
-        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, invoiced: s.total_amount, collected: s.amount_paid })
+        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, protocol_bags: s.protocol_bags || 0, invoiced: s.total_amount, collected: s.amount_paid })
       })
 
       const totalInvoiced   = wBulk.reduce((a: number, s: any) => a + s.total_amount, 0)
@@ -1020,7 +1020,7 @@ function WeeklyReportInner() {
                               className="text-red-600 hover:underline font-medium">
                               − Dispatched (all out) {dispOpen[week.from] ? '▲' : '▼'}
                             </button>
-                            <span className="tabular-nums font-medium text-red-600">{fmtNum(wd.weekDispOut ?? 0)}</span>
+                            <span className="tabular-nums font-medium text-red-600">{fmtNum((wd.weekDispOut ?? 0) + (wd.weekProtocolOut ?? 0))}</span>
                           </div>
                           {dispOpen[week.from] && (
                             <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 mt-1 mb-1">
@@ -1035,32 +1035,34 @@ function WeeklyReportInner() {
                                         <span className="text-red-500">−{fmtNum(d.bags)}</span>
                                       </div>
                                     ))}
+                                    {/* Protocol bags per rider */}
+                                    {(r.dispatches ?? []).some((d: any) => (d.protocol_bags ?? 0) > 0) && (
+                                      <div className="flex justify-between py-0.5 pl-2 border-l-2 border-orange-200">
+                                        <span className="text-orange-500">🎁 Protocol bags</span>
+                                        <span className="text-orange-500">−{fmtNum((r.dispatches ?? []).reduce((a: number, d: any) => a + (d.protocol_bags ?? 0), 0))}</span>
+                                      </div>
+                                    )}
                                     {/* Rider subtotal */}
                                     <div className="flex justify-between font-medium border-t border-dashed border-gray-200 pt-0.5 mt-0.5">
                                       <span className="text-gray-600">{r.name} subtotal</span>
-                                      <span className="text-red-600">−{fmtNum(r.bags)}</span>
+                                      <span className="text-red-600">−{fmtNum(r.bags + (r.dispatches ?? []).reduce((a: number, d: any) => a + (d.protocol_bags ?? 0), 0))}</span>
                                     </div>
                                   </div>
                                 ))}
+                              {/* Protocol bags total line if any */}
+                              {(wd.weekProtocolOut ?? 0) > 0 && (
+                                <div className="flex justify-between text-orange-600 border-t border-dashed border-gray-200 pt-0.5">
+                                  <span className="font-medium">🎁 Total Protocol Bags (zero revenue)</span>
+                                  <span className="tabular-nums">−{fmtNum(wd.weekProtocolOut)}</span>
+                                </div>
+                              )}
                               <div className="flex justify-between font-semibold border-t-2 border-gray-300 pt-1 mt-1">
                                 <span>Total Dispatched</span>
-                                <span className="text-red-700">{fmtNum(wd.weekDispOut ?? 0)}</span>
+                                <span className="text-red-700">{fmtNum((wd.weekDispOut ?? 0) + (wd.weekProtocolOut ?? 0))}</span>
                               </div>
                             </div>
                           )}
                         </div>
-
-                        {/* Protocol Bags — free write-offs, zero revenue, flagged separately */}
-                        {(wd.weekProtocolOut ?? 0) > 0 && (
-                          <div className="flex justify-between text-xs items-center bg-orange-50 rounded-lg px-2 py-1.5 border border-orange-200">
-                            <span className="text-orange-700 font-medium">
-                              🎁 Protocol Bags (free — zero revenue)
-                            </span>
-                            <span className="tabular-nums font-semibold text-orange-600">
-                              {fmtNum(wd.weekProtocolOut)} bags
-                            </span>
-                          </div>
-                        )}
 
                         {/* Week's Closing Stock Balance */}
                         <div style={{background:'#1F4E79',borderRadius:'0.5rem',padding:'0.5rem 0.75rem',marginTop:'0.5rem'}}>
