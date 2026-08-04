@@ -119,7 +119,7 @@ function WeeklyReportInner() {
         .select('batch_number, batch_date, bags_produced, roll_ref')
         .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
-        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,protocol_bags,buyer:employees!buyer_employee_id(full_name),customers(name)')
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false')
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
