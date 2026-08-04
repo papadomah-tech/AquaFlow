@@ -72,6 +72,9 @@ function WeeklyReportInner() {
   // Imprest totals auto-fetched per week (replaces manual opCash input)
   const [imprestTotals,  setImprestTotals]  = useState<Record<string, number>>({})
   const [imprestEntries, setImprestEntries] = useState<Record<string, any[]>>({})
+  const [imprestRaw,     setImprestRaw]     = useState<any[]>([])
+  const [bulkSalesRaw,   setBulkSalesRaw]   = useState<any[]>([])
+  const [batchesRaw,     setBatchesRaw]     = useState<any[]>([])
   // Toggle drill-down visibility in deposit recorded banner
   const [showImprestBreakdown, setShowImprestBreakdown] = useState<Record<string, boolean>>({})
   const [showOpFeeBreakdown,   setShowOpFeeBreakdown]   = useState<Record<string, boolean>>({})
@@ -90,7 +93,7 @@ function WeeklyReportInner() {
   const [registering, setRegistering]   = useState<string|null>(null)
   const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
   const [snapshots, setSnapshots]       = useState<Record<string, any>>({})  // locked weekly snapshots
-  const [activeTab, setActiveTab]       = useState<'weekly' | 'revenue'>('weekly')
+  const [activeTab, setActiveTab]       = useState<'weekly' | 'revenue' | 'daily'>('weekly')
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -178,6 +181,9 @@ function WeeklyReportInner() {
       })
       setImprestTotals(totals)
       setImprestEntries(entries)
+      setImprestRaw(imprestData ?? [])
+      setBulkSalesRaw(bulkSales ?? [])
+      setBatchesRaw(batches ?? [])
       // Auto-populate opCash so the deposit calculation uses imprest totals
       const opMap: Record<string, string> = {}
       ws2.forEach((w: any) => {
@@ -556,7 +562,7 @@ function WeeklyReportInner() {
       {/* ── Tab toggle ────────────────────────────────────────────────── */}
       {!loading && weeks.length > 0 && (
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-4 w-fit">
-          {([['weekly', '📋 Weekly Detail'], ['revenue', '📊 Revenue Summary']] as const).map(([tab, label]) => (
+          {([['weekly', '📋 Weekly Detail'], ['revenue', '📊 Revenue Summary'], ['daily', '📆 Daily Revenue Reconciliation']] as const).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -747,6 +753,159 @@ function WeeklyReportInner() {
               <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
                 💡 Click any row to jump to that week's detail view.
                 &nbsp;Est. Gap = Estimated Revenue − Actual Collected (positive = under-collection).
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Daily Revenue Reconciliation Tab ──────────────────────────── */}
+      {!loading && activeTab === 'daily' && weeks.length > 0 && (() => {
+        // Build all calendar days in the selected month
+        const daysInMonth = new Date(selYear, selMonth, 0).getDate()
+        const allDays = Array.from({ length: daysInMonth }, (_, i) => {
+          const d = i + 1
+          return `${selYear}-${String(selMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+        })
+
+        // Group bulk sales by date
+        const salesByDay: Record<string, any[]> = {}
+        bulkSalesRaw.forEach((s: any) => {
+          if (!salesByDay[s.sale_date]) salesByDay[s.sale_date] = []
+          salesByDay[s.sale_date].push(s)
+        })
+
+        // Group imprest by date
+        const imprestByDay: Record<string, number> = {}
+        imprestRaw.forEach((e: any) => {
+          imprestByDay[e.entry_date] = (imprestByDay[e.entry_date] ?? 0) + e.amount
+        })
+
+        // Group production by date for operator fee (30/100 bags)
+        const prodByDay: Record<string, number> = {}
+        ;(batchesRaw ?? []).forEach((b: any) => {
+          prodByDay[b.batch_date] = (prodByDay[b.batch_date] ?? 0) + b.bags_produced
+        })
+
+        // Compute per-day figures
+        const rows = allDays.map(date => {
+          const daySales    = salesByDay[date] ?? []
+          const estRev      = daySales.reduce((a: number, s: any) => {
+            const isRider = !!s.buyer?.full_name
+            return a + s.bags_sold * (isRider ? 6 : 4.8)
+          }, 0)
+          const collected   = daySales.reduce((a: number, s: any) => a + s.amount_paid, 0)
+          const protocol    = daySales.reduce((a: number, s: any) => a + (s.protocol_bags || 0), 0)
+          const imprest     = imprestByDay[date] ?? 0
+          const bagsProduced= prodByDay[date] ?? 0
+          const opFee       = Math.floor(bagsProduced / 100) * 30
+          const totalDeduct = imprest + opFee
+          const netCash     = Math.max(0, collected - totalDeduct)
+          const hasActivity = daySales.length > 0 || imprest > 0 || bagsProduced > 0
+          return { date, estRev, collected, protocol, imprest, opFee, totalDeduct, netCash, hasActivity }
+        })
+
+        // Month totals
+        const totEst     = rows.reduce((a, r) => a + r.estRev, 0)
+        const totColl    = rows.reduce((a, r) => a + r.collected, 0)
+        const totProt    = rows.reduce((a, r) => a + r.protocol, 0)
+        const totImprest = rows.reduce((a, r) => a + r.imprest, 0)
+        const totOpFee   = rows.reduce((a, r) => a + r.opFee, 0)
+        const totDeduct  = rows.reduce((a, r) => a + r.totalDeduct, 0)
+        const totNet     = rows.reduce((a, r) => a + r.netCash, 0)
+
+        const todayStr = today()
+
+        return (
+          <div className="space-y-4">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Est. Revenue',      value: fmtGhc(totEst),    color: '#5C6BC0' },
+                { label: 'Actual Collected',  value: fmtGhc(totColl),   color: '#1B5E20' },
+                { label: 'Total Deductions',  value: `− ${fmtGhc(totDeduct)}`, color: '#BF4D00' },
+                { label: 'Net Cash Available',value: fmtGhc(totNet),    color: '#1F4E79' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="card text-center py-4">
+                  <div className="text-xs text-gray-400 mb-1">{label}</div>
+                  <div className="text-lg font-bold tabular-nums" style={{ color }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Daily table */}
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1F4E79] text-white">
+                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Date</th>
+                    <th className="text-left px-3 py-3 text-blue-200 text-xs font-normal">Day</th>
+                    <th className="text-right px-3 py-3 font-semibold">Est. Revenue</th>
+                    <th className="text-right px-3 py-3 font-semibold">Collected</th>
+                    <th className="text-right px-3 py-3 font-semibold">Protocol</th>
+                    <th className="text-right px-3 py-3 font-semibold">Imprest</th>
+                    <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
+                    <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
+                    <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Net Cash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => {
+                    const isToday  = r.date === todayStr
+                    const dayName  = new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short' })
+                    const isSunday = dayName === 'Sun'
+                    return (
+                      <tr key={r.date}
+                        className={`border-b border-gray-100 transition-colors
+                          ${isToday ? 'bg-blue-50 font-medium' : isSunday ? 'bg-gray-50/80' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}
+                          ${!r.hasActivity ? 'opacity-40' : ''}`}>
+                        <td className="px-4 py-2.5">
+                          <span className={`tabular-nums ${isToday ? 'text-[#1F4E79] font-bold' : 'text-gray-700'}`}>
+                            {fmtDate(r.date)}
+                          </span>
+                          {isToday && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Today</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-400 text-xs">{dayName}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-purple-700">
+                          {r.estRev > 0 ? fmtGhc(r.estRev) : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-medium" style={{ color: r.collected > 0 ? '#1B5E20' : undefined }}>
+                          {r.collected > 0 ? fmtGhc(r.collected) : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-orange-500">
+                          {r.protocol > 0 ? `${r.protocol} 🎁` : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-red-500">
+                          {r.imprest > 0 ? fmtGhc(r.imprest) : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-red-500">
+                          {r.opFee > 0 ? fmtGhc(r.opFee) : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-medium text-red-700">
+                          {r.totalDeduct > 0 ? `− ${fmtGhc(r.totalDeduct)}` : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: r.netCash > 0 ? '#1F4E79' : undefined }}>
+                          {r.netCash > 0 ? fmtGhc(r.netCash) : r.hasActivity ? fmtGhc(0) : <span className="text-gray-200">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
+                    <td className="px-4 py-3 text-[#1F4E79]" colSpan={2}>Month Total</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(totEst)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1B5E20' }}>{fmtGhc(totColl)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-orange-500">{totProt > 0 ? `${totProt} 🎁` : '—'}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totImprest)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totOpFee)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-700">{`− ${fmtGhc(totDeduct)}`}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
+                💡 Faded rows = no activity. Op Fee = GH₵ 30 per 100 bags produced that day. Net Cash = Collected − Imprest − Op Fee.
               </div>
             </div>
           </div>
