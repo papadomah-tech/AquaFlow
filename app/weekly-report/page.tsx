@@ -289,11 +289,11 @@ function WeeklyReportInner() {
       // Dispatches = from bulk sales records (authoritative)
       const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Week's Closing Stock Balance (pure: opening + produced − dispatched, no adjustments)
-      const weekClosingBalance = openingStock + weekProdIn - weekDispOut
+      // Week's Closing Stock Balance (pure: opening + produced − dispatched − protocol write-offs)
+      const weekClosingBalance = openingStock + weekProdIn - weekDispOut - weekProtocolOut
 
       // System closing (includes adjustments) → feeds next week's opening
-      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut
+      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut - weekProtocolOut
 
       // Roll forward: if this week is locked, next week opens from the physical count
       // otherwise from the computed systemClosing
@@ -1067,7 +1067,7 @@ function WeeklyReportInner() {
                           <div style={{fontSize:'0.7rem',color:'#93c5fd',marginBottom:'0.15rem'}}>
                             Week&#39;s Closing Stock Balance
                             <span style={{opacity:0.75,marginLeft:'0.25rem'}}>
-                              ({fmtNum(wd.openingStock ?? 0)} + {fmtNum(wd.weekProdIn ?? 0)} − {fmtNum(wd.weekDispOut ?? 0)})
+                              ({fmtNum(wd.openingStock ?? 0)} + {fmtNum(wd.weekProdIn ?? 0)} − {fmtNum(wd.weekDispOut ?? 0)}{(wd.weekProtocolOut ?? 0) > 0 ? ` − ${fmtNum(wd.weekProtocolOut)} protocol` : ''})
                             </span>
                           </div>
                           <div style={{fontSize:'1.25rem',fontWeight:'bold',color:'white',fontVariantNumeric:'tabular-nums'}}>
