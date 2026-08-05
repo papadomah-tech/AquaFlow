@@ -154,7 +154,7 @@ function PersonnelPageInner() {
       }
     }))
     setPerfData(results)
-  }, [employees, period])
+  }, [employees, period, riderTargets, getActiveTarget])
 
   const payEmployee = async (d: any) => {
     if (d.locked) { alert('Period already paid on ' + d.lockInfo?.payment_date); return }
@@ -253,7 +253,7 @@ function PersonnelPageInner() {
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {(['employees','perf','losses','salary'] as const).map(t => (
-          <button key={t} onClick={() => { setTab(t); if(t==='perf') calcPerformance() }} className={'btn btn-sm ' + (tab===t?'btn-primary':'btn-secondary')}>
+          <button key={t} onClick={async () => { setTab(t); if(t==='perf') { await loadAll(); calcPerformance() } }} className={'btn btn-sm ' + (tab===t?'btn-primary':'btn-secondary')}>
             {t==='employees'?'Employees':t==='perf'?'Performance Pay':t==='losses'?'Loss Register':'Salary Payments'}
           </button>
         ))}
@@ -408,7 +408,7 @@ function PersonnelPageInner() {
             <div className="flex gap-3 items-end flex-wrap">
               <div><label className="form-label">From</label><input type="date" value={period.from} onChange={e=>setPeriod(p=>({...p,from:e.target.value}))} className="form-input w-36" /></div>
               <div><label className="form-label">To</label><input type="date" value={period.to} onChange={e=>setPeriod(p=>({...p,to:e.target.value}))} className="form-input w-36" /></div>
-              <button onClick={calcPerformance} className="btn btn-primary">Calculate</button>
+              <button onClick={async () => { await loadAll(); calcPerformance() }} className="btn btn-primary">Calculate</button>
               <button onClick={()=>setPeriod({from:monthStart(),to:today()})} className="btn btn-secondary">This Month</button>
             </div>
           </div>
