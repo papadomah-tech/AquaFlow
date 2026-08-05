@@ -30,18 +30,62 @@ function PersonnelPageInner() {
   const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff', base_pay:'', feeding_fee:'300', monthly_target:'6500', selling_price:'6' })
   const [lossForm, setLossForm] = useState({ employee_id:'', loss_date:today(), loss_type:'Bag Shortage', description:'', quantity:'', unit_cost:'', notes:'' })
 
+  // Target management
+  const [targetEmp,    setTargetEmp]    = useState<any>(null)      // rider whose target panel is open
+  const [targetForm,   setTargetForm]   = useState({ daily_target: '', effective_from: today(), notes: '' })
+  const [targetHist,   setTargetHist]   = useState<any[]>([])      // history for open rider
+  const [savingTarget, setSavingTarget] = useState(false)
+  const [riderTargets, setRiderTargets] = useState<Record<number, any[]>>({})  // all riders' target lists
+
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: emp }, { data: el }, { data: sp }] = await Promise.all([
+    const [{ data: emp }, { data: el }, { data: sp }, { data: rt }] = await Promise.all([
       supabase.from('employees').select('*').order('full_name').gt('id', 0),
       supabase.from('employee_losses').select('*,employees(full_name)').order('loss_date', { ascending: false }),
       supabase.from('salary_payments').select('*,employees(full_name)').order('payment_date', { ascending: false }).limit(100),
+      supabase.from('rider_targets').select('*').order('effective_from', { ascending: false }),
     ])
     setEmployees(emp ?? [])
     setLosses(el ?? [])
     setSalaryPay(sp ?? [])
+    // Group rider_targets by employee_id
+    const grouped: Record<number, any[]> = {}
+    ;(rt ?? []).forEach((t: any) => {
+      if (!grouped[t.employee_id]) grouped[t.employee_id] = []
+      grouped[t.employee_id].push(t)
+    })
+    setRiderTargets(grouped)
     setLoading(false)
   }, [])
+
+  // Get the active target for a rider as of a given date
+  const getActiveTarget = useCallback((empId: number, asOfDate: string): number | null => {
+    const targets = riderTargets[empId] ?? []
+    const active = targets
+      .filter((t: any) => t.effective_from <= asOfDate)
+      .sort((a: any, b: any) => b.effective_from.localeCompare(a.effective_from))[0]
+    return active?.daily_target ?? null
+  }, [riderTargets])
+
+  // Save a new target entry
+  const saveTarget = useCallback(async () => {
+    if (!targetEmp) return
+    const dt = parseInt(targetForm.daily_target)
+    if (!dt || dt <= 0) return alert('Enter a valid daily target.')
+    if (!targetForm.effective_from) return alert('Choose an effective date.')
+    setSavingTarget(true)
+    const { error } = await supabase.from('rider_targets').insert({
+      employee_id:    targetEmp.id,
+      daily_target:   dt,
+      effective_from: targetForm.effective_from,
+      notes:          targetForm.notes || null,
+    })
+    if (error) { alert(`Failed to save target: ${error.message}`); setSavingTarget(false); return }
+    await loadAll()
+    setTargetHist(prev => [{ employee_id: targetEmp.id, daily_target: dt, effective_from: targetForm.effective_from, notes: targetForm.notes }, ...prev])
+    setTargetForm({ daily_target: '', effective_from: today(), notes: '' })
+    setSavingTarget(false)
+  }, [targetEmp, targetForm, loadAll])
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -93,13 +137,16 @@ function PersonnelPageInner() {
       const locked = lockRow && lockRow.length > 0
 
       // VeeBee proportional formula
+      // For riders: use versioned target from rider_targets as of period.from (never affected by future changes)
       const basePay      = emp.base_pay || emp.salary || 0
       const feedingFee   = emp.feeding_fee ?? 300
-      const monthlyTarget= emp.monthly_target || emp.sales_target_daily * 26 || 6500
+      const activeDaily  = emp.employee_type === 'rider' ? getActiveTarget(emp.id, period.from) : null
+      const dailyTarget  = activeDaily ?? emp.sales_target_daily ?? Math.round((emp.monthly_target || 6500) / 26)
+      const monthlyTarget= dailyTarget * (emp.working_days || 26)
       const perf = calcPerfPay({ basePay, feedingFee, monthlyTarget, actualBags: bags })
 
       return {
-        ...emp, bags, basePay, monthlyTarget,
+        ...emp, bags, basePay, dailyTarget, monthlyTarget,
         ...perf,
         totalLosses,
         netPay: Math.max(0, perf.total - totalLosses),
@@ -234,7 +281,23 @@ function PersonnelPageInner() {
                   <td className="muted">{e.role}</td>
                   <td className="text-xs text-gray-500">{e.phone||'-'}</td>
                   <td className="num">{fmtGhc(e.salary)}</td>
-                  <td className="num">{e.sales_target_daily}/day</td>
+                  <td className="num">
+                    {e.employee_type === 'rider' ? (() => {
+                      const hist = riderTargets[e.id] ?? []
+                      const active = hist.filter((t: any) => t.effective_from <= today()).sort((a: any, b: any) => b.effective_from.localeCompare(a.effective_from))[0]
+                      return (
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <span className="tabular-nums">{active ? `${active.daily_target}/day` : `${e.sales_target_daily}/day`}</span>
+                          <button
+                            onClick={() => { setTargetEmp(e); setTargetHist(hist); setTargetForm({ daily_target: String(active?.daily_target ?? e.sales_target_daily ?? ''), effective_from: today(), notes: '' }) }}
+                            className="btn btn-sm btn-secondary" style={{fontSize:'10px',padding:'1px 6px'}}>
+                            Set
+                          </button>
+                        </div>
+                      )
+                    })()
+                    : <span>{e.sales_target_daily}/day</span>}
+                  </td>
                   <td><span className={'badge '+(e.status==='active'?'badge-green':'badge-gray')}>{e.status}</span></td>
                   <td><div className="flex gap-1">
                     <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff',base_pay:String(e.base_pay??e.salary??''),feeding_fee:String(e.feeding_fee??300),monthly_target:String(e.monthly_target??6500),selling_price:'6'});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
@@ -244,6 +307,89 @@ function PersonnelPageInner() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* TARGET PANEL — slides in below table when a rider's Set button is clicked */}
+      {tab === 'employees' && targetEmp && (
+        <div className="card border-2 border-blue-200 mt-3">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="font-bold text-[#1F4E79]">🎯 Set Target — {targetEmp.full_name}</div>
+              <div className="text-xs text-gray-400 mt-0.5">New targets take effect from the date you choose. Past performance data is never affected.</div>
+            </div>
+            <button onClick={() => setTargetEmp(null)} className="text-gray-400 hover:text-gray-600 text-lg font-bold">✕</button>
+          </div>
+
+          {/* New target form */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div className="form-group">
+              <label className="form-label">New Daily Target (bags/day) *</label>
+              <input type="number" min="1"
+                value={targetForm.daily_target}
+                onChange={e => setTargetForm(f => ({...f, daily_target: e.target.value}))}
+                className="form-input" placeholder="e.g. 300" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Effective From *</label>
+              <input type="date"
+                value={targetForm.effective_from}
+                onChange={e => setTargetForm(f => ({...f, effective_from: e.target.value}))}
+                className="form-input" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Notes (optional)</label>
+              <input type="text"
+                value={targetForm.notes}
+                onChange={e => setTargetForm(f => ({...f, notes: e.target.value}))}
+                className="form-input" placeholder="Reason for change..." />
+            </div>
+          </div>
+          <div className="flex gap-2 mb-5">
+            <button onClick={saveTarget} disabled={savingTarget} className="btn btn-primary">
+              {savingTarget ? 'Saving...' : '✓ Save New Target'}
+            </button>
+            <button onClick={() => setTargetEmp(null)} className="btn btn-secondary">Cancel</button>
+          </div>
+
+          {/* Target history */}
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Target History</div>
+            {targetHist.length === 0
+              ? <div className="text-xs text-gray-400">No target history yet. Set a target above to start tracking.</div>
+              : <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500 text-xs">
+                      <th className="text-left px-3 py-2 font-medium">Effective From</th>
+                      <th className="text-right px-3 py-2 font-medium">Daily Target</th>
+                      <th className="text-right px-3 py-2 font-medium">Monthly Equiv.</th>
+                      <th className="text-left px-3 py-2 font-medium">Notes</th>
+                      <th className="text-right px-3 py-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {targetHist.map((t: any, i: number) => {
+                      const isCurrent = i === 0 && t.effective_from <= today()
+                      const isFuture  = t.effective_from > today()
+                      return (
+                        <tr key={t.id ?? i} className={'border-t border-gray-100 ' + (isCurrent ? 'bg-blue-50' : '')}>
+                          <td className="px-3 py-2 tabular-nums">{fmtDate(t.effective_from)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-[#1F4E79]">{t.daily_target} bags/day</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-500">{fmtNum(t.daily_target * 26)} bags/mo</td>
+                          <td className="px-3 py-2 text-gray-400 text-xs">{t.notes || '—'}</td>
+                          <td className="px-3 py-2 text-right">
+                            {isFuture
+                              ? <span className="badge badge-yellow text-xs">Upcoming</span>
+                              : isCurrent
+                              ? <span className="badge badge-green text-xs">Active</span>
+                              : <span className="badge badge-gray text-xs">Superseded</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>}
+          </div>
         </div>
       )}
 
