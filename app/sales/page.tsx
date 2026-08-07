@@ -647,7 +647,7 @@ function SalesPageInner() {
                       onChange={e => {
                         const riderId = e.target.value
                         const rider = (riders.length > 0 ? riders : employees).find((r: any) => String(r.id) === riderId)
-                        const autoMate = rider?.default_mate_id ? String(rider.default_mate_id) : bulkForm.teammate_employee_id
+                        const autoMate = rider?.default_mate_id ? String(rider.default_mate_id) : ''
                         setBulkForm(f => ({...f, buyer_employee_id: riderId, teammate_employee_id: autoMate}))
                       }}
                       className="form-select">
@@ -665,10 +665,10 @@ function SalesPageInner() {
                       onChange={e => setBulkForm(f => ({...f, teammate_employee_id: e.target.value}))}
                       className="form-select">
                       <option value="">— No teammate —</option>
-                      {(riders.length > 0 ? riders : employees)
+                      {employees
                         .filter((e: any) => String(e.id) !== bulkForm.buyer_employee_id)
                         .map((e: any) => (
-                          <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
+                          <option key={e.id} value={String(e.id)}>{e.full_name}</option>
                         ))}
                     </select>
                     {(() => {
