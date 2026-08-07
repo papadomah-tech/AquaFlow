@@ -306,7 +306,7 @@ function PersonnelPageInner() {
       <div className="page-header">
         <h1 className="page-title">Personnel</h1>
         <div className="flex gap-2">
-          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff',base_pay:'',feeding_fee:'300',monthly_target:'6500',selling_price:'6'}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
+          <button onClick={() => { setEditEmp(null); setEmpForm({full_name:'',role:'',phone:'',salary:'',sales_target_daily:'250',working_days:'6',hire_date:today(),employee_type:'staff',base_pay:'',feeding_fee:'300',monthly_target:'6500',selling_price:'6',default_mate_id:''}); setShowEmpForm(true) }} className="btn btn-primary">+ Employee</button>
           <button onClick={() => { setShowLossForm(true) }} className="btn btn-warning">+ Record Loss</button>
         </div>
       </div>
