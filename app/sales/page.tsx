@@ -151,7 +151,7 @@ function SalesPageInner() {
 
   useEffect(() => {
     // Riders (potential bulk buyers)
-    supabase.from('employees').select('id,full_name,employee_type,team_role')
+    supabase.from('employees').select('id,full_name,employee_type,team_role,default_mate_id')
       .eq('status', 'active').order('full_name')
       .then(({ data }) => {
         const all = data ?? []
@@ -644,7 +644,12 @@ function SalesPageInner() {
                   <div className="form-group">
                     <label className="form-label">Rider / Sales Rep *</label>
                     <select value={bulkForm.buyer_employee_id}
-                      onChange={e => setBulkForm(f => ({...f, buyer_employee_id:e.target.value}))}
+                      onChange={e => {
+                        const riderId = e.target.value
+                        const rider = (riders.length > 0 ? riders : employees).find((r: any) => String(r.id) === riderId)
+                        const autoMate = rider?.default_mate_id ? String(rider.default_mate_id) : bulkForm.teammate_employee_id
+                        setBulkForm(f => ({...f, buyer_employee_id: riderId, teammate_employee_id: autoMate}))
+                      }}
                       className="form-select">
                       <option value="">Select rider...</option>
                       {(riders.length > 0 ? riders : employees).map((e: any) => (
@@ -666,6 +671,12 @@ function SalesPageInner() {
                           <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
                         ))}
                     </select>
+                    {(() => {
+                      const rider = (riders.length > 0 ? riders : employees).find((r: any) => String(r.id) === bulkForm.buyer_employee_id)
+                      return rider?.default_mate_id && String(rider.default_mate_id) === bulkForm.teammate_employee_id
+                        ? <div className="text-xs text-green-600 mt-1 font-medium">🔗 Auto-linked mate</div>
+                        : null
+                    })()}
                     <div className="text-xs text-gray-400 mt-1">
                       Full bag count credits both for performance pay.
                     </div>

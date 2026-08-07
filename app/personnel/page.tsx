@@ -27,7 +27,7 @@ function PersonnelPageInner() {
     std_days: 26,
   }
 
-  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff', base_pay:'', feeding_fee:'300', monthly_target:'6500', selling_price:'6' })
+  const [empForm, setEmpForm] = useState({ full_name:'', role:'', phone:'', salary:'', sales_target_daily:'250', working_days:'6', hire_date:today(), employee_type:'staff', base_pay:'', feeding_fee:'300', monthly_target:'6500', selling_price:'6', default_mate_id:'' })
   const [lossForm, setLossForm] = useState({ employee_id:'', loss_date:today(), loss_type:'Bag Shortage', description:'', quantity:'', unit_cost:'', notes:'' })
 
   // Target management
@@ -137,16 +137,75 @@ function PersonnelPageInner() {
       const locked = lockRow && lockRow.length > 0
 
       // VeeBee proportional formula
-      // For riders: use versioned target from rider_targets as of period.from (never affected by future changes)
-      const basePay      = emp.base_pay || emp.salary || 0
-      const feedingFee   = emp.feeding_fee ?? 300
-      const activeDaily  = emp.employee_type === 'rider' ? getActiveTarget(emp.id, period.from) : null
-      const dailyTarget  = activeDaily ?? emp.sales_target_daily ?? Math.round((emp.monthly_target || 6500) / 26)
-      const monthlyTarget= dailyTarget * (emp.working_days || 26)
+      // For riders: blend target across period boundaries — split at each target change date
+      const basePay    = emp.base_pay || emp.salary || 0
+      const feedingFee = emp.feeding_fee ?? 300
+
+      let periodTarget: number
+      let dailyTarget:  number
+      let targetBreakdown: { from: string; to: string; daily: number; days: number; target: number }[] = []
+
+      if (emp.employee_type === 'rider') {
+        // Get all targets that could apply during this period, sorted oldest → newest
+        const allTargets = (riderTargets[emp.id] ?? [])
+          .filter((t: any) => t.effective_from <= period.to)
+          .sort((a: any, b: any) => a.effective_from.localeCompare(b.effective_from))
+
+        // Fallback if no versioned targets exist
+        const fallbackDaily = emp.sales_target_daily ?? Math.round((emp.monthly_target || 6500) / 26)
+
+        if (allTargets.length === 0) {
+          const days = countWorkingDays(period.from, period.to)
+          periodTarget = fallbackDaily * days
+          dailyTarget  = fallbackDaily
+          targetBreakdown = [{ from: period.from, to: period.to, daily: fallbackDaily, days, target: periodTarget }]
+        } else {
+          // Build segments: each segment runs from max(period.from, target.effective_from)
+          // to min(period.to, next_target.effective_from - 1 day)
+          periodTarget = 0
+          targetBreakdown = []
+          for (let i = 0; i < allTargets.length; i++) {
+            const segFrom = i === 0
+              ? period.from  // first segment starts at period start
+              : allTargets[i].effective_from > period.from
+                ? allTargets[i].effective_from
+                : period.from
+            const segTo = i < allTargets.length - 1
+              ? (() => {
+                  const nextDate = new Date(allTargets[i + 1].effective_from + 'T00:00:00')
+                  nextDate.setDate(nextDate.getDate() - 1)
+                  return nextDate.toISOString().slice(0, 10)
+                })()
+              : period.to
+
+            if (segFrom > period.to || segTo < period.from) continue
+            const clampedFrom = segFrom < period.from ? period.from : segFrom
+            const clampedTo   = segTo   > period.to   ? period.to   : segTo
+            if (clampedFrom > clampedTo) continue
+
+            const days    = countWorkingDays(clampedFrom, clampedTo)
+            const daily   = allTargets[i].daily_target
+            const seg     = daily * days
+            periodTarget += seg
+            targetBreakdown.push({ from: clampedFrom, to: clampedTo, daily, days, target: seg })
+          }
+          // dailyTarget for display = weighted average
+          const totalDays = targetBreakdown.reduce((a, s) => a + s.days, 0)
+          dailyTarget = totalDays > 0 ? Math.round(periodTarget / totalDays) : fallbackDaily
+        }
+      } else {
+        const days   = countWorkingDays(period.from, period.to)
+        dailyTarget  = emp.sales_target_daily ?? Math.round((emp.monthly_target || 6500) / 26)
+        periodTarget = dailyTarget * days
+        targetBreakdown = [{ from: period.from, to: period.to, daily: dailyTarget, days, target: periodTarget }]
+      }
+
+      const workingDays   = countWorkingDays(period.from, period.to)
+      const monthlyTarget = periodTarget  // periodTarget IS the target for this period
       const perf = calcPerfPay({ basePay, feedingFee, monthlyTarget, actualBags: bags })
 
       return {
-        ...emp, bags, basePay, dailyTarget, monthlyTarget,
+        ...emp, bags, basePay, dailyTarget, monthlyTarget, workingDays, targetBreakdown,
         ...perf,
         totalLosses,
         netPay: Math.max(0, perf.total - totalLosses),
@@ -184,6 +243,7 @@ function PersonnelPageInner() {
       monthly_target:     empForm.monthly_target,
       sales_target_daily: empForm.sales_target_daily,
       working_days:       empForm.working_days,
+      default_mate_id:    empForm.default_mate_id ? parseInt(empForm.default_mate_id) : null,
     }
     if (editEmp) body.id = editEmp.id
 
@@ -285,14 +345,20 @@ function PersonnelPageInner() {
                     {e.employee_type === 'rider' ? (() => {
                       const hist = riderTargets[e.id] ?? []
                       const active = hist.filter((t: any) => t.effective_from <= today()).sort((a: any, b: any) => b.effective_from.localeCompare(a.effective_from))[0]
+                      const mate = e.default_mate_id ? employees.find((m: any) => m.id === e.default_mate_id) : null
                       return (
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <span className="tabular-nums">{active ? `${active.daily_target}/day` : `${e.sales_target_daily}/day`}</span>
-                          <button
-                            onClick={() => { setTargetEmp(e); setTargetHist(hist); setTargetForm({ daily_target: String(active?.daily_target ?? e.sales_target_daily ?? ''), effective_from: today(), notes: '' }) }}
-                            className="btn btn-sm btn-secondary" style={{fontSize:'10px',padding:'1px 6px'}}>
-                            Set
-                          </button>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="tabular-nums">{active ? `${active.daily_target}/day` : `${e.sales_target_daily}/day`}</span>
+                            <button
+                              onClick={() => { setTargetEmp(e); setTargetHist(hist); setTargetForm({ daily_target: String(active?.daily_target ?? e.sales_target_daily ?? ''), effective_from: today(), notes: '' }) }}
+                              className="btn btn-sm btn-secondary" style={{fontSize:'10px',padding:'1px 6px'}}>
+                              Set
+                            </button>
+                          </div>
+                          {mate && (
+                            <div className="text-xs text-green-600">🔗 {mate.full_name}</div>
+                          )}
                         </div>
                       )
                     })()
@@ -300,7 +366,7 @@ function PersonnelPageInner() {
                   </td>
                   <td><span className={'badge '+(e.status==='active'?'badge-green':'badge-gray')}>{e.status}</span></td>
                   <td><div className="flex gap-1">
-                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff',base_pay:String(e.base_pay??e.salary??''),feeding_fee:String(e.feeding_fee??300),monthly_target:String(e.monthly_target??6500),selling_price:'6'});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
+                    <button onClick={()=>{setEditEmp(e);setEmpForm({full_name:e.full_name,role:e.role,phone:e.phone??'',salary:String(e.salary),sales_target_daily:String(e.sales_target_daily),working_days:String(e.working_days),hire_date:e.hire_date,employee_type:e.employee_type??'staff',base_pay:String(e.base_pay??e.salary??''),feeding_fee:String(e.feeding_fee??300),monthly_target:String(e.monthly_target??6500),selling_price:'6',default_mate_id:String(e.default_mate_id??'')});setShowEmpForm(true)}} className="btn btn-sm btn-secondary">Edit</button>
                     <button onClick={async()=>{if(confirm('Toggle status?'))await supabase.from('employees').update({status:e.status==='active'?'inactive':'active'}).eq('id',e.id);loadAll()}} className="btn btn-sm btn-warning">{e.status==='active'?'Deactivate':'Activate'}</button>
                   </div></td>
                 </tr>
@@ -443,7 +509,10 @@ function PersonnelPageInner() {
                         : d.employee_type === 'factory_manager'
                         ? `Total bags out (finished inventory): ${fmtNum(d.bags)}`
                         : `Bags sold: ${fmtNum(d.bags)}`}
-                      &nbsp;/&nbsp;Target: {fmtNum(d.monthlyTarget)} bags
+                      &nbsp;/&nbsp;Period target: {fmtNum(d.monthlyTarget)} bags
+                      {d.targetBreakdown?.length > 1 && (
+                        <span className="ml-1 text-orange-500">(blended)</span>
+                      )}
                     </div>
                   </div>
                   {/* Performance % badge */}
@@ -473,6 +542,16 @@ function PersonnelPageInner() {
 
                 {/* Formula explanation */}
                 <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-3">
+                  {d.targetBreakdown?.length > 1 && (
+                    <div className="mb-1 text-orange-500 font-medium">
+                      Blended target: {d.targetBreakdown.map((s: any, i: number) => (
+                        <span key={i}>{i > 0 && ' + '}{s.daily}/day × {s.days}d = {fmtNum(s.target)}</span>
+                      ))} = {fmtNum(d.monthlyTarget)} bags
+                    </div>
+                  )}
+                  {(!d.targetBreakdown || d.targetBreakdown.length <= 1) && (
+                    <span>Target: {d.dailyTarget}/day × {d.workingDays} days = {fmtNum(d.monthlyTarget)} bags<br/></span>
+                  )}
                   ({fmtNum(d.bags)} ÷ {fmtNum(d.monthlyTarget)}) × GHc {d.basePay.toLocaleString()} + GHc {d.feedingFee} feeding
                   = GHc {d.earnedBase.toFixed(2)} + GHc {d.feedingFee} = <strong>GHc {d.total.toFixed(2)}</strong>
                   {d.totalLosses > 0 && ` − GHc ${d.totalLosses.toFixed(2)} losses`}
@@ -607,6 +686,26 @@ function PersonnelPageInner() {
                   </select>
                   <div className="text-xs text-gray-400 mt-1">This controls what they see in the Sales module</div>
                 </div>
+                {empForm.employee_type === 'rider' && (
+                  <div className="form-group col-span-2">
+                    <label className="form-label">🔗 Default Mate
+                      <span className="text-gray-400 font-normal ml-1">(auto-linked in dispatch form)</span>
+                    </label>
+                    <select
+                      value={empForm.default_mate_id}
+                      onChange={e => setEmpForm(f => ({...f, default_mate_id: e.target.value}))}
+                      className="form-select">
+                      <option value="">— No default mate —</option>
+                      {employees
+                        .filter((e: any) => e.id !== editEmp?.id)
+                        .map((e: any) => <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>)}
+                    </select>
+                    <div className="text-xs text-gray-400 mt-1">
+                      When this rider is selected in a dispatch, their mate will be filled in automatically.
+                    </div>
+                  </div>
+                )}
+
                 <div className="col-span-2 border-t border-gray-100 pt-3">
                   <div className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">
                     Performance Pay — Target Viability
