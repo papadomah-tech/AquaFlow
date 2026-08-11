@@ -122,7 +122,7 @@ function WeeklyReportInner() {
         .select('batch_number, batch_date, bags_produced, roll_ref')
         .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
-        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,protocol_bags,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,protocol_bags,is_giveaway,recipient_category,recipient_name,buyer:employees!buyer_employee_id(full_name),customers(name)')
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false')
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
@@ -292,14 +292,17 @@ function WeeklyReportInner() {
       // Protocol bags — free write-offs linked to dispatches this week
       const weekProtocolOut = wBulk.reduce((a: number, s: any) => a + (s.protocol_bags || 0), 0)
 
-      // Dispatches = from bulk sales records (authoritative)
-      const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
+      // Giveaway bags — free bags to directors/staff/guests, zero revenue, separate from paid dispatches
+      const weekGiveawayOut = wBulk.filter((s: any) => s.is_giveaway).reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Week's Closing Stock Balance (pure: opening + produced − dispatched − protocol write-offs)
-      const weekClosingBalance = openingStock + weekProdIn - weekDispOut - weekProtocolOut
+      // Dispatches = paid bulk sales only (excludes giveaways)
+      const weekDispOut = wBulk.filter((s: any) => !s.is_giveaway).reduce((a: number, s: any) => a + s.bags_sold, 0)
+
+      // Week's Closing Stock Balance (pure: opening + produced − dispatched − protocol − giveaways)
+      const weekClosingBalance = openingStock + weekProdIn - weekDispOut - weekProtocolOut - weekGiveawayOut
 
       // System closing (includes adjustments) → feeds next week's opening
-      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut - weekProtocolOut
+      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut - weekProtocolOut - weekGiveawayOut
 
       // Roll forward: if this week is locked, next week opens from the physical count
       // otherwise from the computed systemClosing
@@ -339,7 +342,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekProtocolOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekProtocolOut, weekGiveawayOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
         lockedSnap, lockedClosing,
         batchDetails: wBatches,
         estRevenue, stockVarianceBags, collectionVariance,
@@ -1223,6 +1226,18 @@ function WeeklyReportInner() {
                           )}
                         </div>
 
+                        {/* Giveaway Bags — free bags, zero revenue, separate line */}
+                        {(wd.weekGiveawayOut ?? 0) > 0 && (
+                          <div className="flex justify-between text-xs items-center bg-green-50 rounded-lg px-2 py-1.5 border border-green-200">
+                            <span className="text-green-700 font-medium">
+                              🎁 Free Giveaway Bags (zero revenue)
+                            </span>
+                            <span className="tabular-nums font-semibold text-green-600">
+                              − {fmtNum(wd.weekGiveawayOut)} bags
+                            </span>
+                          </div>
+                        )}
+
                         {/* Week's Closing Stock Balance */}
                         <div style={{background:'#1F4E79',borderRadius:'0.5rem',padding:'0.5rem 0.75rem',marginTop:'0.5rem'}}>
                           <div style={{fontSize:'0.7rem',color:'#93c5fd',marginBottom:'0.15rem'}}>
@@ -1436,6 +1451,12 @@ function WeeklyReportInner() {
                             <div className="flex justify-between text-xs mt-0.5 bg-orange-50 rounded px-1.5 py-1 border border-orange-200">
                               <span className="text-orange-700 font-medium">🎁 Protocol Bags (free — GH₵ 0.00)</span>
                               <span className="tabular-nums text-orange-600 font-semibold">{fmtNum(wd.weekProtocolOut)} bags</span>
+                            </div>
+                          )}
+                          {(wd.weekGiveawayOut ?? 0) > 0 && (
+                            <div className="flex justify-between text-xs mt-0.5 bg-green-50 rounded px-1.5 py-1 border border-green-200">
+                              <span className="text-green-700 font-medium">🎁 Free Giveaway Bags (GH₵ 0.00)</span>
+                              <span className="tabular-nums text-green-600 font-semibold">{fmtNum(wd.weekGiveawayOut)} bags</span>
                             </div>
                           )}
                         </div>

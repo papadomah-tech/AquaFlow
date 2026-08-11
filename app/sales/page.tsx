@@ -61,11 +61,13 @@ function SalesPageInner() {
   const blankBulk = () => ({
     sale_date: today(), buyer_employee_id: '',
     teammate_employee_id: '',
-    buyer_type: 'rider',          // 'rider' | 'external'
-    external_customer_id: '',     // for external bulk customers
+    buyer_type: 'rider',          // 'rider' | 'external' | 'giveaway'
+    external_customer_id: '',
     bags_sold: '', unit_price: '', amount_paid: '', notes: '',
     is_overtime: false,
-    protocol_bags: '0',           // bags given for free (written off from this dispatch)
+    protocol_bags: '0',
+    recipient_category: 'Director', // for giveaway
+    recipient_name: '',             // for giveaway
   })
   // retailForm removed — retail sales disabled
   const [bulkForm, setBulkForm]     = useState(blankBulk())
@@ -168,12 +170,18 @@ function SalesPageInner() {
 
     // ── Save bulk sale (factory → rider) ──────────────────────────────────────
   const saveBulkSale = async () => {
+    const isGiveaway = bulkForm.buyer_type === 'giveaway'
     const bags  = parseInt(bulkForm.bags_sold) || 0
-    const price = parseFloat(bulkForm.unit_price) || 0
-    const paid  = parseFloat(bulkForm.amount_paid) || 0
+    const price = isGiveaway ? 0 : parseFloat(bulkForm.unit_price) || 0
+    const paid  = isGiveaway ? 0 : parseFloat(bulkForm.amount_paid) || 0
     const total = bags * price
-    const bal   = Math.max(0, total - paid)
-    const status = paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
+    const bal   = 0
+    const status = 'paid'
+
+    if (isGiveaway && !bulkForm.recipient_name.trim()) {
+      alert('Please enter the recipient name.'); return
+    }
+    if (bags <= 0) { alert('Enter a valid number of bags.'); return }
 
     const protocolBags = parseInt(bulkForm.protocol_bags) || 0
     const totalBagsOut = bags + protocolBags
@@ -201,32 +209,31 @@ function SalesPageInner() {
     let riderId: number | null = null
 
     if (bulkForm.buyer_type === 'external') {
-      // Handle walk-in customer
       if (!bulkForm.external_customer_id || bulkForm.external_customer_id === 'walk-in') {
         const { data: wi } = await supabase.from('customers').select('id').eq('name','Walk-in Customer').single()
-        if (wi) {
-          custId = wi.id
-        } else {
-          const { data: newWi } = await supabase.from('customers')
-            .insert({ name: 'Walk-in Customer' }).select().single()
+        if (wi) { custId = wi.id } else {
+          const { data: newWi } = await supabase.from('customers').insert({ name: 'Walk-in Customer' }).select().single()
           custId = newWi?.id ?? 1
         }
       } else {
         custId = parseInt(bulkForm.external_customer_id)
         if (!custId) { alert('Please select or add the external customer.'); return }
       }
+    } else if (bulkForm.buyer_type === 'giveaway') {
+      // Use a shared "Free Giveaway" customer record
+      const giveName = 'Free Giveaway'
+      const { data: gi } = await supabase.from('customers').select('id').eq('name', giveName).single()
+      if (gi) { custId = gi.id } else {
+        const { data: newGi } = await supabase.from('customers').insert({ name: giveName }).select().single()
+        custId = newGi?.id ?? 1
+      }
     } else {
-      // Internal rider/employee buyer
       riderId = parseInt(bulkForm.buyer_employee_id) || null
       const rider = riders.find((r: any) => r.id === riderId)
       const riderCustName = rider ? `[Rider] ${rider.full_name}` : 'Bulk Sale'
-      const { data: existCust } = await supabase.from('customers')
-        .select('id').eq('name', riderCustName).single()
-      if (existCust) {
-        custId = existCust.id
-      } else {
-        const { data: newCust } = await supabase.from('customers')
-          .insert({ name: riderCustName, address: 'Internal — Rider/Sales Rep' }).select().single()
+      const { data: existCust } = await supabase.from('customers').select('id').eq('name', riderCustName).single()
+      if (existCust) { custId = existCust.id } else {
+        const { data: newCust } = await supabase.from('customers').insert({ name: riderCustName, address: 'Internal — Rider/Sales Rep' }).select().single()
         custId = newCust?.id ?? 1
       }
     }
@@ -244,6 +251,9 @@ function SalesPageInner() {
       payment_status: status, notes: bulkForm.notes,
       is_overtime: bulkForm.is_overtime ?? false,
       protocol_bags: parseInt(bulkForm.protocol_bags) || 0,
+      is_giveaway: isGiveaway,
+      recipient_category: isGiveaway ? bulkForm.recipient_category : null,
+      recipient_name: isGiveaway ? bulkForm.recipient_name.trim() : null,
     }
 
     let saleId: number | undefined
@@ -263,14 +273,20 @@ function SalesPageInner() {
       alert('Sale saved but could not get sale ID — stock ledger not updated. Please contact admin.')
       return
     }
-    const dispatchName = bulkForm.buyer_type === 'external'
+    const dispatchName = isGiveaway
+      ? `${bulkForm.recipient_category} — ${bulkForm.recipient_name}`
+      : bulkForm.buyer_type === 'external'
       ? 'External Customer'
       : (riders.find((r:any) => r.id === riderId)?.full_name ?? 'Rider')
+
     const { error: fiErr } = await supabase.from('finished_inventory').insert({
       bags_in: 0, bags_out: bags,
-      transaction_date: bulkForm.sale_date, reference_type: 'sale',
+      transaction_date: bulkForm.sale_date,
+      reference_type: isGiveaway ? 'giveaway' : 'sale',
       sale_id: saleId,
-      notes: `Bulk dispatch to ${dispatchName}`,
+      notes: isGiveaway
+        ? `Free giveaway — ${bags} bag${bags !== 1 ? 's' : ''} to ${dispatchName}`
+        : `Bulk dispatch to ${dispatchName}`,
     })
     if (fiErr) {
       alert(`Sale saved but stock ledger failed to update: ${fiErr.message}\nPlease notify admin to fix manually.`)
@@ -560,6 +576,7 @@ function SalesPageInner() {
                     <td className="muted">{s.employees?.full_name ?? 'Factory'}</td>
                     <td className="num">
                       <div>{fmtNum(s.bags_sold)}</div>
+                      {s.is_giveaway && <div className="text-xs text-green-600 font-medium mt-0.5">🎁 {s.recipient_category}</div>}
                       {s.is_overtime && <span className="badge badge-yellow" style={{fontSize:'9px'}}>OT</span>}
                       {(s.protocol_bags ?? 0) > 0 && (
                         <div className="text-xs text-orange-500 font-medium mt-0.5">
@@ -604,13 +621,13 @@ function SalesPageInner() {
               <div>
                 <h2 className="font-bold text-orange-700">
                   {editSale ? 'Edit Bulk Dispatch'
-                    : bulkForm.buyer_type === 'external'
-                    ? '🏪 Bulk Sale to External Customer'
+                    : bulkForm.buyer_type === 'external' ? '🏪 Bulk Sale to External Customer'
+                    : bulkForm.buyer_type === 'giveaway' ? '🎁 Free Giveaway'
                     : '📦 Bulk Dispatch to Rider'}
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {bulkForm.buyer_type === 'external'
-                    ? 'Factory → Wholesale / External bulk customer'
+                  {bulkForm.buyer_type === 'external' ? 'Factory → Wholesale / External bulk customer'
+                    : bulkForm.buyer_type === 'giveaway' ? 'Zero-revenue — reduces stock, flagged in weekly report'
                     : 'Factory → Rider / Sales Rep'}
                 </p>
               </div>
@@ -619,12 +636,14 @@ function SalesPageInner() {
             <div className="modal-body space-y-3">
               {/* Buyer type toggle */}
               <div className="flex gap-2 mb-1">
-                {[['rider','🛵 Rider / Sales Rep'],['external','🏪 External Bulk Customer']].map(([k,l]) => (
+                {([['rider','🛵 Rider / Sales Rep'],['external','🏪 External Bulk Customer'],['giveaway','🎁 Free Giveaway']] as const).map(([k,l]) => (
                   <button key={k} type="button"
-                    onClick={() => setBulkForm(f => ({...f, buyer_type: k as 'rider'|'external'}))}
+                    onClick={() => setBulkForm(f => ({...f, buyer_type: k}))}
                     className={'flex-1 py-2 rounded-xl text-sm font-medium border-2 transition-all '
                       + (bulkForm.buyer_type === k
-                        ? 'border-orange-500 bg-orange-50 text-orange-700'
+                        ? k === 'giveaway'
+                          ? 'border-green-500 bg-green-50 text-green-700'
+                          : 'border-orange-500 bg-orange-50 text-orange-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
                     {l}
                   </button>
@@ -637,6 +656,31 @@ function SalesPageInner() {
                   onChange={e => setBulkForm(f => ({...f, sale_date:e.target.value}))}
                   className="form-input" />
               </div>
+
+              {/* Giveaway recipient fields */}
+              {bulkForm.buyer_type === 'giveaway' && (
+                <>
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-xs text-green-700 font-medium">
+                    🎁 Free giveaway — zero revenue, reduces stock, flagged in weekly report
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Recipient Category *</label>
+                    <select value={bulkForm.recipient_category}
+                      onChange={e => setBulkForm(f => ({...f, recipient_category: e.target.value}))}
+                      className="form-select">
+                      {['Director','Staff','Customer / Guest','Other'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Recipient Name *</label>
+                    <input type="text" value={bulkForm.recipient_name}
+                      onChange={e => setBulkForm(f => ({...f, recipient_name: e.target.value}))}
+                      className="form-input" placeholder="e.g. Mr. Ahiabu" />
+                  </div>
+                </>
+              )}
 
               {/* Rider buyer fields */}
               {bulkForm.buyer_type === 'rider' && (
@@ -699,8 +743,8 @@ function SalesPageInner() {
                   </div>
                 </div>
               )}
-              {/* Overtime toggle */}
-              <div style={{
+              {/* Overtime toggle — hidden for giveaway */}
+              {bulkForm.buyer_type !== 'giveaway' && <div style={{
                 background: bulkForm.is_overtime ? '#fff7ed' : '#f0fdf4',
                 border: `1px solid ${bulkForm.is_overtime ? '#fed7aa' : '#bbf7d0'}`,
                 borderRadius: '10px', padding: '10px 14px',
@@ -726,11 +770,12 @@ function SalesPageInner() {
                     }))}
                     style={{width:'18px', height:'18px', cursor:'pointer'}} />
                 </label>
-              </div>
+              </div>}
 
+              {/* Bags count — shown for all types */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group">
-                  <label className="form-label">Bags Dispatched *</label>
+                  <label className="form-label">Bags {bulkForm.buyer_type === 'giveaway' ? 'Given *' : 'Dispatched *'}</label>
                   <input type="number" value={bulkForm.bags_sold}
                     onChange={e => setBulkForm(f => ({...f, bags_sold:e.target.value}))}
                     className="form-input" />
@@ -751,12 +796,14 @@ function SalesPageInner() {
                       </div>
                     )
                   })()}</div>
-                <div className="form-group">
-                  <label className="form-label">Price per Bag (GHc) *</label>
-                  <input type="number" step="0.01" value={bulkForm.unit_price}
-                    onChange={e => setBulkForm(f => ({...f, unit_price:e.target.value}))}
-                    className="form-input" placeholder="Bulk/wholesale price" />
-                </div>
+                {bulkForm.buyer_type !== 'giveaway' && (
+                  <div className="form-group">
+                    <label className="form-label">Price per Bag (GHc) *</label>
+                    <input type="number" step="0.01" value={bulkForm.unit_price}
+                      onChange={e => setBulkForm(f => ({...f, unit_price:e.target.value}))}
+                      className="form-input" placeholder="Bulk/wholesale price" />
+                  </div>
+                )}
               </div>
               {/* Protocol Bags — free bags written off from this dispatch */}
               <div className="form-group">
@@ -778,18 +825,21 @@ function SalesPageInner() {
                 )}
               </div>
 
-              {bulkTotal > 0 && (                <div className="bg-orange-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm">
+              {bulkTotal > 0 && bulkForm.buyer_type !== 'giveaway' && (
+                <div className="bg-orange-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm">
                   <div><div className="text-xs text-gray-500">Total</div><div className="font-bold text-orange-700">{fmtGhc(bulkTotal)}</div></div>
                   <div><div className="text-xs text-gray-500">Balance</div><div className="font-bold text-red-600">{fmtGhc(bulkBal)}</div></div>
                   <div><div className="text-xs text-gray-500">Status</div><div className="font-bold">{parseFloat(bulkForm.amount_paid||'0')>=bulkTotal?'Paid':parseFloat(bulkForm.amount_paid||'0')>0?'Partial':'Unpaid'}</div></div>
                 </div>
               )}
-              <div className="form-group">
-                <label className="form-label">Amount Paid / Deposit (GHc)</label>
-                <input type="number" step="0.01" value={bulkForm.amount_paid}
-                  onChange={e => setBulkForm(f => ({...f, amount_paid:e.target.value}))}
-                  className="form-input" />
-              </div>
+              {bulkForm.buyer_type !== 'giveaway' && (
+                <div className="form-group">
+                  <label className="form-label">Amount Paid / Deposit (GHc)</label>
+                  <input type="number" step="0.01" value={bulkForm.amount_paid}
+                    onChange={e => setBulkForm(f => ({...f, amount_paid:e.target.value}))}
+                    className="form-input" />
+                </div>
+              )}
               <div className="form-group">
                 <label className="form-label">Notes</label>
                 <textarea value={bulkForm.notes} rows={2}
@@ -801,10 +851,14 @@ function SalesPageInner() {
               <button onClick={() => setShowForm(false)} className="btn btn-secondary">Cancel</button>
               <button onClick={saveBulkSale}
                 disabled={
-                  !bulkForm.bags_sold || !bulkForm.unit_price ||
-                  (bulkForm.buyer_type === 'rider' && !bulkForm.buyer_employee_id)
+                  !bulkForm.bags_sold ||
+                  (bulkForm.buyer_type === 'rider' && !bulkForm.buyer_employee_id) ||
+                  (bulkForm.buyer_type !== 'giveaway' && !bulkForm.unit_price) ||
+                  (bulkForm.buyer_type === 'giveaway' && !bulkForm.recipient_name.trim())
                 }
-                className="btn btn-warning">📦 Record Dispatch</button>
+                className="btn btn-warning">
+                {bulkForm.buyer_type === 'giveaway' ? '🎁 Record Giveaway' : '📦 Record Dispatch'}
+              </button>
             </div>
           </div>
         </div>
