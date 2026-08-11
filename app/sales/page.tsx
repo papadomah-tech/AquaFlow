@@ -592,7 +592,7 @@ function SalesPageInner() {
                       <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
-                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false, protocol_bags: String(s.protocol_bags ?? 0) })
+                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.is_giveaway ? 'giveaway' : s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false, protocol_bags: String(s.protocol_bags ?? 0), recipient_category: s.recipient_category ?? 'Director', recipient_name: s.recipient_name ?? '' })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
                         <button onClick={() => {
