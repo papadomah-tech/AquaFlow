@@ -808,14 +808,22 @@ function WeeklyReportInner() {
           return { date, estRev, collected, protocol, imprest, opFee, totalDeduct, netCash, hasActivity }
         })
 
+        // Add cumulative running totals — resets each month (from row 0)
+        let cumDeduct = 0, cumNet = 0
+        const rowsWithCumul = rows.map(r => {
+          cumDeduct += r.totalDeduct
+          cumNet    += r.netCash
+          return { ...r, cumDeduct, cumNet }
+        })
+
         // Month totals
-        const totEst     = rows.reduce((a, r) => a + r.estRev, 0)
-        const totColl    = rows.reduce((a, r) => a + r.collected, 0)
-        const totProt    = rows.reduce((a, r) => a + r.protocol, 0)
-        const totImprest = rows.reduce((a, r) => a + r.imprest, 0)
-        const totOpFee   = rows.reduce((a, r) => a + r.opFee, 0)
-        const totDeduct  = rows.reduce((a, r) => a + r.totalDeduct, 0)
-        const totNet     = rows.reduce((a, r) => a + r.netCash, 0)
+        const totEst     = rowsWithCumul.reduce((a, r) => a + r.estRev, 0)
+        const totColl    = rowsWithCumul.reduce((a, r) => a + r.collected, 0)
+        const totProt    = rowsWithCumul.reduce((a, r) => a + r.protocol, 0)
+        const totImprest = rowsWithCumul.reduce((a, r) => a + r.imprest, 0)
+        const totOpFee   = rowsWithCumul.reduce((a, r) => a + r.opFee, 0)
+        const totDeduct  = rowsWithCumul.reduce((a, r) => a + r.totalDeduct, 0)
+        const totNet     = rowsWithCumul.reduce((a, r) => a + r.netCash, 0)
 
         const todayStr = today()
 
@@ -849,11 +857,13 @@ function WeeklyReportInner() {
                     <th className="text-right px-3 py-3 font-semibold">Imprest</th>
                     <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
                     <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
-                    <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Net Cash</th>
+                    <th className="text-right px-3 py-3 font-semibold bg-red-900/30">Cumul. Deductions</th>
+                    <th className="text-right px-3 py-3 font-semibold">Net Cash</th>
+                    <th className="text-right px-3 py-3 font-semibold bg-blue-900/30 rounded-tr-xl">Cumul. Net Cash</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => {
+                  {rowsWithCumul.map((r, i) => {
                     const isToday  = r.date === todayStr
                     const dayName  = new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short' })
                     const isSunday = dayName === 'Sun'
@@ -887,8 +897,14 @@ function WeeklyReportInner() {
                         <td className="px-3 py-2.5 text-right tabular-nums font-medium text-red-700">
                           {r.totalDeduct > 0 ? `− ${fmtGhc(r.totalDeduct)}` : <span className="text-gray-200">—</span>}
                         </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-800 bg-red-50/50">
+                          {r.cumDeduct > 0 ? `− ${fmtGhc(r.cumDeduct)}` : <span className="text-gray-200">—</span>}
+                        </td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: r.netCash > 0 ? '#1F4E79' : undefined }}>
                           {r.netCash > 0 ? fmtGhc(r.netCash) : r.hasActivity ? fmtGhc(0) : <span className="text-gray-200">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#1F4E79] bg-blue-50/50">
+                          {r.cumNet > 0 ? fmtGhc(r.cumNet) : r.hasActivity ? fmtGhc(0) : <span className="text-gray-200">—</span>}
                         </td>
                       </tr>
                     )
@@ -903,12 +919,15 @@ function WeeklyReportInner() {
                     <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totImprest)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totOpFee)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-red-700">{`− ${fmtGhc(totDeduct)}`}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold text-red-800 bg-red-50/50">{`− ${fmtGhc(totDeduct)}`}</td>
                     <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold bg-blue-50/50" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
                   </tr>
                 </tfoot>
               </table>
               <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
                 💡 Faded rows = no activity. Op Fee = GH₵ 30 per 100 bags produced that day. Net Cash = Collected − Imprest − Op Fee.
+                Cumulative columns reset on the 1st of each month.
               </div>
             </div>
           </div>
