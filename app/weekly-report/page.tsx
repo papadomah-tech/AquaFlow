@@ -813,11 +813,13 @@ function WeeklyReportInner() {
         })
 
         // Add cumulative running totals — resets each month (from row 0)
-        let cumDeduct = 0, cumNet = 0
+        let cumDeduct = 0, cumNet = 0, cumColl = 0
         const rowsWithCumul = rows.map(r => {
           cumDeduct += r.totalDeduct
           cumNet    += r.netCash
-          return { ...r, cumDeduct, cumNet }
+          cumColl   += r.collected
+          const cumCashOnHand = cumColl - cumDeduct  // can be negative
+          return { ...r, cumDeduct, cumNet, cumCashOnHand }
         })
 
         // Month totals
@@ -864,6 +866,7 @@ function WeeklyReportInner() {
                     <th className="text-right px-3 py-3 font-semibold bg-red-900/30">Cumul. Deductions</th>
                     <th className="text-right px-3 py-3 font-semibold">Net Cash</th>
                     <th className="text-right px-3 py-3 font-semibold bg-blue-900/30 rounded-tr-xl">Cumul. Net Cash</th>
+                    <th className="text-right px-3 py-3 font-semibold bg-green-900/30">Cumul. Cash on Hand</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -917,11 +920,17 @@ function WeeklyReportInner() {
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#1F4E79] bg-blue-50/50">
                           {r.cumNet > 0 ? fmtGhc(r.cumNet) : r.hasActivity ? fmtGhc(0) : <span className="text-gray-200">—</span>}
                         </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold bg-green-50/50"
+                          style={{ color: r.cumCashOnHand >= 0 ? '#1B5E20' : '#BF4D00' }}>
+                          {r.hasActivity || r.cumCashOnHand !== 0
+                            ? fmtGhc(r.cumCashOnHand)
+                            : <span className="text-gray-200">—</span>}
+                        </td>
                       </tr>
                       {/* Imprest drill-down row */}
                       {dailyImprestOpen === r.date && (imprestEntriesByDay[r.date] ?? []).length > 0 && (
                         <tr key={r.date + '-imprest'} className="bg-red-50/60 border-b border-red-100">
-                          <td colSpan={11} className="px-8 py-2.5">
+                          <td colSpan={12} className="px-8 py-2.5">
                             <div className="text-xs font-semibold text-red-700 mb-1.5">
                               Imprest entries — {fmtDate(r.date)}
                             </div>
@@ -966,6 +975,10 @@ function WeeklyReportInner() {
                     <td className="px-3 py-3 text-right tabular-nums font-bold text-red-800 bg-red-50/50">{`− ${fmtGhc(totDeduct)}`}</td>
                     <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
                     <td className="px-3 py-3 text-right tabular-nums font-bold bg-blue-50/50" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold bg-green-50/50"
+                      style={{ color: (totColl - totDeduct) >= 0 ? '#1B5E20' : '#BF4D00' }}>
+                      {fmtGhc(totColl - totDeduct)}
+                    </td>
                   </tr>
                 </tfoot>
               </table>
