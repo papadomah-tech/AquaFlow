@@ -212,7 +212,7 @@ function WeeklyReportInner() {
       // Bulk dispatches — group by rider
       const wBulk = (bulkSales ?? []).filter((s: any) => inRange(s.sale_date))
       const riderMap: Record<string, any> = {}
-      wBulk.forEach((s: any) => {
+      wBulk.filter((s: any) => !s.is_giveaway).forEach((s: any) => {
         const name = s.buyer?.full_name ?? s.customers?.name ?? 'External'
         if (!riderMap[name]) riderMap[name] = { name, bags: 0, invoiced: 0, collected: 0, outstanding: 0, dispatches: [] }
         riderMap[name].bags        += s.bags_sold
@@ -315,7 +315,7 @@ function WeeklyReportInner() {
       // • Registered external/wholesale customer → GHc 4.80
       let estRevenue = 0
       let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0, estOvertimeBags = 0
-      wBulk.forEach((s: any) => {
+      wBulk.filter((s: any) => !s.is_giveaway).forEach((s: any) => {
         const isOvertime = !!s.is_overtime
         const isRider    = !!s.buyer
         const isWalkin   = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
