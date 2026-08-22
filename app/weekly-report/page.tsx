@@ -72,10 +72,6 @@ function WeeklyReportInner() {
   // Imprest totals auto-fetched per week (replaces manual opCash input)
   const [imprestTotals,  setImprestTotals]  = useState<Record<string, number>>({})
   const [imprestEntries, setImprestEntries] = useState<Record<string, any[]>>({})
-  const [imprestRaw,     setImprestRaw]     = useState<any[]>([])
-  const [bulkSalesRaw,   setBulkSalesRaw]   = useState<any[]>([])
-  const [batchesRaw,     setBatchesRaw]     = useState<any[]>([])
-  const [dailyImprestOpen, setDailyImprestOpen] = useState<string | null>(null) // date key of open drill-down
   // Toggle drill-down visibility in deposit recorded banner
   const [showImprestBreakdown, setShowImprestBreakdown] = useState<Record<string, boolean>>({})
   const [showOpFeeBreakdown,   setShowOpFeeBreakdown]   = useState<Record<string, boolean>>({})
@@ -94,7 +90,6 @@ function WeeklyReportInner() {
   const [registering, setRegistering]   = useState<string|null>(null)
   const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
   const [snapshots, setSnapshots]       = useState<Record<string, any>>({})  // locked weekly snapshots
-  const [activeTab, setActiveTab]       = useState<'weekly' | 'revenue' | 'daily'>('weekly')
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -123,11 +118,12 @@ function WeeklyReportInner() {
         .select('batch_number, batch_date, bags_produced, roll_ref')
         .or('is_archived.is.null,is_archived.eq.false').gte('batch_date', monthFrom).lte('batch_date', monthTo),
       supabase.from('sales')
-        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,protocol_bags,is_giveaway,recipient_category,recipient_name,buyer:employees!buyer_employee_id(full_name),customers(name)')
+        .select('sale_date,bags_sold,total_amount,amount_paid,outstanding_balance,payment_status,is_overtime,buyer:employees!buyer_employee_id(full_name),customers(name)')
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false')
         .gte('sale_date', monthFrom).lte('sale_date', monthTo),
       supabase.from('bank_deposits')
         .select('*')
+        .gte('deposit_date', monthFrom).lte('deposit_date', monthTo)
         .ilike('notes', '%Weekly Report%'),
       // All inventory up to end of month for running stock calc
       supabase.from('finished_inventory')
@@ -144,24 +140,14 @@ function WeeklyReportInner() {
         .eq('sale_type', 'bulk').or('is_archived.is.null,is_archived.eq.false'),
     ])
 
-    // Fetch locked weekly snapshots for this month AND previous month
-    // Previous month snapshots are needed to carry the last locked closing into Week 1's opening
-    const prevMonthKey = (() => {
-      const d = new Date(selYear, selMonth - 2, 1)  // selMonth is 1-based; -2 goes back one month
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    })()
+    // Fetch locked weekly snapshots for this month
     const { data: snapshotRows } = await supabase
       .from('weekly_stock_snapshots')
       .select('*')
-      .in('month_key', [monthStr, prevMonthKey])
+      .eq('month_key', monthStr)
     const snapshotMap: Record<string, any> = {}
     ;(snapshotRows ?? []).forEach((s: any) => { snapshotMap[s.week_from] = s })
     setSnapshots(snapshotMap)
-
-    // Find the last locked snapshot from the previous month (for Week 1 opening)
-    const prevMonthLastLockedSnap = (snapshotRows ?? [])
-      .filter((s: any) => s.month_key === prevMonthKey && s.is_locked)
-      .sort((a: any, b: any) => b.week_from.localeCompare(a.week_from))[0] ?? null
 
     // Fetch imprest entries for each week and compute totals
     const ws2 = getWeeks(selYear, selMonth)
@@ -182,9 +168,6 @@ function WeeklyReportInner() {
       })
       setImprestTotals(totals)
       setImprestEntries(entries)
-      setImprestRaw(imprestData ?? [])
-      setBulkSalesRaw(bulkSales ?? [])
-      setBatchesRaw(batches ?? [])
       // Auto-populate opCash so the deposit calculation uses imprest totals
       const opMap: Record<string, string> = {}
       ws2.forEach((w: any) => {
@@ -212,14 +195,14 @@ function WeeklyReportInner() {
       // Bulk dispatches — group by rider
       const wBulk = (bulkSales ?? []).filter((s: any) => inRange(s.sale_date))
       const riderMap: Record<string, any> = {}
-      wBulk.filter((s: any) => !s.is_giveaway).forEach((s: any) => {
+      wBulk.forEach((s: any) => {
         const name = s.buyer?.full_name ?? s.customers?.name ?? 'External'
         if (!riderMap[name]) riderMap[name] = { name, bags: 0, invoiced: 0, collected: 0, outstanding: 0, dispatches: [] }
         riderMap[name].bags        += s.bags_sold
         riderMap[name].invoiced    += s.total_amount
         riderMap[name].collected   += s.amount_paid
         riderMap[name].outstanding += s.outstanding_balance
-        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, protocol_bags: s.protocol_bags || 0, invoiced: s.total_amount, collected: s.amount_paid })
+        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, invoiced: s.total_amount, collected: s.amount_paid })
       })
 
       const totalInvoiced   = wBulk.reduce((a: number, s: any) => a + s.total_amount, 0)
@@ -241,22 +224,16 @@ function WeeklyReportInner() {
         // If previous week has a locked snapshot, use its physical count as opening
         openingStock = prevWeekClosing
       } else {
-        // Week 1: opening = previous month's closing stock.
-        // Priority 1: use the last locked snapshot from the previous month (most authoritative —
-        //   this is the physical count confirmed at end of last month).
-        // Priority 2: fall back to summing all finished_inventory up to end of prev month.
-        if (prevMonthLastLockedSnap) {
-          openingStock = prevMonthLastLockedSnap.closing_stock
-        } else {
-          const prevMonthEnd = new Date(selYear, selMonth - 1, 0) // last day of prev month
-          const prevMonthEndStr = prevMonthEnd.toISOString().slice(0, 10)
-          openingStock = (allInventory ?? [])
-            .filter((r: any) =>
-              r.transaction_date <= prevMonthEndStr &&
-              (r.is_archived === null || r.is_archived === false)
-            )
-            .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
-        }
+        // Week 1: opening = previous month's closing
+        // Compute as: sum of all non-archived finished_inventory before this month's start
+        const prevMonthEnd = new Date(selYear, selMonth - 1, 0) // last day of prev month
+        const prevMonthEndStr = prevMonthEnd.toISOString().slice(0, 10)
+        openingStock = (allInventory ?? [])
+          .filter((r: any) =>
+            r.transaction_date <= prevMonthEndStr &&
+            (r.is_archived === null || r.is_archived === false)
+          )
+          .reduce((a: number, r: any) => a + (r.bags_in || 0) - (r.bags_out || 0), 0)
       }
 
       // If this week has a locked snapshot, use its confirmed closing
@@ -290,20 +267,14 @@ function WeeklyReportInner() {
 
       const weekAllBagsIn = weekProdIn + weekAdjIn
 
-      // Protocol bags — free write-offs linked to dispatches this week
-      const weekProtocolOut = wBulk.reduce((a: number, s: any) => a + (s.protocol_bags || 0), 0)
+      // Dispatches = from bulk sales records (authoritative)
+      const weekDispOut = wBulk.reduce((a: number, s: any) => a + s.bags_sold, 0)
 
-      // Giveaway bags — free bags to directors/staff/guests, zero revenue, separate from paid dispatches
-      const weekGiveawayOut = wBulk.filter((s: any) => s.is_giveaway).reduce((a: number, s: any) => a + s.bags_sold, 0)
-
-      // Dispatches = paid bulk sales only (excludes giveaways)
-      const weekDispOut = wBulk.filter((s: any) => !s.is_giveaway).reduce((a: number, s: any) => a + s.bags_sold, 0)
-
-      // Week's Closing Stock Balance (pure: opening + produced − dispatched − protocol − giveaways)
-      const weekClosingBalance = openingStock + weekProdIn - weekDispOut - weekProtocolOut - weekGiveawayOut
+      // Week's Closing Stock Balance (pure: opening + produced − dispatched, no adjustments)
+      const weekClosingBalance = openingStock + weekProdIn - weekDispOut
 
       // System closing (includes adjustments) → feeds next week's opening
-      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut - weekProtocolOut - weekGiveawayOut
+      const systemClosing = openingStock + weekAllBagsIn - weekAdjOut - weekDispOut
 
       // Roll forward: if this week is locked, next week opens from the physical count
       // otherwise from the computed systemClosing
@@ -315,7 +286,7 @@ function WeeklyReportInner() {
       // • Registered external/wholesale customer → GHc 4.80
       let estRevenue = 0
       let estRiderBags = 0, estWalkinBags = 0, estExternalBags = 0, estOvertimeBags = 0
-      wBulk.filter((s: any) => !s.is_giveaway).forEach((s: any) => {
+      wBulk.forEach((s: any) => {
         const isOvertime = !!s.is_overtime
         const isRider    = !!s.buyer
         const isWalkin   = !s.buyer && (s.customers?.name === 'Walk-in Customer' || !s.customers?.name)
@@ -343,7 +314,7 @@ function WeeklyReportInner() {
         totalInvoiced, totalCollected, totalOutstanding,
         deposit: wDep ?? null,
         // Stock reconciliation
-        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekProtocolOut, weekGiveawayOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
+        openingStock, openingEntries, weekAllBagsIn, weekProdIn, weekDispOut, weekAdjIn, weekAdjOut, weekClosingBalance, systemClosing, estRiderBags, estWalkinBags, estExternalBags, estOvertimeBags,
         lockedSnap, lockedClosing,
         batchDetails: wBatches,
         estRevenue, stockVarianceBags, collectionVariance,
@@ -508,7 +479,7 @@ function WeeklyReportInner() {
     <AppLayout>
       <div className="page-header">
         <div>
-          <h1 className="page-title">📅 Weekly Report</h1>
+          <h1 className="page-title">📅 Monthly Deposit Report</h1>
           <div className="text-xs text-gray-400 mt-0.5">Weekly breakdown — bulk dispatches, production & deposits</div>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
@@ -530,32 +501,21 @@ function WeeklyReportInner() {
         const totalInv  = weeks.reduce((a,w) => a + (weekData[w.from]?.totalInvoiced||0), 0)
         const totalColl = weeks.reduce((a,w) => a + (weekData[w.from]?.totalCollected||0), 0)
         const totalDep  = weeks.reduce((a,w) => a + (weekData[w.from]?.deposit?.amount||0), 0)
-        const totalImprest = weeks.reduce((a,w) => a + (imprestTotals[w.from] ?? 0), 0)
-        const totalOpFee   = weeks.reduce((a,w) => {
-          const wd2 = weekData[w.from] ?? {}
-          const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s:number,b:any) => s + b.bags_produced, 0)
-          return a + (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
-        }, 0)
-        const totalDeductions = totalImprest + totalOpFee
-        const netAvailable    = Math.max(0, totalColl - totalDeductions)
         return (
           <div className="rounded-2xl p-5 mb-5 bg-[#1F4E79] text-white shadow-lg">
             <div className="text-blue-200 text-sm font-medium mb-1">
               {MONTHS[selMonth-1]} {selYear} — Monthly Summary
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
               {[
-                { label: 'Bags Dispatched', value: fmtNum(totalProd),        sub: null },
-                { label: 'Total Invoiced',  value: fmtGhc(totalInv),         sub: null },
-                { label: 'Total Collected', value: fmtGhc(totalColl),        sub: null },
-                { label: 'Total Deductions',value: `− ${fmtGhc(totalDeductions)}`, sub: `Imprest ${fmtGhc(totalImprest)} · Op Fee ${fmtGhc(totalOpFee)}` },
-                { label: 'Net Available Cash', value: fmtGhc(netAvailable),  sub: 'Collected minus deductions' },
-                { label: 'Total Deposited', value: fmtGhc(totalDep),         sub: totalDep < netAvailable ? `${fmtGhc(netAvailable - totalDep)} undeposited` : '✓ Fully deposited' },
-              ].map(({ label, value, sub }) => (
-                <div key={label} className="bg-white/10 rounded-xl p-3 text-center">
-                  <div className="text-blue-200 text-xs">{label}</div>
-                  <div className="text-white font-bold tabular-nums mt-0.5">{value}</div>
-                  {sub && <div className="text-blue-300 text-xs mt-0.5 opacity-80">{sub}</div>}
+                ['Bags Dispatched',  fmtNum(totalProd)],
+                ['Total Invoiced',   fmtGhc(totalInv)],
+                ['Total Collected',  fmtGhc(totalColl)],
+                ['Total Deposited',  fmtGhc(totalDep)],
+              ].map(([l,v]) => (
+                <div key={l} className="bg-white/10 rounded-xl p-3 text-center">
+                  <div className="text-blue-200 text-xs">{l}</div>
+                  <div className="text-white font-bold tabular-nums mt-0.5">{v}</div>
                 </div>
               ))}
             </div>
@@ -563,436 +523,7 @@ function WeeklyReportInner() {
         )
       })()}
 
-      {/* ── Tab toggle ────────────────────────────────────────────────── */}
-      {!loading && weeks.length > 0 && (
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-4 w-fit">
-          {([['weekly', '📋 Weekly Detail'], ['revenue', '📊 Revenue Summary'], ['daily', '📆 Daily Revenue Reconciliation']] as const).map(([tab, label]) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                activeTab === tab
-                  ? 'bg-white text-[#1F4E79] shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── Revenue Summary Tab ───────────────────────────────────────── */}
-      {!loading && activeTab === 'revenue' && weeks.length > 0 && (() => {
-        const totBags      = weeks.reduce((a,w) => a + (weekData[w.from]?.weekDispOut ?? 0), 0)
-        const totProd      = weeks.reduce((a,w) => a + (weekData[w.from]?.weekProdIn ?? 0), 0)
-        const totEst       = weeks.reduce((a,w) => a + (weekData[w.from]?.estRevenue ?? 0), 0)
-        const totInv       = weeks.reduce((a,w) => a + (weekData[w.from]?.totalInvoiced ?? 0), 0)
-        const totColl      = weeks.reduce((a,w) => a + (weekData[w.from]?.totalCollected ?? 0), 0)
-        const totOut       = weeks.reduce((a,w) => a + (weekData[w.from]?.totalOutstanding ?? 0), 0)
-        const totDep       = weeks.reduce((a,w) => a + (weekData[w.from]?.deposit?.amount ?? 0), 0)
-        const totGap       = weeks.reduce((a,w) => a + (weekData[w.from]?.collectionVariance ?? 0), 0)
-        return (
-          <div className="space-y-4">
-            {/* Summary cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Bags Dispatched', value: fmtNum(totBags),  color: '#1F4E79' },
-                { label: 'Est. Revenue',    value: fmtGhc(totEst),   color: '#5C6BC0' },
-                { label: 'Actual Collected',value: fmtGhc(totColl),  color: '#1B5E20' },
-                { label: 'Outstanding',     value: fmtGhc(totOut),   color: totOut > 0 ? '#BF4D00' : '#1B5E20' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="card text-center py-4">
-                  <div className="text-xs text-gray-400 mb-1">{label}</div>
-                  <div className="text-lg font-bold tabular-nums" style={{ color }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Week-by-week table */}
-            <div className="card overflow-x-auto p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#1F4E79] text-white">
-                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Week</th>
-                    <th className="text-left px-3 py-3 text-blue-200 text-xs font-normal">Period</th>
-                    <th className="text-right px-3 py-3 font-semibold">Produced</th>
-                    <th className="text-right px-3 py-3 font-semibold">Dispatched</th>
-                    <th className="text-right px-3 py-3 font-semibold">Est. Revenue</th>
-                    <th className="text-right px-3 py-3 font-semibold">Invoiced</th>
-                    <th className="text-right px-3 py-3 font-semibold">Collected</th>
-                    <th className="text-right px-3 py-3 font-semibold">Outstanding</th>
-                    <th className="text-right px-3 py-3 font-semibold">Imprest</th>
-                    <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
-                    <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
-                    <th className="text-right px-3 py-3 font-semibold">Protocol Bags</th>
-                    <th className="text-right px-3 py-3 font-semibold">Est. Gap</th>
-                    <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Deposited</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {weeks.map((w, wi) => {
-                    const wd  = weekData[w.from] ?? {}
-                    const dep = weekData[w.from]?.deposit
-                    const gap = wd.collectionVariance ?? 0
-                    const todayStr = today()
-                    const isActive = todayStr >= w.from && todayStr <= w.to
-                    return (
-                      <tr key={w.from}
-                        className={`border-b border-gray-100 transition-colors hover:bg-blue-50/40 cursor-pointer ${
-                          isActive ? 'bg-blue-50' : wi % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                        }`}
-                        onClick={() => { setSelWeekIdx(wi); setActiveTab('weekly') }}>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-[#1F4E79]">
-                            Week {wi + 1}
-                            {isActive && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Active</span>}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">
-                          {fmtDate(w.from)} → {fmtDate(w.to)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-gray-700">
-                          {fmtNum(wd.weekProdIn ?? 0)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums font-medium text-[#1F4E79]">
-                          {fmtNum(wd.weekDispOut ?? 0)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-purple-700">
-                          {fmtGhc(wd.estRevenue ?? 0)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#BF4D00' }}>
-                          {fmtGhc(wd.totalInvoiced ?? 0)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums font-semibold" style={{ color: '#1B5E20' }}>
-                          {fmtGhc(wd.totalCollected ?? 0)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums" style={{ color: (wd.totalOutstanding ?? 0) > 0 ? '#BF4D00' : '#1B5E20' }}>
-                          {fmtGhc(wd.totalOutstanding ?? 0)}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-red-600">
-                          {(imprestTotals[w.from] ?? 0) > 0 ? fmtGhc(imprestTotals[w.from]) : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-red-600">
-                          {(() => {
-                            const bSum = ((wd.batchDetails ?? []) as any[]).reduce((a: number, b: any) => a + b.bags_produced, 0)
-                            const fee  = (bSum > 0 ? bSum : (wd.weekProdIn ?? 0)) / 100 * 30
-                            return fee > 0 ? fmtGhc(fee) : <span className="text-gray-300">—</span>
-                          })()}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums font-semibold text-red-700">
-                          {(() => {
-                            const imp  = imprestTotals[w.from] ?? 0
-                            const bSum = ((wd.batchDetails ?? []) as any[]).reduce((a: number, b: any) => a + b.bags_produced, 0)
-                            const fee  = (bSum > 0 ? bSum : (wd.weekProdIn ?? 0)) / 100 * 30
-                            const tot  = imp + fee
-                            return tot > 0 ? `− ${fmtGhc(tot)}` : <span className="text-gray-300">—</span>
-                          })()}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                          {(wd.weekProtocolOut ?? 0) > 0
-                            ? <span className="text-orange-600 font-medium">{fmtNum(wd.weekProtocolOut)} 🎁</span>
-                            : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-xs">
-                          <span className={`px-2 py-0.5 rounded-full font-medium ${
-                            Math.abs(gap) < 0.01 ? 'bg-green-100 text-green-700'
-                            : gap > 0 ? 'bg-orange-100 text-orange-700'
-                            : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {gap > 0.01 ? '+' : ''}{fmtGhc(gap)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                          {dep
-                            ? <span className="text-green-700 font-semibold">{fmtGhc(dep.amount)}</span>
-                            : <span className="text-gray-300 text-xs">—</span>}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
-                    <td className="px-4 py-3 text-[#1F4E79]" colSpan={2}>Month Total</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-gray-700">{fmtNum(totProd)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-[#1F4E79]">{fmtNum(totBags)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(totEst)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#BF4D00' }}>{fmtGhc(totInv)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1B5E20' }}>{fmtGhc(totColl)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: totOut > 0 ? '#BF4D00' : '#1B5E20' }}>{fmtGhc(totOut)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-red-600">{fmtGhc(weeks.reduce((a,w) => a + (imprestTotals[w.from] ?? 0), 0))}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-red-600">{fmtGhc(weeks.reduce((a,w) => {
-                      const wd2 = weekData[w.from] ?? {}
-                      const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s: number, b: any) => s + b.bags_produced, 0)
-                      return a + (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
-                    }, 0))}</td>
-                    <td className="px-3 py-3 text-right tabular-nums font-bold text-red-700">
-                      {`− ${fmtGhc(weeks.reduce((a,w) => {
-                        const wd2 = weekData[w.from] ?? {}
-                        const imp  = imprestTotals[w.from] ?? 0
-                        const bSum = ((wd2.batchDetails ?? []) as any[]).reduce((s: number, b: any) => s + b.bags_produced, 0)
-                        const fee  = (bSum > 0 ? bSum : (wd2.weekProdIn ?? 0)) / 100 * 30
-                        return a + imp + fee
-                      }, 0))}`}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-orange-600 font-bold">
-                      {(() => {
-                        const tot = weeks.reduce((a,w) => a + ((weekData[w.from]?.weekProtocolOut) ?? 0), 0)
-                        return tot > 0 ? `${fmtNum(tot)} 🎁` : <span className="text-gray-300">—</span>
-                      })()}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-xs">
-                      <span className={`px-2 py-0.5 rounded-full font-medium ${
-                        Math.abs(totGap) < 0.01 ? 'bg-green-100 text-green-700'
-                        : totGap > 0 ? 'bg-orange-100 text-orange-700'
-                        : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {totGap > 0.01 ? '+' : ''}{fmtGhc(totGap)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-green-700">{fmtGhc(totDep)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-              <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
-                💡 Click any row to jump to that week's detail view.
-                &nbsp;Est. Gap = Estimated Revenue − Actual Collected (positive = under-collection).
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ── Daily Revenue Reconciliation Tab ──────────────────────────── */}
-      {!loading && activeTab === 'daily' && weeks.length > 0 && (() => {
-        // Build all calendar days in the selected month
-        const daysInMonth = new Date(selYear, selMonth, 0).getDate()
-        const allDays = Array.from({ length: daysInMonth }, (_, i) => {
-          const d = i + 1
-          return `${selYear}-${String(selMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-        })
-
-        // Group bulk sales by date
-        const salesByDay: Record<string, any[]> = {}
-        bulkSalesRaw.forEach((s: any) => {
-          if (!salesByDay[s.sale_date]) salesByDay[s.sale_date] = []
-          salesByDay[s.sale_date].push(s)
-        })
-
-        // Group imprest by date — totals for calculations, entries for drill-down
-        const imprestByDay: Record<string, number> = {}
-        const imprestEntriesByDay: Record<string, any[]> = {}
-        imprestRaw.forEach((e: any) => {
-          imprestByDay[e.entry_date] = (imprestByDay[e.entry_date] ?? 0) + e.amount
-          if (!imprestEntriesByDay[e.entry_date]) imprestEntriesByDay[e.entry_date] = []
-          imprestEntriesByDay[e.entry_date].push(e)
-        })
-
-        // Group production by date for operator fee (30/100 bags)
-        const prodByDay: Record<string, number> = {}
-        ;(batchesRaw ?? []).forEach((b: any) => {
-          prodByDay[b.batch_date] = (prodByDay[b.batch_date] ?? 0) + b.bags_produced
-        })
-
-        // Compute per-day figures
-        const rows = allDays.map(date => {
-          const daySales    = salesByDay[date] ?? []
-          const estRev      = daySales.reduce((a: number, s: any) => {
-            const isRider = !!s.buyer?.full_name
-            return a + s.bags_sold * (isRider ? 6 : 4.8)
-          }, 0)
-          const collected   = daySales.reduce((a: number, s: any) => a + s.amount_paid, 0)
-          const protocol    = daySales.reduce((a: number, s: any) => a + (s.protocol_bags || 0), 0)
-          const imprest     = imprestByDay[date] ?? 0
-          const bagsProduced= prodByDay[date] ?? 0
-          const opFee       = Math.floor(bagsProduced / 100) * 30
-          const totalDeduct = imprest + opFee
-          const netCash     = Math.max(0, collected - totalDeduct)
-          const hasActivity = daySales.length > 0 || imprest > 0 || bagsProduced > 0
-          return { date, estRev, collected, protocol, imprest, opFee, totalDeduct, netCash, hasActivity }
-        })
-
-        // Add cumulative running totals — resets each month (from row 0)
-        let cumDeduct = 0, cumNet = 0, cumColl = 0
-        const rowsWithCumul = rows.map(r => {
-          cumDeduct += r.totalDeduct
-          cumNet    += r.netCash
-          cumColl   += r.collected
-          const cumCashOnHand = cumColl - cumDeduct  // can be negative
-          return { ...r, cumDeduct, cumNet, cumCashOnHand }
-        })
-
-        // Month totals
-        const totEst     = rowsWithCumul.reduce((a, r) => a + r.estRev, 0)
-        const totColl    = rowsWithCumul.reduce((a, r) => a + r.collected, 0)
-        const totProt    = rowsWithCumul.reduce((a, r) => a + r.protocol, 0)
-        const totImprest = rowsWithCumul.reduce((a, r) => a + r.imprest, 0)
-        const totOpFee   = rowsWithCumul.reduce((a, r) => a + r.opFee, 0)
-        const totDeduct  = rowsWithCumul.reduce((a, r) => a + r.totalDeduct, 0)
-        const totNet     = rowsWithCumul.reduce((a, r) => a + r.netCash, 0)
-
-        const todayStr = today()
-
-        return (
-          <div className="space-y-4">
-            {/* Summary cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Est. Revenue',      value: fmtGhc(totEst),    color: '#5C6BC0' },
-                { label: 'Actual Collected',  value: fmtGhc(totColl),   color: '#1B5E20' },
-                { label: 'Total Deductions',  value: `− ${fmtGhc(totDeduct)}`, color: '#BF4D00' },
-                { label: 'Net Cash Available',value: fmtGhc(totNet),    color: '#1F4E79' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="card text-center py-4">
-                  <div className="text-xs text-gray-400 mb-1">{label}</div>
-                  <div className="text-lg font-bold tabular-nums" style={{ color }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Daily table */}
-            <div className="card overflow-x-auto p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#1F4E79] text-white">
-                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Date</th>
-                    <th className="text-left px-3 py-3 text-blue-200 text-xs font-normal">Day</th>
-                    <th className="text-right px-3 py-3 font-semibold">Est. Revenue</th>
-                    <th className="text-right px-3 py-3 font-semibold">Collected</th>
-                    <th className="text-right px-3 py-3 font-semibold">Protocol</th>
-                    <th className="text-right px-3 py-3 font-semibold">Imprest</th>
-                    <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
-                    <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
-                    <th className="text-right px-3 py-3 font-semibold bg-red-900/30">Cumul. Deductions</th>
-                    <th className="text-right px-3 py-3 font-semibold">Net Cash</th>
-                    <th className="text-right px-3 py-3 font-semibold bg-blue-900/30 rounded-tr-xl">Cumul. Net Cash</th>
-                    <th className="text-right px-3 py-3 font-semibold bg-green-900/30">Cumul. Cash on Hand</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rowsWithCumul.map((r, i) => {
-                    const isToday  = r.date === todayStr
-                    const dayName  = new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short' })
-                    const isSunday = dayName === 'Sun'
-                    return (
-                      <>
-                        <tr key={r.date}
-                        className={`border-b border-gray-100 transition-colors
-                          ${isToday ? 'bg-blue-50 font-medium' : isSunday ? 'bg-gray-50/80' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}
-                          ${!r.hasActivity ? 'opacity-40' : ''}`}>
-                        <td className="px-4 py-2.5">
-                          <span className={`tabular-nums ${isToday ? 'text-[#1F4E79] font-bold' : 'text-gray-700'}`}>
-                            {fmtDate(r.date)}
-                          </span>
-                          {isToday && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Today</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-400 text-xs">{dayName}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-purple-700">
-                          {r.estRev > 0 ? fmtGhc(r.estRev) : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-medium" style={{ color: r.collected > 0 ? '#1B5E20' : undefined }}>
-                          {r.collected > 0 ? fmtGhc(r.collected) : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-orange-500">
-                          {r.protocol > 0 ? `${r.protocol} 🎁` : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-red-500">
-                          {r.imprest > 0
-                            ? <button
-                                onClick={() => setDailyImprestOpen(p => p === r.date ? null : r.date)}
-                                className="text-red-500 hover:text-red-700 hover:underline tabular-nums font-medium cursor-pointer">
-                                {fmtGhc(r.imprest)} {dailyImprestOpen === r.date ? '▲' : '▼'}
-                              </button>
-                            : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-red-500">
-                          {r.opFee > 0 ? fmtGhc(r.opFee) : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-medium text-red-700">
-                          {r.totalDeduct > 0 ? `− ${fmtGhc(r.totalDeduct)}` : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-800 bg-red-50/50">
-                          {r.cumDeduct > 0 ? `− ${fmtGhc(r.cumDeduct)}` : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: r.netCash > 0 ? '#1F4E79' : undefined }}>
-                          {r.netCash > 0 ? fmtGhc(r.netCash) : r.hasActivity ? fmtGhc(0) : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#1F4E79] bg-blue-50/50">
-                          {r.cumNet > 0 ? fmtGhc(r.cumNet) : r.hasActivity ? fmtGhc(0) : <span className="text-gray-200">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold bg-green-50/50"
-                          style={{ color: r.cumCashOnHand >= 0 ? '#1B5E20' : '#BF4D00' }}>
-                          {r.hasActivity || r.cumCashOnHand !== 0
-                            ? fmtGhc(r.cumCashOnHand)
-                            : <span className="text-gray-200">—</span>}
-                        </td>
-                      </tr>
-                      {/* Imprest drill-down row */}
-                      {dailyImprestOpen === r.date && (imprestEntriesByDay[r.date] ?? []).length > 0 && (
-                        <tr key={r.date + '-imprest'} className="bg-red-50/60 border-b border-red-100">
-                          <td colSpan={12} className="px-8 py-2.5">
-                            <div className="text-xs font-semibold text-red-700 mb-1.5">
-                              Imprest entries — {fmtDate(r.date)}
-                            </div>
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-gray-400 border-b border-red-100">
-                                  <th className="text-left py-1 font-medium w-2/3">Description</th>
-                                  <th className="text-right py-1 font-medium">Amount</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(imprestEntriesByDay[r.date] ?? []).map((entry: any, ei: number) => (
-                                  <tr key={ei} className="border-b border-red-50">
-                                    <td className="py-1 text-gray-600">{entry.description || entry.category || '—'}</td>
-                                    <td className="py-1 text-right tabular-nums text-red-600 font-medium">{fmtGhc(entry.amount)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                              <tfoot>
-                                <tr className="border-t border-red-200">
-                                  <td className="py-1 font-semibold text-red-700">Total</td>
-                                  <td className="py-1 text-right tabular-nums font-bold text-red-700">{fmtGhc(r.imprest)}</td>
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </td>
-                        </tr>
-                      )}
-                      </>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
-                    <td className="px-4 py-3 text-[#1F4E79]" colSpan={2}>Month Total</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(totEst)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1B5E20' }}>{fmtGhc(totColl)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-orange-500">{totProt > 0 ? `${totProt} 🎁` : '—'}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totImprest)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totOpFee)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-red-700">{`− ${fmtGhc(totDeduct)}`}</td>
-                    <td className="px-3 py-3 text-right tabular-nums font-bold text-red-800 bg-red-50/50">{`− ${fmtGhc(totDeduct)}`}</td>
-                    <td className="px-3 py-3 text-right tabular-nums" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums font-bold bg-blue-50/50" style={{ color: '#1F4E79' }}>{fmtGhc(totNet)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums font-bold bg-green-50/50"
-                      style={{ color: (totColl - totDeduct) >= 0 ? '#1B5E20' : '#BF4D00' }}>
-                      {fmtGhc(totColl - totDeduct)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-              <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
-                💡 Faded rows = no activity. Op Fee = GH₵ 30 per 100 bags produced that day. Net Cash = Collected − Imprest − Op Fee.
-                Cumulative columns reset on the 1st of each month.
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ── Weekly Detail Tab ─────────────────────────────────────────── */}
-      {activeTab === 'weekly' && (loading ? (
+      {loading ? (
         <div className="text-center py-12 text-gray-400">Building report...</div>
       ) : weeks.length === 0 ? (
         <div className="text-center py-12 text-gray-400">No weeks found for this period.</div>
@@ -1258,7 +789,7 @@ function WeeklyReportInner() {
                               className="text-red-600 hover:underline font-medium">
                               − Dispatched (all out) {dispOpen[week.from] ? '▲' : '▼'}
                             </button>
-                            <span className="tabular-nums font-medium text-red-600">{fmtNum((wd.weekDispOut ?? 0) + (wd.weekProtocolOut ?? 0))}</span>
+                            <span className="tabular-nums font-medium text-red-600">{fmtNum(wd.weekDispOut ?? 0)}</span>
                           </div>
                           {dispOpen[week.from] && (
                             <div className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 mt-1 mb-1">
@@ -1273,53 +804,27 @@ function WeeklyReportInner() {
                                         <span className="text-red-500">−{fmtNum(d.bags)}</span>
                                       </div>
                                     ))}
-                                    {/* Protocol bags per rider */}
-                                    {(r.dispatches ?? []).some((d: any) => (d.protocol_bags ?? 0) > 0) && (
-                                      <div className="flex justify-between py-0.5 pl-2 border-l-2 border-orange-200">
-                                        <span className="text-orange-500">🎁 Protocol bags</span>
-                                        <span className="text-orange-500">−{fmtNum((r.dispatches ?? []).reduce((a: number, d: any) => a + (d.protocol_bags ?? 0), 0))}</span>
-                                      </div>
-                                    )}
                                     {/* Rider subtotal */}
                                     <div className="flex justify-between font-medium border-t border-dashed border-gray-200 pt-0.5 mt-0.5">
                                       <span className="text-gray-600">{r.name} subtotal</span>
-                                      <span className="text-red-600">−{fmtNum(r.bags + (r.dispatches ?? []).reduce((a: number, d: any) => a + (d.protocol_bags ?? 0), 0))}</span>
+                                      <span className="text-red-600">−{fmtNum(r.bags)}</span>
                                     </div>
                                   </div>
                                 ))}
-                              {/* Protocol bags total line if any */}
-                              {(wd.weekProtocolOut ?? 0) > 0 && (
-                                <div className="flex justify-between text-orange-600 border-t border-dashed border-gray-200 pt-0.5">
-                                  <span className="font-medium">🎁 Total Protocol Bags (zero revenue)</span>
-                                  <span className="tabular-nums">−{fmtNum(wd.weekProtocolOut)}</span>
-                                </div>
-                              )}
                               <div className="flex justify-between font-semibold border-t-2 border-gray-300 pt-1 mt-1">
                                 <span>Total Dispatched</span>
-                                <span className="text-red-700">{fmtNum((wd.weekDispOut ?? 0) + (wd.weekProtocolOut ?? 0))}</span>
+                                <span className="text-red-700">{fmtNum(wd.weekDispOut ?? 0)}</span>
                               </div>
                             </div>
                           )}
                         </div>
-
-                        {/* Giveaway Bags — free bags, zero revenue, separate line */}
-                        {(wd.weekGiveawayOut ?? 0) > 0 && (
-                          <div className="flex justify-between text-xs items-center bg-green-50 rounded-lg px-2 py-1.5 border border-green-200">
-                            <span className="text-green-700 font-medium">
-                              🎁 Free Giveaway Bags (zero revenue)
-                            </span>
-                            <span className="tabular-nums font-semibold text-green-600">
-                              − {fmtNum(wd.weekGiveawayOut)} bags
-                            </span>
-                          </div>
-                        )}
 
                         {/* Week's Closing Stock Balance */}
                         <div style={{background:'#1F4E79',borderRadius:'0.5rem',padding:'0.5rem 0.75rem',marginTop:'0.5rem'}}>
                           <div style={{fontSize:'0.7rem',color:'#93c5fd',marginBottom:'0.15rem'}}>
                             Week&#39;s Closing Stock Balance
                             <span style={{opacity:0.75,marginLeft:'0.25rem'}}>
-                              ({fmtNum(wd.openingStock ?? 0)} + {fmtNum(wd.weekProdIn ?? 0)} − {fmtNum(wd.weekDispOut ?? 0)}{(wd.weekProtocolOut ?? 0) > 0 ? ` − ${fmtNum(wd.weekProtocolOut)} protocol` : ''})
+                              ({fmtNum(wd.openingStock ?? 0)} + {fmtNum(wd.weekProdIn ?? 0)} − {fmtNum(wd.weekDispOut ?? 0)})
                             </span>
                           </div>
                           <div style={{fontSize:'1.25rem',fontWeight:'bold',color:'white',fontVariantNumeric:'tabular-nums'}}>
@@ -1523,18 +1028,6 @@ function WeeklyReportInner() {
                             <span className="text-blue-800">Total Estimated</span>
                             <span className="tabular-nums text-[#1F4E79]">{fmtGhc(wd.estRevenue ?? 0)}</span>
                           </div>
-                          {(wd.weekProtocolOut ?? 0) > 0 && (
-                            <div className="flex justify-between text-xs mt-0.5 bg-orange-50 rounded px-1.5 py-1 border border-orange-200">
-                              <span className="text-orange-700 font-medium">🎁 Protocol Bags (free — GH₵ 0.00)</span>
-                              <span className="tabular-nums text-orange-600 font-semibold">{fmtNum(wd.weekProtocolOut)} bags</span>
-                            </div>
-                          )}
-                          {(wd.weekGiveawayOut ?? 0) > 0 && (
-                            <div className="flex justify-between text-xs mt-0.5 bg-green-50 rounded px-1.5 py-1 border border-green-200">
-                              <span className="text-green-700 font-medium">🎁 Free Giveaway Bags (GH₵ 0.00)</span>
-                              <span className="tabular-nums text-green-600 font-semibold">{fmtNum(wd.weekGiveawayOut)} bags</span>
-                            </div>
-                          )}
                         </div>
                         {([
                           ['Actual Invoiced',    fmtGhc(wd.totalInvoiced ?? 0),   'text-gray-600'],
@@ -1629,7 +1122,7 @@ function WeeklyReportInner() {
                                 ))}
                                 <div className="flex justify-between text-xs font-bold border-t border-blue-200 pt-1 mt-1">
                                   <span className="text-blue-700">Total</span>
-                                  <span className="text-blue-700 tabular-nums">{fmtGhc(entries.reduce((a: number, e: any) => a + e.amount, 0))}</span>
+                                  <span className="text-blue-700 tabular-nums">{fmtGhc(ops)}</span>
                                 </div>
                               </div>
                             )
@@ -1685,12 +1178,6 @@ function WeeklyReportInner() {
                               </div>
                             )
                           })()}
-                          <div className="border-t border-green-100 pt-1.5 flex justify-between text-sm text-gray-500">
-                            <span>Total Deductions</span>
-                            <span className="tabular-nums text-red-600 font-medium">
-                              − {fmtGhc(ops + opFeeAmt)}
-                            </span>
-                          </div>
                           <div className="border-t border-green-200 pt-1.5">
                             {/* If recalculated amount differs from stored, flag it */}
                             {(() => {
@@ -1890,14 +1377,14 @@ function WeeklyReportInner() {
               </div>
             </div>
           )
-        })())}
+        })()}
     </AppLayout>
   )
 }
 
 export default function WeeklyReportPage() {
   return (
-    <ModuleGuard moduleKey="weekly-report" moduleLabel="Weekly Report">
+    <ModuleGuard moduleKey="weekly-report" moduleLabel="Monthly Deposit Report">
       <WeeklyReportInner />
     </ModuleGuard>
   )

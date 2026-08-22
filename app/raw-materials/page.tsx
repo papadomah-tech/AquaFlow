@@ -149,12 +149,9 @@ function RawMaterialsInner() {
     setModal('material')
   }
 
-  const openPurchase = async () => {
+  const openPurchase = () => {
     setEditItem(null)
-    // Fetch fresh materials directly so the dropdown always reflects latest additions
-    const { data: freshMats } = await supabase.from('raw_materials').select('*').order('name')
-    setMaterials(freshMats ?? [])
-    const rfMat = (freshMats ?? []).find((m: Material) => m.name.toLowerCase().includes('roll'))
+    const rfMat = materials.find(m => m.name.toLowerCase().includes('roll'))
     setPurchForm({ ...emptyPurchase(), material_id: rfMat ? String(rfMat.id) : '', material_name: rfMat ? rfMat.name : '' })
     setModal('purchase')
   }
@@ -290,8 +287,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     const payload = { name: matForm.name, unit: matForm.unit, low_stock_threshold: parseFloat(matForm.low_stock_threshold) || 0, usage_per_bag: parseFloat(matForm.usage_per_bag) || 0 }
     if (editItem) await supabase.from('raw_materials').update(payload).eq('id', editItem.id)
     else await supabase.from('raw_materials').insert({ ...payload, current_stock: 0 })
-    await loadAll()
-    setSaving(false); closeModal()
+    setSaving(false); closeModal(); loadAll()
   }
 
   // ── Save Purchase (+ auto-post to cashbook) ───────────────────────────────

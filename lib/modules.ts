@@ -23,6 +23,7 @@ export const ALL_MODULES: AppModule[] = [
   { key: 'personnel',      label: 'Personnel',      icon: '👥', href: '/personnel',      adminOnly: false, description: 'Employees, performance pay, losses' },
   { key: 'reports',        label: 'Reports',        icon: '📈', href: '/reports',        adminOnly: false, description: 'P&L, salesperson reports, financial analysis' },
   { key: 'weekly-report',    label: 'Deposit Report',   icon: '📅', href: '/weekly-report',  adminOnly: false, description: 'Monthly deposit report segregated by week' },
+  { key: 'period-report',    label: 'Period Report',    icon: '🗓️', href: '/period-report',  adminOnly: false, description: 'Date-range revenue summary with expected vs actual payment settlement' },
   { key: 'fund-segregation', label: 'Fund Segregation', icon: '💰', href: '/fund-segregation', adminOnly: false, description: 'Ring-fence cost components and track available funds' },
   { key: 'performance',    label: 'Performance Pay', icon: '📊', href: '/performance',   adminOnly: false, description: 'Calculate and pay performance-based salaries' },
   { key: 'imprest',        label: 'Imprest',        icon: '🧾', href: '/imprest',        adminOnly: false, description: 'Petty cash float — advances and expense reconciliation' },
