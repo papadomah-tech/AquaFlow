@@ -136,7 +136,7 @@ function RawMaterialsInner() {
   const openRoll = (item?: Roll) => {
     setEditItem(item ?? null)
     setRollForm(item
-      ? { label: item.label, weight_kg: String(item.weight_kg), purchase_date: item.purchase_date ?? today(), supplier: item.supplier ?? '', cost_per_kg: item.cost ? String((item.cost / item.weight_kg).toFixed(2)) : '' }
+      ? { label: item.label, weight_kg: String(item.weight_kg), purchase_date: item.purchase_date ?? today(), supplier: item.supplier ?? '', cost_per_kg: item.cost ? String((item.cost / item.weight_kg).toFixed(2)) : '', purchase_id: '' }
       : emptyRoll())
     setModal('roll')
   }
