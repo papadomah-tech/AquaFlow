@@ -89,7 +89,7 @@ function PeriodReportInner() {
         .or('is_archived.is.null,is_archived.eq.false')
         .gte('entry_date', dateFrom).lte('entry_date', dateTo),
       supabase.from('production_batches')
-        .select('batch_date,bags_produced,batch_ref').gte('batch_date', dateFrom).lte('batch_date', dateTo),
+        .select('batch_date,bags_produced,batch_number').gte('batch_date', dateFrom).lte('batch_date', dateTo),
     ])
 
     const sales    = salesData   ?? []
@@ -366,7 +366,7 @@ function PeriodReportInner() {
                   {summary.batches.map((b: any, i: number) => (
                     <tr key={i} className="border-t border-gray-50">
                       <td className="px-3 py-1.5 text-gray-500">{fmtDate(b.batch_date)}</td>
-                      <td className="px-3 py-1.5 text-gray-500">{b.batch_ref || '—'}</td>
+                      <td className="px-3 py-1.5 text-gray-500">{b.batch_number || '—'}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(b.bags_produced)}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-orange-700 font-medium">
                         {fmtGhc(Math.floor(b.bags_produced / 100) * OP_FEE_PER_100)}
