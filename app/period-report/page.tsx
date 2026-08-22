@@ -175,21 +175,18 @@ function PeriodReportInner() {
       {/* Step 1 */}
       <div className="card mb-4">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Step 1 — Select Date Range</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-          <div className="form-group mb-0">
+        <div className="flex flex-col md:flex-row gap-3 items-end">
+          <div className="form-group mb-0 flex-1">
             <label className="form-label">Start Date *</label>
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="form-input" />
           </div>
-          <div className="form-group mb-0">
+          <div className="form-group mb-0 flex-1">
             <label className="form-label">End Date *</label>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="form-input" />
           </div>
-          <div className="form-group mb-0">
-            <label className="form-label opacity-0">Generate</label>
-            <button onClick={generate} disabled={loading} className="btn btn-primary w-full">
-              {loading ? 'Generating...' : '🔍 Generate Report'}
-            </button>
-          </div>
+          <button onClick={generate} disabled={loading} className="btn btn-primary flex-1">
+            {loading ? 'Generating...' : '🔍 Generate Report'}
+          </button>
         </div>
       </div>
 
@@ -422,31 +419,28 @@ function PeriodReportInner() {
           {confirmed && activeReport && (
             <div className="border-t border-gray-100 pt-4">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Step 3 — Record Actual Payment</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                <div className="form-group mb-0">
+              <div className="flex flex-col md:flex-row gap-3 items-end">
+                <div className="form-group mb-0 flex-1">
                   <label className="form-label">Actual Amount Paid (GH₵)</label>
                   <input type="number" step="0.01" value={actualAmt}
                     onChange={e => setActualAmt(e.target.value)} className="form-input" />
-                  {actualAmt && (
-                    <div className={`text-xs mt-1 font-medium ${gap === 0 ? 'text-green-600' : gap > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                      {gap === 0 ? '✅ Exact — Settled'
-                        : gap > 0 ? `⬆️ Overpaid by ${fmtGhc(Math.abs(gap))}`
-                        : `⬇️ Underpaid by ${fmtGhc(Math.abs(gap))} — Settle`}
-                    </div>
-                  )}
                 </div>
-                <div className="form-group mb-0">
+                <div className="form-group mb-0 flex-1">
                   <label className="form-label">Notes (optional)</label>
                   <input type="text" value={payNotes} onChange={e => setPayNotes(e.target.value)}
                     className="form-input" placeholder="e.g. Bank transfer ref..." />
                 </div>
-                <div className="form-group mb-0">
-                  <label className="form-label opacity-0">Record</label>
-                  <button onClick={recordPayment} disabled={saving || !actualAmt} className="btn btn-primary w-full">
-                    {saving ? 'Saving...' : '💾 Record Payment'}
-                  </button>
-                </div>
+                <button onClick={recordPayment} disabled={saving || !actualAmt} className="btn btn-primary flex-1">
+                  {saving ? 'Saving...' : '💾 Record Payment'}
+                </button>
               </div>
+              {actualAmt && (
+                <div className={`text-xs mt-2 font-medium ${gap === 0 ? 'text-green-600' : gap > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                  {gap === 0 ? '✅ Exact — Settled'
+                    : gap > 0 ? `⬆️ Overpaid by ${fmtGhc(Math.abs(gap))}`
+                    : `⬇️ Underpaid by ${fmtGhc(Math.abs(gap))} — Settle`}
+                </div>
+              )}
               {activeReport.actual_amount != null && (
                 <div className={`mt-3 rounded-xl px-4 py-3 text-sm font-semibold ${STATUS_STYLES[activeReport.status as ReportStatus]}`}>
                   {STATUS_LABELS[activeReport.status as ReportStatus]}
