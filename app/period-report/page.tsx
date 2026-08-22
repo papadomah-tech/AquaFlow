@@ -122,6 +122,19 @@ function PeriodReportInner() {
   const confirmReport = useCallback(async () => {
     if (!summary) return
     setConfirming(true)
+
+    // Prevent duplicate — check for any existing report overlapping this date range
+    const { data: existing } = await supabase
+      .from('period_payment_reports')
+      .select('id,date_from,date_to,status')
+      .or(`and(date_from.lte.${summary.dateTo},date_to.gte.${summary.dateFrom})`)
+      .limit(1)
+    if (existing && existing.length > 0) {
+      const ex = existing[0]
+      alert(`A report already exists for an overlapping period (${fmtDate(ex.date_from)} → ${fmtDate(ex.date_to)}, status: ${ex.status}).\n\nReverse or delete that report first before creating a new one.`)
+      setConfirming(false); return
+    }
+
     const { data, error } = await supabase.from('period_payment_reports').insert({
       date_from: summary.dateFrom, date_to: summary.dateTo,
       expected_amount: summary.netCash, status: 'pending',
@@ -161,6 +174,24 @@ function PeriodReportInner() {
     loadHistory()
   }, [loadHistory])
 
+  // Reverse — remove payment record, reset to pending so it can be re-confirmed
+  const reverseReport = useCallback(async (row: any) => {
+    if (!confirm(`Reverse the payment for ${fmtDate(row.date_from)} → ${fmtDate(row.date_to)}?\n\nThis will reset it to Pending so you can re-enter the correct amount.`)) return
+    const { error } = await supabase.from('period_payment_reports').update({
+      actual_amount: null, notes: null, status: 'pending', settled_at: null,
+    }).eq('id', row.id)
+    if (error) { alert('Failed to reverse: ' + error.message); return }
+    loadHistory()
+  }, [loadHistory])
+
+  // Delete — permanently removes the report row
+  const deleteReport = useCallback(async (row: any) => {
+    if (!confirm(`Delete the report for ${fmtDate(row.date_from)} → ${fmtDate(row.date_to)}?\n\nThis cannot be undone.`)) return
+    const { error } = await supabase.from('period_payment_reports').delete().eq('id', row.id)
+    if (error) { alert('Failed to delete: ' + error.message); return }
+    loadHistory()
+  }, [loadHistory])
+
   const gap = activeReport ? (parseFloat(actualAmt) || 0) - activeReport.expected_amount : 0
 
   return (
@@ -176,11 +207,11 @@ function PeriodReportInner() {
       <div className="card mb-4">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Step 1 — Select Date Range</div>
         <div className="flex flex-col md:flex-row gap-3 items-end">
-          <div className="form-group mb-0 flex-1">
+          <div className="flex-1">
             <label className="form-label">Start Date *</label>
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="form-input" />
           </div>
-          <div className="form-group mb-0 flex-1">
+          <div className="flex-1">
             <label className="form-label">End Date *</label>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="form-input" />
           </div>
@@ -420,12 +451,12 @@ function PeriodReportInner() {
             <div className="border-t border-gray-100 pt-4">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Step 3 — Record Actual Payment</div>
               <div className="flex flex-col md:flex-row gap-3 items-end">
-                <div className="form-group mb-0 flex-1">
+                <div className="flex-1">
                   <label className="form-label">Actual Amount Paid (GH₵)</label>
                   <input type="number" step="0.01" value={actualAmt}
                     onChange={e => setActualAmt(e.target.value)} className="form-input" />
                 </div>
-                <div className="form-group mb-0 flex-1">
+                <div className="flex-1">
                   <label className="form-label">Notes (optional)</label>
                   <input type="text" value={payNotes} onChange={e => setPayNotes(e.target.value)}
                     className="form-input" placeholder="e.g. Bank transfer ref..." />
@@ -491,7 +522,10 @@ function PeriodReportInner() {
                 const displayed = [...withBalance].sort((a, b) => b.date_from.localeCompare(a.date_from))
                 return displayed.map((row: any) => (
                   <HistoryRow key={row.id} row={row} diff={row.diff}
-                    runningBalance={row.runningBalance} onSettle={recordHistoryPayment} />
+                    runningBalance={row.runningBalance}
+                    onSettle={recordHistoryPayment}
+                    onReverse={reverseReport}
+                    onDelete={deleteReport} />
                 ))
               })()}
             </tbody>
@@ -502,7 +536,10 @@ function PeriodReportInner() {
   )
 }
 
-function HistoryRow({ row, diff, runningBalance, onSettle }: { row: any; diff: number | null; runningBalance: number; onSettle: any }) {
+function HistoryRow({ row, diff, runningBalance, onSettle, onReverse, onDelete }: {
+  row: any; diff: number | null; runningBalance: number
+  onSettle: any; onReverse: any; onDelete: any
+}) {
   const [editing, setEditing] = useState(false)
   const [amt,     setAmt]     = useState(String(row.actual_amount ?? row.expected_amount))
   const [notes,   setNotes]   = useState(row.notes ?? '')
@@ -567,23 +604,38 @@ function HistoryRow({ row, diff, runningBalance, onSettle }: { row: any; diff: n
           </span>
         </td>
         <td className="px-3 py-2.5 text-center">
-          {row.status !== 'settled' ? (
-            editing
-              ? <div className="flex gap-1 justify-center">
-                  <button onClick={save} disabled={saving}
-                    className="btn btn-sm btn-primary" style={{fontSize:'11px',padding:'2px 8px'}}>
-                    {saving ? '...' : 'Save'}
-                  </button>
-                  <button onClick={() => setEditing(false)}
-                    className="btn btn-sm btn-secondary" style={{fontSize:'11px',padding:'2px 8px'}}>
-                    Cancel
-                  </button>
-                </div>
-              : <button onClick={() => setEditing(true)}
-                  className="btn btn-sm btn-warning" style={{fontSize:'11px',padding:'2px 8px'}}>
-                  {row.status === 'pending' ? '💰 Pay' : '⚖️ Settle'}
+          <div className="flex gap-1 justify-center flex-wrap">
+            {row.status !== 'settled' && !editing && (
+              <button onClick={() => setEditing(true)}
+                className="btn btn-sm btn-warning" style={{fontSize:'11px',padding:'2px 8px'}}>
+                {row.status === 'pending' ? '💰 Pay' : '⚖️ Settle'}
+              </button>
+            )}
+            {editing && (
+              <>
+                <button onClick={save} disabled={saving}
+                  className="btn btn-sm btn-primary" style={{fontSize:'11px',padding:'2px 8px'}}>
+                  {saving ? '...' : 'Save'}
                 </button>
-          ) : <span className="text-gray-300 text-xs">—</span>}
+                <button onClick={() => setEditing(false)}
+                  className="btn btn-sm btn-secondary" style={{fontSize:'11px',padding:'2px 8px'}}>
+                  Cancel
+                </button>
+              </>
+            )}
+            {row.actual_amount != null && !editing && (
+              <button onClick={() => onReverse(row)}
+                className="btn btn-sm btn-secondary" style={{fontSize:'11px',padding:'2px 8px'}}
+                title="Reset payment — resets to Pending so you can re-enter">
+                ↩ Reverse
+              </button>
+            )}
+            <button onClick={() => onDelete(row)}
+              className="btn btn-sm btn-danger" style={{fontSize:'11px',padding:'2px 8px'}}
+              title="Permanently delete this report">
+              Del
+            </button>
+          </div>
         </td>
       </tr>
       {/* Inline payment hint when editing */}
