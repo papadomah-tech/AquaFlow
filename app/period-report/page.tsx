@@ -184,9 +184,12 @@ function PeriodReportInner() {
             <label className="form-label">End Date *</label>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="form-input" />
           </div>
-          <button onClick={generate} disabled={loading} className="btn btn-primary">
-            {loading ? 'Generating...' : '🔍 Generate Report'}
-          </button>
+          <div className="form-group mb-0">
+            <label className="form-label opacity-0">Generate</label>
+            <button onClick={generate} disabled={loading} className="btn btn-primary w-full">
+              {loading ? 'Generating...' : '🔍 Generate Report'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -437,9 +440,12 @@ function PeriodReportInner() {
                   <input type="text" value={payNotes} onChange={e => setPayNotes(e.target.value)}
                     className="form-input" placeholder="e.g. Bank transfer ref..." />
                 </div>
-                <button onClick={recordPayment} disabled={saving || !actualAmt} className="btn btn-primary">
-                  {saving ? 'Saving...' : '💾 Record Payment'}
-                </button>
+                <div className="form-group mb-0">
+                  <label className="form-label opacity-0">Record</label>
+                  <button onClick={recordPayment} disabled={saving || !actualAmt} className="btn btn-primary w-full">
+                    {saving ? 'Saving...' : '💾 Record Payment'}
+                  </button>
+                </div>
               </div>
               {activeReport.actual_amount != null && (
                 <div className={`mt-3 rounded-xl px-4 py-3 text-sm font-semibold ${STATUS_STYLES[activeReport.status as ReportStatus]}`}>
@@ -471,16 +477,29 @@ function PeriodReportInner() {
                 <th className="text-right px-3 py-2 font-medium">Expected</th>
                 <th className="text-right px-3 py-2 font-medium">Actual Paid</th>
                 <th className="text-right px-3 py-2 font-medium">Difference</th>
+                <th className="text-right px-3 py-2 font-medium">Carried Fwd</th>
                 <th className="text-left px-3 py-2 font-medium">Notes</th>
                 <th className="text-center px-3 py-2 font-medium">Status</th>
                 <th className="text-center px-3 py-2 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
-              {history.map((row: any) => {
-                const diff = row.actual_amount != null ? row.actual_amount - row.expected_amount : null
-                return <HistoryRow key={row.id} row={row} diff={diff} onSettle={recordHistoryPayment} />
-              })}
+              {(() => {
+                // Sort by date_from ascending to compute running balance
+                const sorted = [...history].sort((a, b) => a.date_from.localeCompare(b.date_from))
+                let runningBalance = 0
+                const withBalance = sorted.map(row => {
+                  const diff = row.actual_amount != null ? row.actual_amount - row.expected_amount : 0
+                  runningBalance += diff
+                  return { ...row, runningBalance, diff: row.actual_amount != null ? diff : null }
+                })
+                // Re-sort back to descending for display (most recent first)
+                const displayed = [...withBalance].sort((a, b) => b.date_from.localeCompare(a.date_from))
+                return displayed.map((row: any) => (
+                  <HistoryRow key={row.id} row={row} diff={row.diff}
+                    runningBalance={row.runningBalance} onSettle={recordHistoryPayment} />
+                ))
+              })()}
             </tbody>
           </table>
         )}
@@ -489,7 +508,7 @@ function PeriodReportInner() {
   )
 }
 
-function HistoryRow({ row, diff, onSettle }: { row: any; diff: number | null; onSettle: any }) {
+function HistoryRow({ row, diff, runningBalance, onSettle }: { row: any; diff: number | null; runningBalance: number; onSettle: any }) {
   const [editing, setEditing] = useState(false)
   const [amt,     setAmt]     = useState(String(row.actual_amount ?? row.expected_amount))
   const [notes,   setNotes]   = useState(row.notes ?? '')
@@ -532,6 +551,16 @@ function HistoryRow({ row, diff, onSettle }: { row: any; diff: number | null; on
                 </span>
               : '—'}
         </td>
+        {/* Carried Forward — running cumulative balance across all periods */}
+        <td className="px-3 py-2.5 text-right tabular-nums text-xs font-semibold">
+          {row.actual_amount != null ? (
+            <span className={runningBalance === 0 ? 'text-green-600' : runningBalance > 0 ? 'text-blue-600' : 'text-red-600'}>
+              {runningBalance === 0 ? '✅ Clear'
+                : runningBalance > 0 ? `+${fmtGhc(runningBalance)}`
+                : fmtGhc(runningBalance)}
+            </span>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
         <td className="px-3 py-2.5 text-gray-400 text-xs">
           {editing
             ? <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
@@ -566,7 +595,7 @@ function HistoryRow({ row, diff, onSettle }: { row: any; diff: number | null; on
       {/* Inline payment hint when editing */}
       {editing && (
         <tr className="bg-yellow-50 border-t border-yellow-100">
-          <td colSpan={7} className="px-4 py-2 text-xs text-yellow-700">
+          <td colSpan={8} className="px-4 py-2 text-xs text-yellow-700">
             Expected: <strong>{fmtGhc(row.expected_amount)}</strong>
             {liveDiff !== 0 && (
               <span className="ml-2">
