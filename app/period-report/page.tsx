@@ -272,7 +272,11 @@ function PeriodReportInner() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 font-bold">
-                    <td colSpan={4} className="px-3 py-2 text-gray-700">Total</td>
+                    <td colSpan={2} className="px-3 py-2 text-gray-700">Total</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                      {fmtNum(summary.paidSales.reduce((a: number, s: any) => a + s.bags_sold, 0))}
+                    </td>
+                    <td className="px-3 py-2"></td>
                     <td className="px-3 py-2 text-right tabular-nums text-indigo-700">{fmtGhc(summary.estRevenue)}</td>
                   </tr>
                 </tfoot>
