@@ -18,7 +18,7 @@ interface Purchase  { id: number; purchase_date: string; material_id: number; su
 const statusBadgeClass = (s: string) => ({ available: 'badge-green', in_use: 'badge-blue', finished: 'badge-gray' }[s] ?? 'badge-gray')
 
 // ─── Empty form states ─────────────────────────────────────────────────────────
-const emptyRoll     = () => ({ label: '', weight_kg: '', purchase_date: today(), supplier: '', cost_per_kg: '' })
+const emptyRoll     = () => ({ label: '', weight_kg: '', purchase_date: today(), supplier: '', cost_per_kg: '', purchase_id: '' })
 const emptyMat      = () => ({ name: '', unit: 'kg', low_stock_threshold: '0', usage_per_bag: '0' })
 const emptyPurchase = () => ({ material_id: '', material_name: '', purchase_date: today(), supplier_name: '', quantity: '', unit_price: '', notes: '' })
 
@@ -1020,6 +1020,53 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
               <button onClick={closeModal} className="text-gray-400 text-xl">✕</button>
             </div>
             <div className="modal-body">
+              {/* Link from Purchase History — only on new rolls */}
+              {!editItem && (() => {
+                const rollPurchases = purchases.filter((p: any) =>
+                  (p.raw_materials?.name ?? '').toLowerCase().includes('roll')
+                )
+                return rollPurchases.length > 0 ? (
+                  <div className="form-group">
+                    <label className="form-label">
+                      📦 Select from Purchase History
+                      <span className="text-gray-400 font-normal ml-1">(auto-fills fields below)</span>
+                    </label>
+                    <select
+                      value={rollForm.purchase_id}
+                      onChange={e => {
+                        const pid = e.target.value
+                        if (!pid) { setRollForm(f => ({...f, purchase_id: ''})); return }
+                        const p = rollPurchases.find((p: any) => String(p.id) === pid)
+                        if (!p) return
+                        setRollForm(f => ({
+                          ...f,
+                          purchase_id:   String(p.id),
+                          weight_kg:     String(p.quantity ?? ''),
+                          cost_per_kg:   String(p.unit_price ?? ''),
+                          supplier:      p.supplier_name ?? '',
+                          purchase_date: p.purchase_date ?? today(),
+                        }))
+                      }}
+                      className="form-select">
+                      <option value="">— Enter details manually —</option>
+                      {rollPurchases.map((p: any) => (
+                        <option key={p.id} value={String(p.id)}>
+                          {p.purchase_date} · {p.quantity} Kg
+                          {p.unit_price ? ` · GH₵${p.unit_price}/Kg` : ''}
+                          {p.supplier_name ? ` · ${p.supplier_name}` : ''}
+                          {` · Total: GH₵${p.total_cost}`}
+                        </option>
+                      ))}
+                    </select>
+                    {rollForm.purchase_id && (
+                      <div className="text-xs text-green-600 mt-1 font-medium">
+                        ✓ Fields auto-filled — edit below if needed
+                      </div>
+                    )}
+                  </div>
+                ) : null
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-group col-span-2">
                   <label className="form-label">Roll Label <span className="text-gray-400 font-normal">(auto-generated if blank)</span></label>
