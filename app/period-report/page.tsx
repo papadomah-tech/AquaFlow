@@ -30,7 +30,7 @@ const STATUS_LABELS: Record<ReportStatus, string> = {
 function DetailPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
   if (!open) return null
   return (
-    <div className="mt-2 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+    <div className="border-t border-gray-100 bg-white overflow-x-auto">
       {children}
     </div>
   )
@@ -200,9 +200,9 @@ function PeriodReportInner() {
           <p className="text-xs text-gray-400 mb-3">💡 Click any figure to see the details behind it.</p>
 
           {/* Est. Revenue card + drill-down */}
-          <div className="mb-2">
+          <div className={`mb-2 rounded-xl border overflow-hidden ${openPanel === 'revenue' ? 'border-indigo-200' : 'border-gray-100'}`}>
             <button onClick={() => togglePanel('revenue')}
-              className={`w-full text-left rounded-xl p-3 flex items-center justify-between transition-all border ${openPanel === 'revenue' ? 'border-indigo-300 bg-indigo-50' : 'bg-gray-50 border-transparent hover:border-gray-200'}`}>
+              className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'revenue' ? 'bg-indigo-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Est. Revenue</span>
               <span className="font-bold tabular-nums text-sm text-indigo-700">
                 {fmtGhc(summary.estRevenue)} {openPanel === 'revenue' ? '▲' : '▼'}
@@ -250,9 +250,9 @@ function PeriodReportInner() {
           </div>
 
           {/* Actual Collected card + drill-down */}
-          <div className="mb-2">
+          <div className={`mb-2 rounded-xl border overflow-hidden ${openPanel === 'collected' ? 'border-green-200' : 'border-gray-100'}`}>
             <button onClick={() => togglePanel('collected')}
-              className={`w-full text-left rounded-xl p-3 flex items-center justify-between transition-all border ${openPanel === 'collected' ? 'border-green-300 bg-green-50' : 'bg-gray-50 border-transparent hover:border-gray-200'}`}>
+              className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'collected' ? 'bg-green-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Actual Collected</span>
               <span className="font-bold tabular-nums text-sm text-green-700">
                 {fmtGhc(summary.collected)} {openPanel === 'collected' ? '▲' : '▼'}
@@ -301,9 +301,9 @@ function PeriodReportInner() {
           </div>
 
           {/* Imprest card + drill-down */}
-          <div className="mb-2">
+          <div className={`mb-2 rounded-xl border overflow-hidden ${openPanel === 'imprest' ? 'border-red-200' : 'border-gray-100'}`}>
             <button onClick={() => togglePanel('imprest')}
-              className={`w-full text-left rounded-xl p-3 flex items-center justify-between transition-all border ${openPanel === 'imprest' ? 'border-red-300 bg-red-50' : 'bg-gray-50 border-transparent hover:border-gray-200'}`}>
+              className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'imprest' ? 'bg-red-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Imprest / Expenses</span>
               <span className="font-bold tabular-nums text-sm text-red-700">
                 − {fmtGhc(summary.totalImprest)} {openPanel === 'imprest' ? '▲' : '▼'}
@@ -341,9 +341,9 @@ function PeriodReportInner() {
           </div>
 
           {/* Operator Fee card + drill-down */}
-          <div className="mb-4">
+          <div className={`mb-4 rounded-xl border overflow-hidden ${openPanel === 'opfee' ? 'border-orange-200' : 'border-gray-100'}`}>
             <button onClick={() => togglePanel('opfee')}
-              className={`w-full text-left rounded-xl p-3 flex items-center justify-between transition-all border ${openPanel === 'opfee' ? 'border-orange-300 bg-orange-50' : 'bg-gray-50 border-transparent hover:border-gray-200'}`}>
+              className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'opfee' ? 'bg-orange-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Operator Fee</span>
               <span className="font-bold tabular-nums text-sm text-orange-700">
                 − {fmtGhc(summary.opFee)} {openPanel === 'opfee' ? '▲' : '▼'}
