@@ -15,7 +15,7 @@ interface Roll      { id: number; label: string; weight_kg: number; kg_remaining
 interface Purchase  { id: number; purchase_date: string; material_id: number; supplier_name: string; quantity: number; unit_price: number; total_cost: number; notes: string; raw_materials?: { name: string; unit: string } }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const statusBadgeClass = (s: string) => ({ available: 'badge-green', in_use: 'badge-blue', finished: 'badge-gray' }[s] ?? 'badge-gray')
+const statusBadgeClass = (s: string) => ({ available: 'badge-green', in_use: 'badge-blue', finished: 'badge-gray', inactive: 'badge-yellow' }[s] ?? 'badge-gray')
 
 // ─── Empty form states ─────────────────────────────────────────────────────────
 const emptyRoll     = () => ({ label: '', weight_kg: '', purchase_date: today(), supplier: '', cost_per_kg: '', purchase_id: '' })
@@ -388,24 +388,24 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     loadAll()
   }
 
-  // Activate a specific available roll — deactivates the current active roll first
+  // Activate a specific available or inactive roll
   const activateRoll = async (roll: Roll) => {
-    if (roll.status !== 'available') return
+    if (roll.status !== 'available' && roll.status !== 'inactive') return
     const { data: active } = await supabase.from('roll_films').select('id, label').eq('status', 'in_use').limit(1).maybeSingle()
     if (active) {
-      if (!confirm(`Activating "${roll.label}" will deactivate the current active roll "${active.label}" (set it back to Available).\n\nProceed?`)) return
-      await supabase.from('roll_films').update({ status: 'available' }).eq('id', active.id)
+      if (!confirm(`Activating "${roll.label}" will deactivate the current active roll "${active.label}" (set it to Inactive).\n\nProceed?`)) return
+      await supabase.from('roll_films').update({ status: 'inactive' }).eq('id', active.id)
     }
     await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', roll.id)
     await recalcRollStock()
     loadAll()
   }
 
-  // Deactivate an in_use roll — sets it back to available without closing it
+  // Deactivate an in_use roll — sets it to inactive (not available for auto-activation)
   const deactivateRoll = async (roll: Roll) => {
     if (roll.status !== 'in_use') return
-    if (!confirm(`Deactivate "${roll.label}"?\n\nThis sets it back to Available without closing it. No bags or Kg will be lost.`)) return
-    await supabase.from('roll_films').update({ status: 'available' }).eq('id', roll.id)
+    if (!confirm(`Deactivate "${roll.label}"?\n\nIt will be set to Inactive — it won't be auto-activated or counted as available until you manually activate it again.`)) return
+    await supabase.from('roll_films').update({ status: 'inactive' }).eq('id', roll.id)
     await recalcRollStock()
     loadAll()
   }
@@ -741,7 +741,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                               <td>
                                 <div className="flex gap-1 flex-wrap">
                                   <button onClick={() => openRoll(r)} className="btn btn-sm btn-secondary">Edit</button>
-                                  {r.status === 'available' && (
+                                  {(r.status === 'available' || r.status === 'inactive') && (
                                     <button onClick={() => activateRoll(r)}
                                       className="btn btn-sm btn-primary"
                                       title="Set this roll as the active roll in use">
