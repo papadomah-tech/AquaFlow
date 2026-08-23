@@ -107,7 +107,7 @@ function PeriodReportInner() {
     const giveawayBags = giveawaySales.reduce((a: number, s: any) => a + s.bags_sold, 0)
     const totalImprest = imprest.reduce((a: number, e: any) => a + (e.amount || 0), 0)
     const totalBagsProduced = batches.reduce((a: number, b: any) => a + b.bags_produced, 0)
-    const opFee    = batches.reduce((a: number, b: any) => a + Math.floor(b.bags_produced / 100) * OP_FEE_PER_100, 0)
+    const opFee    = (totalBagsProduced / 100) * OP_FEE_PER_100
     const netCash  = Math.max(0, collected - totalImprest - opFee)
 
     setSummary({
@@ -404,7 +404,7 @@ function PeriodReportInner() {
                       <td className="px-3 py-1.5 text-gray-500">{b.batch_number || '—'}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(b.bags_produced)}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-orange-700 font-medium">
-                        {fmtGhc(Math.floor(b.bags_produced / 100) * OP_FEE_PER_100)}
+                        {fmtGhc((b.bags_produced / 100) * OP_FEE_PER_100)}
                       </td>
                     </tr>
                   ))}
