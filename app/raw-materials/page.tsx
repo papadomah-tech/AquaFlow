@@ -388,6 +388,28 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     loadAll()
   }
 
+  // Activate a specific available roll — deactivates the current active roll first
+  const activateRoll = async (roll: Roll) => {
+    if (roll.status !== 'available') return
+    const { data: active } = await supabase.from('roll_films').select('id, label').eq('status', 'in_use').limit(1).maybeSingle()
+    if (active) {
+      if (!confirm(`Activating "${roll.label}" will deactivate the current active roll "${active.label}" (set it back to Available).\n\nProceed?`)) return
+      await supabase.from('roll_films').update({ status: 'available' }).eq('id', active.id)
+    }
+    await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', roll.id)
+    await recalcRollStock()
+    loadAll()
+  }
+
+  // Deactivate an in_use roll — sets it back to available without closing it
+  const deactivateRoll = async (roll: Roll) => {
+    if (roll.status !== 'in_use') return
+    if (!confirm(`Deactivate "${roll.label}"?\n\nThis sets it back to Available without closing it. No bags or Kg will be lost.`)) return
+    await supabase.from('roll_films').update({ status: 'available' }).eq('id', roll.id)
+    await recalcRollStock()
+    loadAll()
+  }
+
   const deleteRoll = async (roll: Roll) => {
     if (roll.status === 'in_use') {
       alert(`Cannot delete "${roll.label}" — it is currently active (in use).\nMark it Done first, which will activate the next roll, then delete it.`)
@@ -717,10 +739,24 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                               <td className={"num " + utilColor}>{util}%</td>
                               <td><span className={'badge ' + statusBadgeClass(r.status)}>{r.status}</span></td>
                               <td>
-                                <div className="flex gap-1">
+                                <div className="flex gap-1 flex-wrap">
                                   <button onClick={() => openRoll(r)} className="btn btn-sm btn-secondary">Edit</button>
+                                  {r.status === 'available' && (
+                                    <button onClick={() => activateRoll(r)}
+                                      className="btn btn-sm btn-primary"
+                                      title="Set this roll as the active roll in use">
+                                      ▶ Activate
+                                    </button>
+                                  )}
                                   {r.status === 'in_use' && (
-                                    <button onClick={() => markFinished(r)} className="btn btn-sm btn-warning">Done</button>
+                                    <>
+                                      <button onClick={() => markFinished(r)} className="btn btn-sm btn-warning">Done</button>
+                                      <button onClick={() => deactivateRoll(r)}
+                                        className="btn btn-sm btn-secondary"
+                                        title="Set back to Available without closing">
+                                        ⏸ Deactivate
+                                      </button>
+                                    </>
                                   )}
                                   <button onClick={() => deleteRoll(r)} className="btn btn-sm btn-danger">Del</button>
                                 </div>
