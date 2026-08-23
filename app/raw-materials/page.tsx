@@ -401,11 +401,31 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     loadAll()
   }
 
-  // Deactivate an in_use roll — sets it to inactive (not available for auto-activation)
+  // Deactivate an in_use roll — sets it to inactive and auto-activates the next available roll
   const deactivateRoll = async (roll: Roll) => {
     if (roll.status !== 'in_use') return
-    if (!confirm(`Deactivate "${roll.label}"?\n\nIt will be set to Inactive — it won't be auto-activated or counted as available until you manually activate it again.`)) return
+
+    // Find the next available roll before deactivating
+    const { data: next } = await supabase.from('roll_films')
+      .select('id, label').eq('status', 'available')
+      .order('purchase_date', { ascending: true })
+      .order('label', { ascending: true })
+      .limit(1).maybeSingle()
+
+    const msg = next
+      ? `Deactivate "${roll.label}"?\n\nIt will be set to Inactive and "${next.label}" will become the active roll.`
+      : `Deactivate "${roll.label}"?\n\nNo other available rolls to take over — production will stop until you activate another roll.`
+
+    if (!confirm(msg)) return
+
+    // Set current roll to inactive
     await supabase.from('roll_films').update({ status: 'inactive' }).eq('id', roll.id)
+
+    // Auto-activate the next available roll if one exists
+    if (next) {
+      await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', next.id)
+    }
+
     await recalcRollStock()
     loadAll()
   }
