@@ -40,6 +40,7 @@ function RawMaterialsInner() {
   const [rollForm,  setRollForm]  = useState(emptyRoll())
   const [matForm,   setMatForm]   = useState(emptyMat())
   const [purchForm, setPurchForm] = useState(emptyPurchase())
+  const [editPurchase, setEditPurchase] = useState<any>(null)
 
   // Roll detail
   const [rollDetail, setRollDetail]   = useState<Roll | null>(null)
@@ -151,8 +152,23 @@ function RawMaterialsInner() {
 
   const openPurchase = () => {
     setEditItem(null)
+    setEditPurchase(null)
     const rfMat = materials.find(m => m.name.toLowerCase().includes('roll'))
     setPurchForm({ ...emptyPurchase(), material_id: rfMat ? String(rfMat.id) : '', material_name: rfMat ? rfMat.name : '' })
+    setModal('purchase')
+  }
+
+  const openEditPurchase = (p: any) => {
+    setEditPurchase(p)
+    setPurchForm({
+      material_id:   String(p.material_id ?? ''),
+      material_name: p.raw_materials?.name ?? '',
+      purchase_date: p.purchase_date,
+      supplier_name: p.supplier_name ?? '',
+      quantity:      String(p.quantity ?? ''),
+      unit_price:    String(p.unit_price ?? ''),
+      notes:         p.notes ?? '',
+    })
     setModal('purchase')
   }
 
@@ -307,27 +323,40 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
       notes:         purchForm.notes,
     }
 
-    // 1. Record the purchase
-    await supabase.from('raw_material_purchases').insert(payload)
-
-    // 2. Update material stock — but NOT for Roll Film (stock managed via roll registration)
     const mat = materials.find(m => m.id === parseInt(purchForm.material_id))
     const matIsRollFilm = mat?.name?.toLowerCase().includes('roll')
-    if (mat && !matIsRollFilm) {
-      await supabase.from('raw_materials').update({ current_stock: (mat.current_stock || 0) + purchQty }).eq('id', mat.id)
+
+    if (editPurchase) {
+      // Edit — update the existing row
+      await supabase.from('raw_material_purchases').update(payload).eq('id', editPurchase.id)
+      // Adjust stock: remove old qty, add new qty (non-roll only)
+      if (mat && !matIsRollFilm) {
+        const oldQty = editPurchase.quantity ?? 0
+        const diff   = purchQty - oldQty
+        if (diff !== 0) {
+          await supabase.from('raw_materials').update({ current_stock: (mat.current_stock || 0) + diff }).eq('id', mat.id)
+        }
+      }
+    } else {
+      // Insert new purchase
+      await supabase.from('raw_material_purchases').insert(payload)
+      // Update material stock (not for roll film)
+      if (mat && !matIsRollFilm) {
+        await supabase.from('raw_materials').update({ current_stock: (mat.current_stock || 0) + purchQty }).eq('id', mat.id)
+      }
+      // Auto-post to cashbook
+      if (purchTotal > 0) {
+        await supabase.from('expenses').insert({
+          expense_date: purchForm.purchase_date,
+          category:     'Raw Materials',
+          description:  `${purchForm.material_name} purchase — ${purchQty} ${mat?.unit ?? 'units'} from ${purchForm.supplier_name}${isRollFilm ? ` (est. ${projBags.toLocaleString()} bags, rev. ${fmtGhc(projRevenue)})` : ''}`,
+          amount:       purchTotal,
+          paid_to:      purchForm.supplier_name,
+        })
+      }
     }
 
-    // 3. Auto-post to cashbook (expenses) as Raw Materials / Purchases
-    if (purchTotal > 0) {
-      await supabase.from('expenses').insert({
-        expense_date: purchForm.purchase_date,
-        category:     'Raw Materials',
-        description:  `${purchForm.material_name} purchase — ${purchQty} ${mat?.unit ?? 'units'} from ${purchForm.supplier_name}${isRollFilm ? ` (est. ${projBags.toLocaleString()} bags, rev. ${fmtGhc(projRevenue)})` : ''}`,
-        amount:       purchTotal,
-        paid_to:      purchForm.supplier_name,
-      })
-    }
-
+    setEditPurchase(null)
     setSaving(false); closeModal(); loadAll()
   }
 
@@ -899,7 +928,10 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                         <td className="num font-medium">{fmtGhc(p.total_cost)}</td>
                         <td className="muted text-xs">{p.notes || '—'}</td>
                         <td>
-                          <button onClick={() => deletePurchase(p.id)} className="btn btn-sm btn-danger">Del</button>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditPurchase(p)} className="btn btn-sm btn-secondary">Edit</button>
+                            <button onClick={() => deletePurchase(p.id)} className="btn btn-sm btn-danger">Del</button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1260,7 +1292,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="font-bold text-[#1F4E79]">Record Purchase</h2>
+              <h2 className="font-bold text-[#1F4E79]">{editPurchase ? 'Edit Purchase' : 'Record Purchase'}</h2>
               <button onClick={closeModal} className="text-gray-400 text-xl">✕</button>
             </div>
             <div className="modal-body">
@@ -1359,7 +1391,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                 disabled={saving || !purchForm.material_id || !purchQty || !purchForm.supplier_name.trim()}
                 className="btn btn-primary"
               >
-                {saving ? 'Saving...' : '💾 Save Purchase'}
+                {saving ? 'Saving...' : editPurchase ? '💾 Save Changes' : '💾 Save Purchase'}
               </button>
             </div>
           </div>
