@@ -386,7 +386,7 @@ function PeriodReportInner() {
             </button>
             <DetailPanel open={openPanel === 'opfee'}>
               <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
-                Production batches — GH₵30 per 100 bags produced
+                Production batches — fee calculated on total bags (GH₵30 per 100 bags produced)
               </div>
               <table className="w-full text-xs">
                 <thead>
@@ -394,7 +394,6 @@ function PeriodReportInner() {
                     <th className="text-left px-3 py-2">Date</th>
                     <th className="text-left px-3 py-2">Batch Ref</th>
                     <th className="text-right px-3 py-2">Bags Produced</th>
-                    <th className="text-right px-3 py-2">Fee</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -403,15 +402,16 @@ function PeriodReportInner() {
                       <td className="px-3 py-1.5 text-gray-500">{fmtDate(b.batch_date)}</td>
                       <td className="px-3 py-1.5 text-gray-500">{b.batch_number || '—'}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(b.bags_produced)}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-orange-700 font-medium">
-                        {fmtGhc(Math.floor(b.bags_produced / 100) * OP_FEE_PER_100)}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 font-bold">
-                    <td colSpan={3} className="px-3 py-2 text-gray-700">Total</td>
+                    <td className="px-3 py-2 text-gray-700">Total</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-500">
+                      {fmtNum(summary.batches.reduce((a: number, b: any) => a + b.bags_produced, 0))} bags
+                      → GH₵30 × {Math.floor(summary.batches.reduce((a: number, b: any) => a + b.bags_produced, 0) / 100)} units
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums text-orange-700">{fmtGhc(summary.opFee)}</td>
                   </tr>
                 </tfoot>
