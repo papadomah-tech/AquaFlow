@@ -520,8 +520,9 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     setLoadingTakeHist(true)
     const { data } = await supabase
       .from('stock_takes')
-      .select('*, stock_take_items(*, raw_materials(name, unit))')
-      .order('taken_at', { ascending: false })
+      .select('*, stock_take_items(*)')
+      .or('is_archived.is.null,is_archived.eq.false')
+      .order('take_date', { ascending: false })
       .limit(20)
     setTakeHistory(data ?? [])
     setLoadingTakeHist(false)
@@ -541,28 +542,33 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     // 1. Create stock take header
     const { data: take, error: takeErr } = await supabase
       .from('stock_takes')
-      .insert({ taken_at: stDate, notes: stNotes || null })
+      .insert({ take_date: stDate, notes: stNotes || null, status: 'completed' })
       .select().single()
     if (takeErr || !take) { alert('Failed to save stock take: ' + takeErr?.message); setSavingTake(false); return }
 
     // 2. Save items and update stock for materials that have a count entered
     const items = takeMaterials
       .filter(m => stCounts[m.id] !== undefined && stCounts[m.id] !== '')
-      .map(m => ({
-        stock_take_id: take.id,
-        material_id:   m.id,
-        system_qty:    m.current_stock,
-        physical_qty:  parseFloat(stCounts[m.id]) || 0,
-        unit:          m.unit,
-      }))
+      .map(m => {
+        const counted = parseFloat(stCounts[m.id]) || 0
+        return {
+          stock_take_id: take.id,
+          item_type:     'material',
+          item_id:       m.id,
+          item_name:     m.name,
+          unit:          m.unit,
+          system_qty:    m.current_stock,
+          counted_qty:   counted,
+          variance:      counted - m.current_stock,
+        }
+      })
 
     if (items.length > 0) {
       await supabase.from('stock_take_items').insert(items)
-      // Update each material's current_stock to physical count
       for (const item of items) {
         await supabase.from('raw_materials')
-          .update({ current_stock: item.physical_qty })
-          .eq('id', item.material_id)
+          .update({ current_stock: item.counted_qty })
+          .eq('id', item.item_id)
       }
     }
 
@@ -1103,7 +1109,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
               <div className="space-y-2">
                 {takeHistory.map((take: any) => {
                   const items = take.stock_take_items ?? []
-                  const hasVariance = items.some((i: any) => i.variance !== 0)
+                  const hasVariance = items.some((i: any) => (i.variance ?? 0) !== 0)
                   const totalVarianceAbs = items.reduce((a: number, i: any) => a + Math.abs(i.variance ?? 0), 0)
                   return (
                     <div key={take.id} className="border border-gray-100 rounded-xl overflow-hidden">
@@ -1111,7 +1117,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                         onClick={() => setExpandedTake(p => p === take.id ? null : take.id)}
                         className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors">
                         <div>
-                          <span className="font-medium text-[#1F4E79]">{fmtDate(take.taken_at)}</span>
+                          <span className="font-medium text-[#1F4E79]">{fmtDate(take.take_date)}</span>
                           {take.notes && <span className="ml-2 text-xs text-gray-400">{take.notes}</span>}
                           <span className="ml-3 text-xs text-gray-400">{items.length} material{items.length !== 1 ? 's' : ''} counted</span>
                         </div>
@@ -1135,12 +1141,12 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                           <tbody>
                             {items.map((item: any) => (
                               <tr key={item.id} className="border-t border-gray-50">
-                                <td className="px-4 py-1.5 text-gray-700">{item.raw_materials?.name ?? '—'}</td>
+                                <td className="px-4 py-1.5 text-gray-700">{item.item_name ?? '—'}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
                                   {item.system_qty?.toLocaleString()} {item.unit}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums font-medium">
-                                  {item.physical_qty?.toLocaleString()} {item.unit}
+                                  {item.counted_qty?.toLocaleString()} {item.unit}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
                                   {(item.variance ?? 0) === 0
