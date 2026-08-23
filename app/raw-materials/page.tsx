@@ -451,6 +451,8 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     await recalcRollStock()
     loadAll()
   }
+
+  const deleteRoll = async (roll: Roll) => {
     if (roll.status === 'in_use') {
       alert(`Cannot delete "${roll.label}" — it is currently active (in use).\nMark it Done first, which will activate the next roll, then delete it.`)
       return
