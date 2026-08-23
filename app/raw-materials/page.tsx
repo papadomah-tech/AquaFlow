@@ -542,7 +542,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     // 1. Create stock take header
     const { data: take, error: takeErr } = await supabase
       .from('stock_takes')
-      .insert({ take_date: stDate, notes: stNotes || null, status: 'completed' })
+      .insert({ take_date: stDate, notes: stNotes || null, status: 'finalised' })
       .select().single()
     if (takeErr || !take) { alert('Failed to save stock take: ' + takeErr?.message); setSavingTake(false); return }
 
