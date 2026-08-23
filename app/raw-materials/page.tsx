@@ -393,9 +393,11 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     if (roll.status !== 'available' && roll.status !== 'inactive') return
     const { data: active } = await supabase.from('roll_films').select('id, label').eq('status', 'in_use').limit(1).maybeSingle()
     if (active) {
-      if (!confirm(`Activating "${roll.label}" will deactivate the current active roll "${active.label}" (set it to Inactive).\n\nProceed?`)) return
+      if (!confirm(`Activating "${roll.label}" will set the current active roll "${active.label}" to Inactive.\n\nProceed?`)) return
+      // Set current to inactive FIRST — prevents dual in_use state
       await supabase.from('roll_films').update({ status: 'inactive' }).eq('id', active.id)
     }
+    // Only now activate the new roll
     await supabase.from('roll_films').update({ status: 'in_use' }).eq('id', roll.id)
     await recalcRollStock()
     loadAll()
@@ -430,7 +432,25 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     loadAll()
   }
 
-  const deleteRoll = async (roll: Roll) => {
+  // Fix data integrity: multiple in_use rolls — keep oldest, set rest to available
+  const fixMultipleActive = async () => {
+    const inUse = rolls
+      .filter(r => r.status === 'in_use')
+      .sort((a, b) => (a.purchase_date ?? '').localeCompare(b.purchase_date ?? '') || (a.label ?? '').localeCompare(b.label ?? ''))
+    if (inUse.length <= 1) return
+    const keep = inUse[0]
+    const revert = inUse.slice(1)
+    if (!confirm(
+      `This will keep "${keep.label}" as the active roll and set ${revert.length} other roll(s) back to Available:\n\n` +
+      revert.map((r: Roll) => `• ${r.label}`).join('\n') +
+      `\n\nProceed?`
+    )) return
+    for (const r of revert) {
+      await supabase.from('roll_films').update({ status: 'available' }).eq('id', r.id)
+    }
+    await recalcRollStock()
+    loadAll()
+  }
     if (roll.status === 'in_use') {
       alert(`Cannot delete "${roll.label}" — it is currently active (in use).\nMark it Done first, which will activate the next roll, then delete it.`)
       return
@@ -671,14 +691,18 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
             <>
               {/* Data integrity: multiple in_use rolls */}
               {rolls.filter(r => r.status === 'in_use').length > 1 && (
-                <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-3">
-                  <div className="text-sm text-red-800 font-semibold">
-                    🚨 Data Integrity Issue — {rolls.filter(r => r.status === 'in_use').length} rolls are marked as In Use simultaneously.
+                <div className="bg-red-50 border border-red-300 rounded-xl p-3 mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-red-800 font-semibold">
+                      🚨 Data Integrity Issue — {rolls.filter(r => r.status === 'in_use').length} rolls are marked as In Use simultaneously.
+                    </div>
+                    <div className="text-xs text-red-700 mt-1">
+                      Only one roll can be active at a time. Click Fix Now to keep the oldest active roll and set the rest to Available.
+                    </div>
                   </div>
-                  <div className="text-xs text-red-700 mt-1">
-                    Only one roll can be active at a time. Mark all but the correct active roll as Done or revert them to Available.
-                    Production will use the oldest roll only until this is resolved.
-                  </div>
+                  <button onClick={fixMultipleActive} className="btn btn-sm btn-danger whitespace-nowrap">
+                    🔧 Fix Now
+                  </button>
                 </div>
               )}
 
