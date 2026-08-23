@@ -346,17 +346,16 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
   }
 
   const markFinished = async (roll: Roll) => {
-    // Guard 1: roll must be in_use (not just any non-finished roll)
+    // Guard 1: roll must be in_use
     if (roll.status !== 'in_use') {
       alert(`Only the active roll (in use) can be marked Done.\n"${roll.label}" is currently "${roll.status}".`)
       return
     }
-    // Guard 2: must have produced at least one bag — cannot close a roll with zero production
-    if ((roll.bags_produced ?? 0) === 0) {
-      alert(`Cannot mark "${roll.label}" as Done — no bags have been produced from this roll yet.\n\nRecord a production batch first, then close the roll.`)
-      return
-    }
-    if (!confirm(`Mark ${roll.label} as Done?\n\nBags produced: ${fmtNum(roll.bags_produced)} of ${fmtNum(roll.bags_expected)} expected.\nThis closes the roll and activates the next available roll.`)) return
+    // Warn if no bags produced, but still allow it
+    const zeroProdWarning = (roll.bags_produced ?? 0) === 0
+      ? `\n\n⚠️ WARNING: No bags have been produced from this roll. Closing it with zero production.`
+      : ''
+    if (!confirm(`Mark ${roll.label} as Done?${zeroProdWarning}\n\nBags produced: ${fmtNum(roll.bags_produced)} of ${fmtNum(roll.bags_expected)} expected.\nThis closes the roll and activates the next available roll.`)) return
 
     const { error } = await supabase.from('roll_films').update({ status: 'finished' }).eq('id', roll.id)
     if (error) { alert('Failed to close roll: ' + error.message); return }
