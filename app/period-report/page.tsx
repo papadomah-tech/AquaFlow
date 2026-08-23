@@ -419,6 +419,12 @@ function PeriodReportInner() {
             </DetailPanel>
           </div>
 
+          {/* Total Deductions */}
+          <div className="rounded-xl border border-gray-200 px-4 py-3 flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-gray-700">Total Deductions</span>
+            <span className="font-bold tabular-nums text-red-700">− {fmtGhc(summary.totalImprest + summary.opFee)}</span>
+          </div>
+
           {/* Protocol & Giveaway tags */}
           {(summary.protocolBags > 0 || summary.giveawayBags > 0) && (
             <div className="flex gap-3 mb-4">
