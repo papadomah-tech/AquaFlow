@@ -24,7 +24,16 @@ const emptyPurchase = () => ({ material_id: '', material_name: '', purchase_date
 
 // ─── Component ────────────────────────────────────────────────────────────────
 function RawMaterialsInner() {
-  const [tab, setTab]           = useState<'stock' | 'rolls' | 'purchases'>('stock')
+  const [tab, setTab]           = useState<'stock' | 'rolls' | 'purchases' | 'stocktake'>('stock')
+
+  // ── Stock Take state ──────────────────────────────────────────────────────
+  const [stDate,        setStDate]        = useState(today)
+  const [stNotes,       setStNotes]       = useState('')
+  const [stCounts,      setStCounts]      = useState<Record<number, string>>({})  // material_id → physical count string
+  const [savingTake,    setSavingTake]    = useState(false)
+  const [takeHistory,   setTakeHistory]   = useState<any[]>([])
+  const [loadingTakeHist, setLoadingTakeHist] = useState(false)
+  const [expandedTake,  setExpandedTake]  = useState<number | null>(null)
   const [materials, setMaterials] = useState<Material[]>([])
   const [rolls, setRolls]         = useState<Roll[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
@@ -506,9 +515,69 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
     loadAll()
   }
 
+  // ── Stock Take ─────────────────────────────────────────────────────────────
+  const loadTakeHistory = async () => {
+    setLoadingTakeHist(true)
+    const { data } = await supabase
+      .from('stock_takes')
+      .select('*, stock_take_items(*, raw_materials(name, unit))')
+      .order('taken_at', { ascending: false })
+      .limit(20)
+    setTakeHistory(data ?? [])
+    setLoadingTakeHist(false)
+  }
+
+  const saveStockTake = async () => {
+    const takeMaterials = materials.filter(m =>
+      !m.name.toLowerCase().includes('water') &&
+      !m.name.toLowerCase().includes('roll')
+    )
+    const hasAnyCount = takeMaterials.some(m => stCounts[m.id] !== undefined && stCounts[m.id] !== '')
+    if (!hasAnyCount) { alert('Enter at least one physical count before saving.'); return }
+    if (!confirm('Save this stock take and update system stock to match physical counts?')) return
+
+    setSavingTake(true)
+
+    // 1. Create stock take header
+    const { data: take, error: takeErr } = await supabase
+      .from('stock_takes')
+      .insert({ taken_at: stDate, notes: stNotes || null })
+      .select().single()
+    if (takeErr || !take) { alert('Failed to save stock take: ' + takeErr?.message); setSavingTake(false); return }
+
+    // 2. Save items and update stock for materials that have a count entered
+    const items = takeMaterials
+      .filter(m => stCounts[m.id] !== undefined && stCounts[m.id] !== '')
+      .map(m => ({
+        stock_take_id: take.id,
+        material_id:   m.id,
+        system_qty:    m.current_stock,
+        physical_qty:  parseFloat(stCounts[m.id]) || 0,
+        unit:          m.unit,
+      }))
+
+    if (items.length > 0) {
+      await supabase.from('stock_take_items').insert(items)
+      // Update each material's current_stock to physical count
+      for (const item of items) {
+        await supabase.from('raw_materials')
+          .update({ current_stock: item.physical_qty })
+          .eq('id', item.material_id)
+      }
+    }
+
+    setSavingTake(false)
+    setStCounts({})
+    setStNotes('')
+    await loadAll()
+    await loadTakeHistory()
+    alert('✅ Stock take saved. System stock updated to match physical counts.')
+  }
+
   // ── Tab button ─────────────────────────────────────────────────────────────
   const TabBtn = ({ t, label }: { t: typeof tab; label: string }) => (
-    <button onClick={() => setTab(t)} className={'btn btn-sm ' + (tab === t ? 'btn-primary' : 'btn-secondary')}>{label}</button>
+    <button onClick={() => { setTab(t); if (t === 'stocktake') loadTakeHistory() }}
+      className={'btn btn-sm ' + (tab === t ? 'btn-primary' : 'btn-secondary')}>{label}</button>
   )
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -529,6 +598,7 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
         <TabBtn t="stock" label="Stock Overview" />
         <TabBtn t="rolls" label="Roll Film Inventory" />
         <TabBtn t="purchases" label="Purchase History" />
+        <TabBtn t="stocktake" label="📋 Stock Take" />
       </div>
 
       {loading ? (
@@ -943,9 +1013,155 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
         </>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════
-          MATERIAL STOCK DETAIL MODAL
-      ════════════════════════════════════════════════════════════════ */}
+      {/* ── STOCK TAKE TAB ── */}
+      {!loading && tab === 'stocktake' && (
+        <>
+          {/* New stock take form */}
+          <div className="card mb-4">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">New Stock Take</div>
+
+            {/* Date + Notes */}
+            <div className="flex gap-3 mb-4 items-end">
+              <div className="flex-1">
+                <label className="form-label">Date</label>
+                <input type="date" value={stDate} onChange={e => setStDate(e.target.value)} className="form-input" />
+              </div>
+              <div className="flex-[2]">
+                <label className="form-label">Notes (optional)</label>
+                <input type="text" value={stNotes} onChange={e => setStNotes(e.target.value)}
+                  className="form-input" placeholder="e.g. End of month count" />
+              </div>
+            </div>
+
+            {/* Materials table */}
+            <div className="card p-0 overflow-hidden mb-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1F4E79] text-white">
+                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Material</th>
+                    <th className="text-center px-3 py-3 font-semibold">Unit</th>
+                    <th className="text-right px-3 py-3 font-semibold">System Stock</th>
+                    <th className="text-right px-3 py-3 font-semibold">Physical Count</th>
+                    <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materials
+                    .filter(m => !m.name.toLowerCase().includes('water') && !m.name.toLowerCase().includes('roll'))
+                    .map((m, i) => {
+                      const physical = stCounts[m.id] !== undefined ? parseFloat(stCounts[m.id]) : null
+                      const variance = physical !== null ? physical - m.current_stock : null
+                      return (
+                        <tr key={m.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}>
+                          <td className="px-4 py-2.5 font-medium text-gray-700">{m.name}</td>
+                          <td className="px-3 py-2.5 text-center text-gray-500 text-xs">{m.unit}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-medium text-[#1F4E79]">
+                            {m.current_stock.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <input
+                              type="number" step="0.001" min="0"
+                              value={stCounts[m.id] ?? ''}
+                              onChange={e => setStCounts(prev => ({...prev, [m.id]: e.target.value}))}
+                              className="form-input text-right w-32 py-1 text-sm"
+                              placeholder="Enter count" />
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
+                            {variance === null
+                              ? <span className="text-gray-300">—</span>
+                              : variance === 0
+                              ? <span className="text-green-600">✓ 0</span>
+                              : variance > 0
+                              ? <span className="text-orange-600">+{variance.toLocaleString()}</span>
+                              : <span className="text-red-600">{variance.toLocaleString()}</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button onClick={saveStockTake} disabled={savingTake} className="btn btn-primary">
+                {savingTake ? 'Saving...' : '✅ Save Stock Take & Update System'}
+              </button>
+              <div className="text-xs text-gray-400">
+                System stock will be updated to match physical counts for all entered rows.
+              </div>
+            </div>
+          </div>
+
+          {/* History */}
+          <div className="card">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Stock Take History</div>
+            {loadingTakeHist ? (
+              <div className="text-center py-6 text-gray-400 text-sm">Loading...</div>
+            ) : takeHistory.length === 0 ? (
+              <div className="text-center py-6 text-gray-400 text-sm italic">No stock takes recorded yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {takeHistory.map((take: any) => {
+                  const items = take.stock_take_items ?? []
+                  const hasVariance = items.some((i: any) => i.variance !== 0)
+                  const totalVarianceAbs = items.reduce((a: number, i: any) => a + Math.abs(i.variance ?? 0), 0)
+                  return (
+                    <div key={take.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setExpandedTake(p => p === take.id ? null : take.id)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left transition-colors">
+                        <div>
+                          <span className="font-medium text-[#1F4E79]">{fmtDate(take.taken_at)}</span>
+                          {take.notes && <span className="ml-2 text-xs text-gray-400">{take.notes}</span>}
+                          <span className="ml-3 text-xs text-gray-400">{items.length} material{items.length !== 1 ? 's' : ''} counted</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hasVariance
+                            ? <span className="text-xs font-medium text-orange-600">⚠️ Total variance: {totalVarianceAbs.toLocaleString()}</span>
+                            : <span className="text-xs font-medium text-green-600">✓ All matched</span>}
+                          <span className="text-gray-400">{expandedTake === take.id ? '▲' : '▼'}</span>
+                        </div>
+                      </button>
+                      {expandedTake === take.id && items.length > 0 && (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-400 border-t border-gray-100">
+                              <th className="text-left px-4 py-2">Material</th>
+                              <th className="text-right px-3 py-2">System</th>
+                              <th className="text-right px-3 py-2">Physical</th>
+                              <th className="text-right px-3 py-2">Variance</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((item: any) => (
+                              <tr key={item.id} className="border-t border-gray-50">
+                                <td className="px-4 py-1.5 text-gray-700">{item.raw_materials?.name ?? '—'}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                                  {item.system_qty?.toLocaleString()} {item.unit}
+                                </td>
+                                <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                                  {item.physical_qty?.toLocaleString()} {item.unit}
+                                </td>
+                                <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
+                                  {(item.variance ?? 0) === 0
+                                    ? <span className="text-green-600">—</span>
+                                    : (item.variance ?? 0) > 0
+                                    ? <span className="text-orange-600">+{item.variance}</span>
+                                    : <span className="text-red-600">{item.variance}</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
       {matDetail && (
         <div className="modal-overlay" onClick={() => setMatDetail(null)}>
           <div className="modal-box" style={{maxWidth:'620px'}} onClick={e => e.stopPropagation()}>
