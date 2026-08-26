@@ -199,7 +199,7 @@ function PeriodReportInner() {
       <div className="page-header">
         <div>
           <h1 className="page-title">🗓️ Period Report</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Set a date range · review summary · confirm expected payment · record actual paid.</p>
+          <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">Set a date range · review summary · confirm expected payment · record actual paid.</p>
         </div>
       </div>
 
@@ -235,7 +235,7 @@ function PeriodReportInner() {
             <button onClick={() => togglePanel('revenue')}
               className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'revenue' ? 'bg-indigo-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Est. Revenue</span>
-              <span className="font-bold tabular-nums text-sm text-indigo-700">
+              <span className="font-bold tabular-nums text-sm text-indigo-700 whitespace-nowrap">
                 {fmtGhc(summary.estRevenue)} {openPanel === 'revenue' ? '▲' : '▼'}
               </span>
             </button>
@@ -289,7 +289,7 @@ function PeriodReportInner() {
             <button onClick={() => togglePanel('collected')}
               className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'collected' ? 'bg-green-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Actual Collected</span>
-              <span className="font-bold tabular-nums text-sm text-green-700">
+              <span className="font-bold tabular-nums text-sm text-green-700 whitespace-nowrap">
                 {fmtGhc(summary.collected)} {openPanel === 'collected' ? '▲' : '▼'}
               </span>
             </button>
@@ -380,7 +380,7 @@ function PeriodReportInner() {
             <button onClick={() => togglePanel('opfee')}
               className={`w-full text-left p-3 flex items-center justify-between transition-all ${openPanel === 'opfee' ? 'bg-orange-50' : 'bg-gray-50 hover:bg-gray-100'}`}>
               <span className="text-xs text-gray-500">Operator Fee</span>
-              <span className="font-bold tabular-nums text-sm text-orange-700">
+              <span className="font-bold tabular-nums text-sm text-orange-700 whitespace-nowrap">
                 − {fmtGhc(summary.opFee)} {openPanel === 'opfee' ? '▲' : '▼'}
               </span>
             </button>
@@ -442,7 +442,7 @@ function PeriodReportInner() {
           )}
 
           {/* Net cash highlight */}
-          <div className="rounded-2xl bg-[#1F4E79] text-white p-4 flex items-center justify-between mb-4">
+          <div className="rounded-2xl bg-[#1F4E79] text-white p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
             <div>
               <div className="text-blue-200 text-xs mb-1">Net Cash Available (Expected Payment)</div>
               <div className="text-2xl font-bold tabular-nums">{fmtGhc(summary.netCash)}</div>
@@ -450,7 +450,7 @@ function PeriodReportInner() {
             </div>
             {!confirmed
               ? <button onClick={confirmReport} disabled={confirming}
-                  className="btn bg-white text-[#1F4E79] font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-50">
+                  className="btn bg-white text-[#1F4E79] font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-50 w-full sm:w-auto">
                   {confirming ? 'Saving...' : '✓ Confirm & Lock'}
                 </button>
               : <span className="text-green-300 font-semibold text-sm">✅ Locked</span>}
@@ -505,6 +505,7 @@ function PeriodReportInner() {
         ) : history.length === 0 ? (
           <div className="text-center py-6 text-gray-400 text-sm">No reports yet.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-gray-500 text-xs">
@@ -540,6 +541,7 @@ function PeriodReportInner() {
               })()}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </AppLayout>
