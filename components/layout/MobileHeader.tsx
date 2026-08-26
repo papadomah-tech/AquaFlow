@@ -25,7 +25,7 @@ export default function MobileHeader({ userName }: { userName: string }) {
                          flex items-center justify-between px-4 h-14 shadow-lg">
         <button onClick={() => setOpen(true)} className="p-1 -ml-1 text-2xl">&#9776;</button>
         <div className="flex items-center gap-2">
-          <img src="/icon-192.png" alt="AquaFlow" className="w-7 h-7 rounded-lg" />
+          <img src="/icon.svg" alt="AquaFlow" className="w-7 h-7" />
           <span className="font-semibold text-sm">{label}</span>
         </div>
         <div className="text-xs text-blue-200 max-w-[80px] truncate">{userName}</div>
@@ -39,7 +39,7 @@ export default function MobileHeader({ userName }: { userName: string }) {
                onClick={e => e.stopPropagation()}>
             <div className="px-4 py-5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <img src="/icon-192.png" alt="AquaFlow" className="w-8 h-8 rounded-lg" />
+                <img src="/icon.svg" alt="AquaFlow" className="w-8 h-8" />
                 <div>
                   <div className="text-white font-bold">AquaFlow</div>
                   <div className="text-blue-300 text-xs">{userName}</div>
