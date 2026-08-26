@@ -20,7 +20,7 @@ export default function Sidebar({ userName, userRole }: { userName: string; user
     <aside className="fixed left-0 top-0 h-screen w-[220px] bg-[#1F4E79] flex-col z-40 hidden md:flex shadow-xl">
       <div className="px-4 py-5 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">💧</span>
+          <img src="/icon-192.png" alt="AquaFlow" className="w-8 h-8 rounded-lg" />
           <div>
             <div className="text-white font-bold text-sm">AquaFlow</div>
             <div className="text-blue-300 text-xs">VeeBee Ventures</div>

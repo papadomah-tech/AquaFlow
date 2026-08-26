@@ -68,7 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <div className="text-4xl mb-3">💧</div>
+        <img src="/icon-192.png" alt="AquaFlow" className="w-16 h-16 mb-3 rounded-2xl shadow-md" />
         <div className="text-[#1F4E79] font-semibold">Loading AquaFlow...</div>
         <div className="text-gray-400 text-sm mt-2">Please wait...</div>
       </div>
