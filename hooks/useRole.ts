@@ -26,12 +26,15 @@ export function useRole() {
           .eq('id', session.user.id).single()
 
         if (error || !profile) {
-          const name = session.user.email?.split('@')[0] ?? 'User'
-          // Only INSERT if profile truly doesn't exist — never overwrite an existing role
-          await supabase.from('profiles').insert({
-            id: session.user.id, full_name: name,
-            role: 'operator', is_active: true, permissions: ['customers', 'sales'],
-          }).onConflict('id').ignore()
+          // Only create a new profile if it genuinely doesn't exist (PGRST116 = no rows)
+          // Never overwrite an existing profile — a fetch error could mask an existing admin role
+          if (!profile && error?.code === 'PGRST116') {
+            const name = session.user.email?.split('@')[0] ?? 'User'
+            await supabase.from('profiles').insert({
+              id: session.user.id, full_name: name,
+              role: 'operator', is_active: true, permissions: ['customers', 'sales'],
+            })
+          }
           setRole('operator'); setPermissions(['customers', 'sales'])
           setLoading(false); return
         }
