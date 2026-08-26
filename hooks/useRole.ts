@@ -27,10 +27,11 @@ export function useRole() {
 
         if (error || !profile) {
           const name = session.user.email?.split('@')[0] ?? 'User'
-          await supabase.from('profiles').upsert({
+          // Only INSERT if profile truly doesn't exist — never overwrite an existing role
+          await supabase.from('profiles').insert({
             id: session.user.id, full_name: name,
             role: 'operator', is_active: true, permissions: ['customers', 'sales'],
-          })
+          }).onConflict('id').ignore()
           setRole('operator'); setPermissions(['customers', 'sales'])
           setLoading(false); return
         }
