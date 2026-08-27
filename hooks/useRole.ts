@@ -27,24 +27,55 @@ export function useRole() {
 
         if (error || !profile) {
           // Only create a new profile if it genuinely doesn't exist (PGRST116 = no rows)
-          // Never overwrite an existing profile — a fetch error could mask an existing admin role
           if (!profile && error?.code === 'PGRST116') {
             const name = session.user.email?.split('@')[0] ?? 'User'
             await supabase.from('profiles').insert({
               id: session.user.id, full_name: name,
-              role: 'operator', is_active: true, permissions: ['customers', 'sales'],
+              role: 'operator', is_active: true, permissions: ['customers'],
             })
+            setRole('operator'); setPermissions(['customers'])
+          } else {
+            // Transient fetch error — retry once before giving up
+            const { data: retry2 } = await supabase
+              .from('profiles').select('role, permissions')
+              .eq('id', session.user.id).single()
+            if (retry2) {
+              const r2 = (retry2.role as UserRole) ?? 'operator'
+              setRole(r2)
+              setPermissions(r2 === 'admin'
+                ? ALL_MODULES.map(m => m.key)
+                : (Array.isArray(retry2.permissions) && retry2.permissions.length > 0
+                    ? retry2.permissions : ['customers']))
+            } else {
+              // Both attempts failed — show minimal access; don't overwrite DB
+              setRole('operator'); setPermissions(['customers'])
+            }
           }
-          setRole('operator'); setPermissions(['customers', 'sales'])
           setLoading(false); return
         }
 
         const r = (profile.role as UserRole) ?? 'operator'
         setRole(r)
-        setPermissions(r === 'admin'
-          ? ALL_MODULES.map(m => m.key)
-          : (Array.isArray(profile.permissions) && profile.permissions.length > 0
-              ? profile.permissions : ['customers', 'sales']))
+
+        // For admins, grant all modules regardless of permissions column
+        // For others, use the DB permissions — never fall back to a hardcoded minimal set
+        // which would silently strip access on any transient fetch issue
+        if (r === 'admin') {
+          setPermissions(ALL_MODULES.map(m => m.key))
+        } else if (Array.isArray(profile.permissions) && profile.permissions.length > 0) {
+          setPermissions(profile.permissions)
+        } else {
+          // permissions column is empty — try fetching once more before giving up
+          const { data: retry } = await supabase
+            .from('profiles').select('permissions')
+            .eq('id', session.user.id).single()
+          if (retry && Array.isArray(retry.permissions) && retry.permissions.length > 0) {
+            setPermissions(retry.permissions)
+          } else {
+            // Genuinely no permissions set — use minimal safe default
+            setPermissions(['customers'])
+          }
+        }
 
         // Fetch linked employee + their type
         const { data: emp } = await supabase
