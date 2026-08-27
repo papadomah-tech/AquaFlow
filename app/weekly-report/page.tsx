@@ -1677,7 +1677,6 @@ function WeeklyReportInner() {
               </div>
             </div>
           )
-          )
         })())}
     </AppLayout>
   )
