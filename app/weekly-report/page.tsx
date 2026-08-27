@@ -90,6 +90,11 @@ function WeeklyReportInner() {
   const [registering, setRegistering]   = useState<string|null>(null)
   const [adjusting, setAdjusting]       = useState<string|null>(null)   // week.from being adjusted
   const [snapshots, setSnapshots]       = useState<Record<string, any>>({})  // locked weekly snapshots
+  const [activeTab, setActiveTab]       = useState<'weekly' | 'revenue' | 'daily'>('weekly')
+  const [imprestRaw,     setImprestRaw]     = useState<any[]>([])
+  const [bulkSalesRaw,   setBulkSalesRaw]   = useState<any[]>([])
+  const [batchesRaw,     setBatchesRaw]     = useState<any[]>([])
+  const [dailyImprestOpen, setDailyImprestOpen] = useState<string | null>(null)
 
   const monthStr = `${selYear}-${String(selMonth).padStart(2,'0')}`
 
@@ -168,6 +173,9 @@ function WeeklyReportInner() {
       })
       setImprestTotals(totals)
       setImprestEntries(entries)
+      setImprestRaw(imprestData ?? [])
+      setBulkSalesRaw(bulkSales ?? [])
+      setBatchesRaw(batches ?? [])
       // Auto-populate opCash so the deposit calculation uses imprest totals
       const opMap: Record<string, string> = {}
       ws2.forEach((w: any) => {
@@ -523,7 +531,299 @@ function WeeklyReportInner() {
         )
       })()}
 
-      {loading ? (
+      {/* ── Tab toggle ────────────────────────────────────────────────── */}
+      {!loading && weeks.length > 0 && (
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-4 w-fit overflow-x-auto">
+          {([['weekly', '📋 Weekly Detail'], ['revenue', '📊 Revenue Summary'], ['daily', '📆 Daily Reconciliation']] as const).map(([tab, label]) => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                activeTab === tab ? 'bg-white text-[#1F4E79] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}>{label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Revenue Summary Tab ───────────────────────────────────────── */}
+      {!loading && activeTab === 'revenue' && weeks.length > 0 && (() => {
+        const totBags = weeks.reduce((a,w) => a + (weekData[w.from]?.weekDispOut ?? 0), 0)
+        const totProd = weeks.reduce((a,w) => a + (weekData[w.from]?.weekProdIn ?? 0), 0)
+        const totEst  = weeks.reduce((a,w) => a + (weekData[w.from]?.estRevenue ?? 0), 0)
+        const totInv  = weeks.reduce((a,w) => a + (weekData[w.from]?.totalInvoiced ?? 0), 0)
+        const totColl = weeks.reduce((a,w) => a + (weekData[w.from]?.totalCollected ?? 0), 0)
+        const totOut  = weeks.reduce((a,w) => a + (weekData[w.from]?.totalOutstanding ?? 0), 0)
+        const totDep  = weeks.reduce((a,w) => a + (weekData[w.from]?.deposit?.amount ?? 0), 0)
+        const totImp  = weeks.reduce((a,w) => a + (imprestTotals[w.from] ?? 0), 0)
+        const totOpFee= weeks.reduce((a,w) => {
+          const wd2 = weekData[w.from] ?? {}
+          const bs = ((wd2.batchDetails ?? []) as any[]).reduce((s:number,b:any) => s+b.bags_produced,0)
+          return a + (bs > 0 ? bs : (wd2.weekProdIn ?? 0)) / 100 * 30
+        }, 0)
+        const totDeduct = totImp + totOpFee
+        const totGap  = weeks.reduce((a,w) => a + (weekData[w.from]?.collectionVariance ?? 0), 0)
+        const totProt = weeks.reduce((a,w) => a + (weekData[w.from]?.weekProtocolOut ?? 0), 0)
+        const totGive = weeks.reduce((a,w) => a + (weekData[w.from]?.weekGiveawayOut ?? 0), 0)
+        const todayStr = today()
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label:'Bags Dispatched', value:fmtNum(totBags), color:'#1F4E79' },
+                { label:'Est. Revenue',    value:fmtGhc(totEst),  color:'#5C6BC0' },
+                { label:'Actual Collected',value:fmtGhc(totColl), color:'#1B5E20' },
+                { label:'Outstanding',     value:fmtGhc(totOut),  color:totOut>0?'#BF4D00':'#1B5E20' },
+              ].map(({label,value,color}) => (
+                <div key={label} className="card text-center py-4">
+                  <div className="text-xs text-gray-400 mb-1">{label}</div>
+                  <div className="text-lg font-bold tabular-nums" style={{color}}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1F4E79] text-white">
+                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Week</th>
+                    <th className="text-left px-3 py-3 text-blue-200 text-xs font-normal">Period</th>
+                    <th className="text-right px-3 py-3 font-semibold">Produced</th>
+                    <th className="text-right px-3 py-3 font-semibold">Dispatched</th>
+                    <th className="text-right px-3 py-3 font-semibold">Est. Revenue</th>
+                    <th className="text-right px-3 py-3 font-semibold">Invoiced</th>
+                    <th className="text-right px-3 py-3 font-semibold">Collected</th>
+                    <th className="text-right px-3 py-3 font-semibold">Outstanding</th>
+                    <th className="text-right px-3 py-3 font-semibold">Imprest</th>
+                    <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
+                    <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
+                    <th className="text-right px-3 py-3 font-semibold">Protocol</th>
+                    <th className="text-right px-3 py-3 font-semibold">Est. Gap</th>
+                    <th className="text-right px-3 py-3 font-semibold rounded-tr-xl">Deposited</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeks.map((w,wi) => {
+                    const wd = weekData[w.from] ?? {}
+                    const dep = weekData[w.from]?.deposit
+                    const gap = wd.collectionVariance ?? 0
+                    const imp = imprestTotals[w.from] ?? 0
+                    const bs = ((wd.batchDetails ?? []) as any[]).reduce((s:number,b:any) => s+b.bags_produced,0)
+                    const fee = (bs > 0 ? bs : (wd.weekProdIn ?? 0)) / 100 * 30
+                    const deduct = imp + fee
+                    const isActive = todayStr >= w.from && todayStr <= w.to
+                    return (
+                      <tr key={w.from} onClick={() => { setSelWeekIdx(wi); setActiveTab('weekly') }}
+                        className={`border-b border-gray-100 cursor-pointer hover:bg-blue-50/40 ${isActive ? 'bg-blue-50' : wi%2===0?'bg-white':'bg-gray-50/50'}`}>
+                        <td className="px-4 py-3 font-semibold text-[#1F4E79]">
+                          Week {wi+1}{isActive && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Active</span>}
+                        </td>
+                        <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">{fmtDate(w.from)} → {fmtDate(w.to)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-gray-700">{fmtNum(wd.weekProdIn??0)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums font-medium text-[#1F4E79]">{fmtNum(wd.weekDispOut??0)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(wd.estRevenue??0)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums" style={{color:'#BF4D00'}}>{fmtGhc(wd.totalInvoiced??0)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums font-semibold" style={{color:'#1B5E20'}}>{fmtGhc(wd.totalCollected??0)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums" style={{color:(wd.totalOutstanding??0)>0?'#BF4D00':'#1B5E20'}}>{fmtGhc(wd.totalOutstanding??0)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-500">{imp>0?fmtGhc(imp):<span className="text-gray-200">—</span>}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-500">{fee>0?fmtGhc(fee):<span className="text-gray-200">—</span>}</td>
+                        <td className="px-3 py-3 text-right tabular-nums font-semibold text-red-700">{deduct>0?`− ${fmtGhc(deduct)}`:<span className="text-gray-200">—</span>}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-orange-500">{(wd.weekProtocolOut??0)>0?`${wd.weekProtocolOut} 🎁`:<span className="text-gray-200">—</span>}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-xs">
+                          <span className={`px-2 py-0.5 rounded-full font-medium ${Math.abs(gap)<0.01?'bg-green-100 text-green-700':gap>0?'bg-orange-100 text-orange-700':'bg-blue-100 text-blue-700'}`}>
+                            {gap>0.01?'+':''}{fmtGhc(gap)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">{dep?<span className="text-green-700 font-semibold">{fmtGhc(dep.amount)}</span>:<span className="text-gray-300">—</span>}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold text-sm">
+                    <td className="px-4 py-3 text-[#1F4E79]" colSpan={2}>Month Total</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-gray-700">{fmtNum(totProd)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-[#1F4E79]">{fmtNum(totBags)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(totEst)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{color:'#BF4D00'}}>{fmtGhc(totInv)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{color:'#1B5E20'}}>{fmtGhc(totColl)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{color:totOut>0?'#BF4D00':'#1B5E20'}}>{fmtGhc(totOut)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totImp)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(totOpFee)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-700">{`− ${fmtGhc(totDeduct)}`}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-orange-500">{totProt>0?`${totProt} 🎁`:'—'}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-xs">
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${Math.abs(totGap)<0.01?'bg-green-100 text-green-700':totGap>0?'bg-orange-100 text-orange-700':'bg-blue-100 text-blue-700'}`}>
+                        {totGap>0.01?'+':''}{fmtGhc(totGap)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-green-700">{fmtGhc(totDep)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
+                💡 Click any row to jump to that week's detail view.
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Daily Revenue Reconciliation Tab ──────────────────────────── */}
+      {!loading && activeTab === 'daily' && weeks.length > 0 && (() => {
+        const daysInMonth = new Date(selYear, selMonth, 0).getDate()
+        const allDays = Array.from({length:daysInMonth}, (_,i) => {
+          const d = i+1
+          return `${selYear}-${String(selMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+        })
+        const salesByDay: Record<string,any[]> = {}
+        bulkSalesRaw.forEach((s:any) => {
+          if (!salesByDay[s.sale_date]) salesByDay[s.sale_date] = []
+          salesByDay[s.sale_date].push(s)
+        })
+        const imprestByDay: Record<string,number> = {}
+        const imprestEntriesByDay: Record<string,any[]> = {}
+        imprestRaw.forEach((e:any) => {
+          imprestByDay[e.entry_date] = (imprestByDay[e.entry_date] ?? 0) + e.amount
+          if (!imprestEntriesByDay[e.entry_date]) imprestEntriesByDay[e.entry_date] = []
+          imprestEntriesByDay[e.entry_date].push(e)
+        })
+        const prodByDay: Record<string,number> = {}
+        ;(batchesRaw ?? []).forEach((b:any) => { prodByDay[b.batch_date] = (prodByDay[b.batch_date]??0)+b.bags_produced })
+        const rows = allDays.map(date => {
+          const daySales = salesByDay[date] ?? []
+          const estRev   = daySales.filter((s:any)=>!s.is_giveaway).reduce((a:number,s:any) => a + s.bags_sold*(s.buyer?.full_name?6:4.8),0)
+          const collected= daySales.filter((s:any)=>!s.is_giveaway).reduce((a:number,s:any) => a+(s.amount_paid||0),0)
+          const protocol = daySales.filter((s:any)=>!s.is_giveaway).reduce((a:number,s:any) => a+(s.protocol_bags||0),0)
+          const imprest  = imprestByDay[date] ?? 0
+          const bagsProduced = prodByDay[date] ?? 0
+          const opFee   = (bagsProduced/100)*30
+          const totalDeduct = imprest+opFee
+          const netCash = Math.max(0, collected-totalDeduct)
+          const hasActivity = daySales.length>0||imprest>0||bagsProduced>0
+          return {date,estRev,collected,protocol,imprest,opFee,totalDeduct,netCash,hasActivity}
+        })
+        let cumDeduct=0, cumNet=0, cumColl=0
+        const rowsWithCumul = rows.map(r => {
+          cumDeduct += r.totalDeduct; cumNet += r.netCash; cumColl += r.collected
+          return {...r, cumDeduct, cumNet, cumCashOnHand: cumColl-cumDeduct}
+        })
+        const totEst2    = rowsWithCumul.reduce((a,r)=>a+r.estRev,0)
+        const totColl2   = rowsWithCumul.reduce((a,r)=>a+r.collected,0)
+        const totDeduct2 = rowsWithCumul.reduce((a,r)=>a+r.totalDeduct,0)
+        const totNet2    = rowsWithCumul.reduce((a,r)=>a+r.netCash,0)
+        const totProt2   = rowsWithCumul.reduce((a,r)=>a+r.protocol,0)
+        const todayStr2 = today()
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                {label:'Est. Revenue',       value:fmtGhc(totEst2),    color:'#5C6BC0'},
+                {label:'Actual Collected',   value:fmtGhc(totColl2),   color:'#1B5E20'},
+                {label:'Total Deductions',   value:`− ${fmtGhc(totDeduct2)}`, color:'#BF4D00'},
+                {label:'Net Cash Available', value:fmtGhc(totNet2),    color:'#1F4E79'},
+              ].map(({label,value,color}) => (
+                <div key={label} className="card text-center py-4">
+                  <div className="text-xs text-gray-400 mb-1">{label}</div>
+                  <div className="text-lg font-bold tabular-nums" style={{color}}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="card overflow-x-auto p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1F4E79] text-white">
+                    <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Date</th>
+                    <th className="text-left px-3 py-3 text-blue-200 text-xs font-normal">Day</th>
+                    <th className="text-right px-3 py-3 font-semibold">Est. Revenue</th>
+                    <th className="text-right px-3 py-3 font-semibold">Collected</th>
+                    <th className="text-right px-3 py-3 font-semibold">Protocol</th>
+                    <th className="text-right px-3 py-3 font-semibold">Imprest</th>
+                    <th className="text-right px-3 py-3 font-semibold">Op Fee</th>
+                    <th className="text-right px-3 py-3 font-semibold">Total Deductions</th>
+                    <th className="text-right px-3 py-3 font-semibold bg-red-900/30">Cumul. Deductions</th>
+                    <th className="text-right px-3 py-3 font-semibold">Net Cash</th>
+                    <th className="text-right px-3 py-3 font-semibold bg-blue-900/30">Cumul. Net Cash</th>
+                    <th className="text-right px-3 py-3 font-semibold bg-green-900/30 rounded-tr-xl">Cumul. Cash on Hand</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rowsWithCumul.map((r,i) => {
+                    const isToday  = r.date === todayStr2
+                    const dayName  = new Date(r.date+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short'})
+                    const isSun    = dayName === 'Sun'
+                    return (
+                      <>
+                        <tr key={r.date}
+                          className={`border-b border-gray-100 ${isToday?'bg-blue-50 font-medium':isSun?'bg-gray-50/80':i%2===0?'bg-white':'bg-gray-50/30'} ${!r.hasActivity?'opacity-40':''}`}>
+                          <td className="px-4 py-2.5">
+                            <span className={`tabular-nums ${isToday?'text-[#1F4E79] font-bold':'text-gray-700'}`}>{fmtDate(r.date)}</span>
+                            {isToday&&<span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Today</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-400 text-xs">{dayName}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-purple-700">{r.estRev>0?fmtGhc(r.estRev):<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-medium" style={{color:r.collected>0?'#1B5E20':undefined}}>{r.collected>0?fmtGhc(r.collected):<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-orange-500">{r.protocol>0?`${r.protocol} 🎁`:<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-red-500">
+                            {r.imprest>0
+                              ? <button onClick={()=>setDailyImprestOpen(p=>p===r.date?null:r.date)}
+                                  className="text-red-500 hover:text-red-700 hover:underline tabular-nums font-medium">
+                                  {fmtGhc(r.imprest)} {dailyImprestOpen===r.date?'▲':'▼'}
+                                </button>
+                              : <span className="text-gray-200">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-red-500">{r.opFee>0?fmtGhc(r.opFee):<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-medium text-red-700">{r.totalDeduct>0?`− ${fmtGhc(r.totalDeduct)}`:<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-red-800 bg-red-50/50">{r.cumDeduct>0?`− ${fmtGhc(r.cumDeduct)}`:<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{color:r.netCash>0?'#1F4E79':undefined}}>{r.netCash>0?fmtGhc(r.netCash):r.hasActivity?fmtGhc(0):<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#1F4E79] bg-blue-50/50">{r.cumNet>0?fmtGhc(r.cumNet):r.hasActivity?fmtGhc(0):<span className="text-gray-200">—</span>}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold bg-green-50/50" style={{color:r.cumCashOnHand>=0?'#1B5E20':'#BF4D00'}}>{r.hasActivity||r.cumCashOnHand!==0?fmtGhc(r.cumCashOnHand):<span className="text-gray-200">—</span>}</td>
+                        </tr>
+                        {dailyImprestOpen===r.date&&(imprestEntriesByDay[r.date]??[]).length>0&&(
+                          <tr key={r.date+'-imp'} className="bg-red-50/60 border-b border-red-100">
+                            <td colSpan={12} className="px-8 py-2.5">
+                              <div className="text-xs font-semibold text-red-700 mb-1.5">Imprest entries — {fmtDate(r.date)}</div>
+                              <table className="w-full text-xs">
+                                <thead><tr className="text-gray-400 border-b border-red-100"><th className="text-left py-1 w-2/3">Description</th><th className="text-right py-1">Amount</th></tr></thead>
+                                <tbody>
+                                  {(imprestEntriesByDay[r.date]??[]).map((e:any,ei:number)=>(
+                                    <tr key={ei} className="border-b border-red-50">
+                                      <td className="py-1 text-gray-600">{e.description||e.category||'—'}</td>
+                                      <td className="py-1 text-right tabular-nums text-red-600 font-medium">{fmtGhc(e.amount)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot><tr className="border-t border-red-200"><td className="py-1 font-semibold text-red-700">Total</td><td className="py-1 text-right tabular-nums font-bold text-red-700">{fmtGhc(r.imprest)}</td></tr></tfoot>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
+                    <td className="px-4 py-3 text-[#1F4E79]" colSpan={2}>Month Total</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-purple-700">{fmtGhc(totEst2)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{color:'#1B5E20'}}>{fmtGhc(totColl2)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-orange-500">{totProt2>0?`${totProt2} 🎁`:'—'}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(rowsWithCumul.reduce((a,r)=>a+r.imprest,0))}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-500">{fmtGhc(rowsWithCumul.reduce((a,r)=>a+r.opFee,0))}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-red-700">{`− ${fmtGhc(totDeduct2)}`}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold text-red-800 bg-red-50/50">{`− ${fmtGhc(totDeduct2)}`}</td>
+                    <td className="px-3 py-3 text-right tabular-nums" style={{color:'#1F4E79'}}>{fmtGhc(totNet2)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold bg-blue-50/50" style={{color:'#1F4E79'}}>{fmtGhc(totNet2)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums font-bold bg-green-50/50" style={{color:(totColl2-totDeduct2)>=0?'#1B5E20':'#BF4D00'}}>{fmtGhc(totColl2-totDeduct2)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div className="px-4 py-2.5 text-xs text-gray-400 border-t border-gray-100">
+                💡 Faded rows = no activity. Op Fee = bags/100 × GH₵30. Cumulative columns reset on the 1st of each month. Click Imprest amounts to see entries.
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Weekly Detail Tab ─────────────────────────────────────────── */}
+      {activeTab === 'weekly' && (loading ? (
         <div className="text-center py-12 text-gray-400">Building report...</div>
       ) : weeks.length === 0 ? (
         <div className="text-center py-12 text-gray-400">No weeks found for this period.</div>
@@ -1377,7 +1677,8 @@ function WeeklyReportInner() {
               </div>
             </div>
           )
-        })()}
+          )
+        })())}
     </AppLayout>
   )
 }
