@@ -722,7 +722,6 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
             )}
             <div className="card p-0 overflow-x-auto">
               <table className="data-table" style={{minWidth:'650px'}}>
-                </colgroup>
                 <thead>
                   <tr>
                     <th>Material</th><th>Unit</th><th className="right">Current Stock</th>
