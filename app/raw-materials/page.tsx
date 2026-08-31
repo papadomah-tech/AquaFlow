@@ -1035,8 +1035,8 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
             </div>
 
             {/* Materials table */}
-            <div className="card p-0 overflow-hidden mb-4">
-              <table className="w-full text-sm">
+            <div className="card p-0 overflow-x-auto mb-4">
+              <table className="w-full text-sm" style={{minWidth:'550px'}}>
                 <thead>
                   <tr className="bg-[#1F4E79] text-white">
                     <th className="text-left px-4 py-3 font-semibold rounded-tl-xl">Material</th>
