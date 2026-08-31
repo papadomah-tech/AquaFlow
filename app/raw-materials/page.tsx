@@ -720,12 +720,8 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                 </div>
               </div>
             )}
-            <div className="card p-0 overflow-hidden">
-              <table className="data-table">
-                <colgroup>
-                  <col /><col style={{width:'65px'}} /><col style={{width:'110px'}} />
-                  <col style={{width:'115px'}} /><col style={{width:'90px'}} />
-                  <col style={{width:'70px'}} /><col style={{width:'140px'}} />
+            <div className="card p-0 overflow-x-auto">
+              <table className="data-table" style={{minWidth:'650px'}}>
                 </colgroup>
                 <thead>
                   <tr>
@@ -823,8 +819,8 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
                   </button>
                 </div>
               )}
-              <div className="card p-0 overflow-hidden">
-                <table className="data-table">
+              <div className="card p-0 overflow-x-auto">
+                <table className="data-table" style={{minWidth:'1000px'}}>
                   <colgroup>
                     <col style={{width:'145px'}} /><col style={{width:'80px'}} /><col style={{width:'90px'}} />
                     <col style={{width:'65px'}} /><col style={{width:'70px'}} /><col style={{width:'80px'}} />
@@ -977,8 +973,8 @@ This will reduce current stock by ${p.quantity} ${matDetail?.unit}.`)) return
 
           {/* ── PURCHASES TAB ── */}
           {tab === 'purchases' && (
-            <div className="card p-0 overflow-hidden">
-              <table className="data-table">
+            <div className="card p-0 overflow-x-auto">
+              <table className="data-table" style={{minWidth:'750px'}}>
                 <colgroup>
                   <col style={{width:'90px'}} /><col style={{width:'130px'}} /><col style={{width:'120px'}} />
                   <col style={{width:'90px'}} /><col style={{width:'95px'}} /><col style={{width:'105px'}} />
