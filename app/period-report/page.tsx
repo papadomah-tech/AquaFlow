@@ -108,7 +108,7 @@ function PeriodReportInner() {
     const totalImprest = imprest.reduce((a: number, e: any) => a + (e.amount || 0), 0)
     const totalBagsProduced = batches.reduce((a: number, b: any) => a + b.bags_produced, 0)
     const opFee    = (totalBagsProduced / 100) * OP_FEE_PER_100
-    const netCash  = Math.max(0, collected - totalImprest - opFee)
+    const netCash  = collected - totalImprest - opFee
 
     setSummary({
       dateFrom, dateTo,
@@ -445,8 +445,13 @@ function PeriodReportInner() {
           <div className="rounded-2xl bg-[#1F4E79] text-white p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
             <div>
               <div className="text-blue-200 text-xs mb-1">Net Cash Available (Expected Payment)</div>
-              <div className="text-2xl font-bold tabular-nums">{fmtGhc(summary.netCash)}</div>
-              <div className="text-blue-300 text-xs mt-1">Collected − Imprest − Operator Fee</div>
+              <div className={`text-2xl font-bold tabular-nums ${summary.netCash < 0 ? 'text-red-300' : 'text-white'}`}>
+                {fmtGhc(summary.netCash)}
+              </div>
+              <div className="text-blue-300 text-xs mt-1">
+                Collected − Imprest − Operator Fee
+                {summary.netCash < 0 && <span className="ml-2 text-red-300 font-medium">⚠️ Deductions exceed collections</span>}
+              </div>
             </div>
             {!confirmed
               ? <button onClick={confirmReport} disabled={confirming}
