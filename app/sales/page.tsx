@@ -228,6 +228,8 @@ function SalesPageInner() {
       }
     }
 
+    const protocolBags = parseInt(bulkForm.protocol_bags) || 0
+
     const payload: any = {
       sale_date: bulkForm.sale_date,
       customer_id: custId,
@@ -240,11 +242,13 @@ function SalesPageInner() {
       amount_paid: paid, outstanding_balance: bal,
       payment_status: status, notes: bulkForm.notes,
       is_overtime: bulkForm.is_overtime ?? false,
+      protocol_bags: protocolBags,
     }
 
     let saleId: number | undefined
     if (editSale) {
       await supabase.from('sales').update(payload).eq('id', editSale.id)
+      // Delete ALL existing inventory entries for this sale (including old protocol entries)
       await supabase.from('finished_inventory').delete().eq('sale_id', editSale.id)
       saleId = editSale.id
     } else {
@@ -262,6 +266,8 @@ function SalesPageInner() {
     const dispatchName = bulkForm.buyer_type === 'external'
       ? 'External Customer'
       : (riders.find((r:any) => r.id === riderId)?.full_name ?? 'Rider')
+
+    // Post main dispatch write-off
     const { error: fiErr } = await supabase.from('finished_inventory').insert({
       bags_in: 0, bags_out: bags,
       transaction_date: bulkForm.sale_date, reference_type: 'sale',
@@ -270,6 +276,16 @@ function SalesPageInner() {
     })
     if (fiErr) {
       alert(`Sale saved but stock ledger failed to update: ${fiErr.message}\nPlease notify admin to fix manually.`)
+    }
+
+    // Post protocol bags write-off (always re-post on both insert and edit)
+    if (protocolBags > 0) {
+      await supabase.from('finished_inventory').insert({
+        bags_in: 0, bags_out: protocolBags,
+        transaction_date: bulkForm.sale_date, reference_type: 'protocol',
+        sale_id: saleId,
+        notes: `Protocol bags — ${protocolBags} bag${protocolBags !== 1 ? 's' : ''} given free with dispatch to ${dispatchName}`,
+      })
     }
     setShowForm(false); load()
   }
