@@ -61,10 +61,13 @@ function SalesPageInner() {
   const blankBulk = () => ({
     sale_date: today(), buyer_employee_id: '',
     teammate_employee_id: '',
-    buyer_type: 'rider',          // 'rider' | 'external'
-    external_customer_id: '',     // for external bulk customers
+    buyer_type: 'rider',
+    external_customer_id: '',
     bags_sold: '', unit_price: '', amount_paid: '', notes: '',
     is_overtime: false,
+    protocol_bags: '0',
+    recipient_category: 'Director',
+    recipient_name: '',
   })
   // retailForm removed — retail sales disabled
   const [bulkForm, setBulkForm]     = useState(blankBulk())
