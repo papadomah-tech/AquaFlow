@@ -8,7 +8,7 @@ import { useRole } from '@/hooks/useRole'
 
 const PRICE_RIDER    = 6
 const PRICE_EXTERNAL = 4.8
-const PRICE_OT       = 6
+const PRICE_OT       = 5   // Overtime dispatches
 const OP_FEE_PER_100 = 30
 
 type ReportStatus = 'pending' | 'settled' | 'overpaid' | 'underpaid'
@@ -264,7 +264,9 @@ function PeriodReportInner() {
                           {name}{s.is_overtime && <span className="ml-1 text-yellow-600 text-[10px]">OT</span>}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{fmtNum(s.bags_sold)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">GH₵{price}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">
+                        GH₵{price}{s.is_overtime ? ' (OT)' : ''}
+                      </td>
                         <td className="px-3 py-1.5 text-right tabular-nums font-medium text-indigo-700">{fmtGhc(s.bags_sold * price)}</td>
                       </tr>
                     )
