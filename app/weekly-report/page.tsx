@@ -205,12 +205,12 @@ function WeeklyReportInner() {
       const riderMap: Record<string, any> = {}
       wBulk.forEach((s: any) => {
         const name = s.buyer?.full_name ?? s.customers?.name ?? 'External'
-        if (!riderMap[name]) riderMap[name] = { name, bags: 0, invoiced: 0, collected: 0, outstanding: 0, dispatches: [] }
+        if (!riderMap[name]) riderMap[name] = { name, bags: 0, invoiced: 0, collected: 0, outstanding: 0, dispatches: [], isRider: !!s.buyer }
         riderMap[name].bags        += s.bags_sold
         riderMap[name].invoiced    += s.total_amount
         riderMap[name].collected   += s.amount_paid
         riderMap[name].outstanding += s.outstanding_balance
-        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, invoiced: s.total_amount, collected: s.amount_paid })
+        riderMap[name].dispatches.push({ date: s.sale_date, bags: s.bags_sold, is_overtime: !!s.is_overtime, invoiced: s.total_amount, collected: s.amount_paid })
       })
 
       const totalInvoiced   = wBulk.reduce((a: number, s: any) => a + s.total_amount, 0)
@@ -1340,12 +1340,44 @@ function WeeklyReportInner() {
                           </div>
                         ))}
                         <div className="border-t border-gray-200 pt-1.5 mt-1">
-                          <div className={'flex justify-between text-xs font-bold '
-                            + (Math.abs(wd.collectionVariance ?? 0) < 50 ? 'text-green-600' : 'text-orange-600')}>
+                          <button
+                            onClick={() => setDispOpen(p => ({...p, [`gap-${week.from}`]: !p[`gap-${week.from}`]}))}
+                            className={'flex justify-between text-xs font-bold w-full '
+                              + (Math.abs(wd.collectionVariance ?? 0) < 50 ? 'text-green-600' : 'text-orange-600')}>
                             <span>Est. vs Collected Gap</span>
                             <span>{(wd.collectionVariance??0) >= 0 ? '+' : ''}{fmtGhc(Math.abs(wd.collectionVariance ?? 0))}
-                              {Math.abs(wd.collectionVariance ?? 0) < 50 ? ' ✅' : ' ⚠️'}</span>
-                          </div>
+                              {Math.abs(wd.collectionVariance ?? 0) < 50 ? ' ✅' : ` ⚠️ ${dispOpen[`gap-${week.from}`] ? '▲' : '▼'}`}</span>
+                          </button>
+                          {dispOpen[`gap-${week.from}`] && (wd.collectionVariance ?? 0) !== 0 && (
+                            <div className="mt-2 bg-white border border-orange-100 rounded-lg p-2 text-xs space-y-1">
+                              <div className="font-semibold text-gray-500 mb-1">Gap breakdown — Est. vs Collected per dispatch:</div>
+                              {(wd.riders ?? []).map((r: any) =>
+                                (r.dispatches ?? []).map((d: any, di: number) => {
+                                  const isOT     = !!d.is_overtime
+                                  const isRider  = !!r.isRider
+                                  const price    = isOT ? PRICE_OT : (isRider ? PRICE_RIDER : PRICE_EXTERNAL)
+                                  const estAmt   = d.bags * price
+                                  const colAmt   = d.collected ?? 0
+                                  const dispGap  = estAmt - colAmt
+                                  if (Math.abs(dispGap) < 0.01) return null
+                                  return (
+                                    <div key={`${r.name}-${di}`} className="flex justify-between border-b border-gray-50 pb-0.5">
+                                      <span className="text-gray-500">
+                                        {fmtDate(d.date)} — {r.name} ({d.bags} bags × GH₵{price}{isOT ? ' OT' : ''})
+                                      </span>
+                                      <span className={dispGap > 0 ? 'text-orange-600 font-medium' : 'text-blue-600 font-medium'}>
+                                        {dispGap > 0 ? '+' : ''}{fmtGhc(dispGap)}
+                                      </span>
+                                    </div>
+                                  )
+                                })
+                              )}
+                              <div className="flex justify-between font-bold border-t border-orange-200 pt-1">
+                                <span>Total Gap</span>
+                                <span className="text-orange-600">+{fmtGhc(wd.collectionVariance ?? 0)}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
