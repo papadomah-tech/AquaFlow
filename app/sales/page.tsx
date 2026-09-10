@@ -553,7 +553,7 @@ function SalesPageInner() {
                       <div className="flex gap-1 flex-nowrap">
                         <button onClick={() => {
                           setEditSale(s); setFormType('bulk')
-                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false })
+                          setBulkForm({ sale_date:s.sale_date, buyer_employee_id:String(s.buyer_employee_id??''), teammate_employee_id:String(s.teammate_employee_id??''), buyer_type: s.is_giveaway ? 'giveaway' : s.buyer_employee_id ? 'rider' : 'external', external_customer_id: s.buyer_employee_id ? '' : String(s.customer_id??''), bags_sold:String(s.bags_sold), unit_price:String(s.unit_price), amount_paid:String(s.amount_paid), notes:s.notes??'', is_overtime: s.is_overtime ?? false, protocol_bags: String(s.protocol_bags ?? 0), recipient_category: s.recipient_category ?? 'Director', recipient_name: s.recipient_name ?? '' })
                           setShowForm(true)
                         }} className="btn btn-sm btn-secondary">Edit</button>
                         <button onClick={() => {
@@ -726,6 +726,25 @@ function SalesPageInner() {
                     className="form-input" placeholder="Bulk/wholesale price" />
                 </div>
               </div>
+
+              {/* Protocol Bags — free bags given to rider, zero revenue, written off from stock */}
+              <div className="form-group">
+                <label className="form-label">
+                  🎁 Protocol Bags
+                  <span className="ml-1 text-gray-400 font-normal text-xs">(free bags — zero revenue, deducted from stock)</span>
+                </label>
+                <input type="number" min="0"
+                  value={bulkForm.protocol_bags}
+                  onChange={e => setBulkForm(f => ({...f, protocol_bags: e.target.value}))}
+                  className="form-input"
+                  placeholder="0" />
+                {(parseInt(bulkForm.protocol_bags) || 0) > 0 && (
+                  <div className="text-xs text-orange-600 mt-1 font-medium">
+                    ⚠️ {bulkForm.protocol_bags} bag{parseInt(bulkForm.protocol_bags) !== 1 ? 's' : ''} will be written off from stock at zero value
+                  </div>
+                )}
+              </div>
+
               {bulkTotal > 0 && (
                 <div className="bg-orange-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-center text-sm">
                   <div><div className="text-xs text-gray-500">Total</div><div className="font-bold text-orange-700">{fmtGhc(bulkTotal)}</div></div>
